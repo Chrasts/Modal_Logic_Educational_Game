@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { and, atom, box, diamond, implies, not, or } from './formula'
 import { createModel } from './model'
-import { evaluate } from './evaluate'
+import { evaluate, evaluateWithExplanation } from './evaluate'
 
 const p = atom('p')
 const q = atom('q')
@@ -77,5 +77,35 @@ describe('model integrity', () => {
   it('rejects evaluation in an unknown world', () => {
     expect(() => evaluate(createModel({ w0: [] }), 'missing', p)).toThrow(/unknown world/i)
   })
+
+  it('rejects invalid atom names', () => {
+    expect(() => createModel({ w0: ['not-an-atom'] })).toThrow(/invalid atom/i)
+  })
+
+  it('treats duplicate edges as one relation pair', () => {
+    const model = createModel(
+      { w0: [], w1: ['p'] },
+      [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w1' }],
+    )
+    expect(model.edges).toHaveLength(1)
+  })
 })
 
+describe('deterministic explanations', () => {
+  it('identifies a witness for diamond', () => {
+    const model = createModel({ w0: [], w1: ['p'] }, [{ from: 'w0', to: 'w1' }])
+    expect(evaluateWithExplanation(model, 'w0', diamond(p))).toEqual({
+      value: true,
+      explanation: '◇p is true: w0 R w1, and the formula is true at w1.',
+    })
+  })
+
+  it('identifies a counterexample for box', () => {
+    const model = createModel({ w0: [], w1: [] }, [{ from: 'w0', to: 'w1' }])
+    expect(evaluateWithExplanation(model, 'w0', box(p)).explanation).toContain('w0 R w1')
+  })
+
+  it('explains vacuous truth at a terminal world', () => {
+    expect(evaluateWithExplanation(createModel({ w0: [] }), 'w0', box(p)).explanation).toMatch(/vacuously/)
+  })
+})
