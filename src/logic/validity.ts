@@ -35,6 +35,12 @@ export function checkFrameValidity(
   formula: Formula,
   maximumValuations = DEFAULT_MAXIMUM_VALUATIONS,
 ): FrameValidityResult {
+  if (worldIds.length === 0) {
+    throw new Error('A Kripke frame must contain at least one world.')
+  }
+  if (new Set(worldIds).size !== worldIds.length) {
+    throw new Error('World identifiers in a Kripke frame must be unique.')
+  }
   const atoms = collectAtoms(formula)
   const slots = worldIds.length * atoms.length
   const valuationCount = 2 ** slots

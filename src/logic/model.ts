@@ -20,6 +20,9 @@ export function createModel(
   valuations: Readonly<Record<WorldId, readonly string[]>>,
   edges: readonly AccessibilityEdge[] = [],
 ): KripkeModel {
+  if (Object.keys(valuations).length === 0) {
+    throw new Error('A Kripke model must contain at least one world.')
+  }
   const worlds = new Map<WorldId, KripkeWorld>()
 
   for (const [id, atoms] of Object.entries(valuations)) {

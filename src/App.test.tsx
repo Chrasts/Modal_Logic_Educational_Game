@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 
 describe('sandbox user interface', () => {
+  it('links to the author profile', () => {
+    render(<App />)
+    expect(screen.getByRole('link', { name: 'Logic Model Builder author on GitHub' })).toHaveAttribute('href', 'https://github.com/Chrasts')
+  })
+
   beforeEach(() => {
     localStorage.clear()
     vi.stubGlobal('confirm', vi.fn(() => true))
@@ -81,7 +86,7 @@ describe('sandbox user interface', () => {
 
     await user.selectOptions(screen.getByLabelText('Correspondence lab'), 't')
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
-    expect(screen.getByText('Correspondence confirmed on this frame')).toBeVisible()
+    expect(screen.getByText('Formula and relation agree on this frame')).toBeVisible()
     expect(screen.getByText('Frame validity')).toBeVisible()
     expect(screen.getByText('Relational property')).toBeVisible()
     expect(screen.getByText('Instance comparison')).toBeVisible()

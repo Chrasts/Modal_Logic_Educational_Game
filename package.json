@@ -2,6 +2,7 @@
   "name": "logic-model-building-game",
   "private": true,
   "version": "0.1.0",
+  "author": "Chrasts (https://github.com/Chrasts)",
   "type": "module",
   "scripts": {
     "dev": "vite",

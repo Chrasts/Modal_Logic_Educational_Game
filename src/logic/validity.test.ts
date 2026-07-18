@@ -5,6 +5,11 @@ import { checkFrameValidity, DEFAULT_MAXIMUM_VALUATIONS, evaluateAtAllWorlds } f
 
 const p = atom('p')
 
+it('requires a non-empty frame with unique world identifiers', () => {
+  expect(() => checkFrameValidity([], [], p)).toThrow(/at least one world/i)
+  expect(() => checkFrameValidity(['w0', 'w0'], [], p)).toThrow(/unique/i)
+})
+
 describe('model-wide truth', () => {
   it('finds a counterexample world under the current valuation', () => {
     const model = createModel({ w0: ['p'], w1: [] })

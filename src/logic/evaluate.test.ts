@@ -6,6 +6,10 @@ import { evaluate, evaluateWithExplanation } from './evaluate'
 const p = atom('p')
 const q = atom('q')
 
+it('rejects an empty set of worlds', () => {
+  expect(() => createModel({})).toThrow(/at least one world/i)
+})
+
 describe('propositional semantics', () => {
   const model = createModel({ w0: ['p'] })
 

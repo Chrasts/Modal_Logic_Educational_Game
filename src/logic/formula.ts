@@ -9,7 +9,9 @@ export type Formula =
   | { readonly kind: 'diamond'; readonly operand: Formula }
 
 export const atom = (name: string): Formula => {
-  if (!name.trim()) throw new Error('Atom name must not be empty.')
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/u.test(name)) {
+    throw new Error(`Invalid atom name: ${name || '(empty)'}`)
+  }
   return { kind: 'atom', name }
 }
 

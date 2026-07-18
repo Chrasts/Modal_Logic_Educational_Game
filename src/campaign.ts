@@ -86,9 +86,9 @@ export const tutorialLevels: readonly GameLevel[] = [
     edges: [], requiredFrameRules: { reflexive: 'enforce' }, constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['constraints'],
   },
   {
-    id: 'tutorial-correspondence', chapter: 'Tutorial', title: 'Formula and relation', concept: 'F ⊨ B iff R is symmetric',
+    id: 'tutorial-correspondence', chapter: 'Tutorial', title: 'Formula and relation', concept: 'F ⊨ p → □◇p iff R is symmetric',
     briefing: 'A correspondence claim compares modal frame validity with a property of R. Verification reports F ⊨ φ, the relational condition, and their agreement on the current finite frame separately.',
-    instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
+    instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
     edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['edges'],
   },
@@ -223,36 +223,36 @@ export const campaignTracks: readonly CampaignTrack[] = [
   },
   {
     id: 'correspondence', title: 'Correspondence Lab',
-    description: 'Confirm standard modal axioms against their characteristic relational properties on finite frames.',
+    description: 'Compare standard modal axioms with their characteristic relational properties on finite frames.',
     levels: [
       {
         id: 'correspondence-t', chapter: 'Correspondence', title: 'T and reflexivity', concept: 'T ↔ reflexivity',
-        instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: '□p → p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 't',
+        instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: '□p → p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 't',
         worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }], edges: [], frameRules: { reflexive: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
       },
       {
         id: 'correspondence-d', chapter: 'Correspondence', title: 'D and seriality', concept: 'D ↔ seriality',
-        instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: '□p → ◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'd',
+        instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: '□p → ◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'd',
         worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }], edges: [], frameRules: { serial: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
       },
       {
         id: 'correspondence-b', chapter: 'Correspondence', title: 'B and symmetry', concept: 'B ↔ symmetry',
-        instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
+        instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
         worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }], edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
       },
       {
         id: 'correspondence-four', chapter: 'Correspondence', title: '4 and transitivity', concept: '4 ↔ transitivity',
-        instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: '□p → □□p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '4',
+        instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: '□p → □□p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '4',
         worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: '', position: { x: 260, y: 130 } }, { id: 'w2', atoms: '', position: { x: 450, y: 130 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], frameRules: { transitive: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumEdges: 3 }, editable: ['edges'],
       },
       {
         id: 'correspondence-five', chapter: 'Correspondence', title: '5 and Euclideanness', concept: '5 ↔ Euclidean relation',
-        instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
+        instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], frameRules: { euclidean: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumEdges: 6 }, editable: ['edges'],
       },
       {
         id: 'correspondence-five-cluster', chapter: 'Correspondence', title: '5 on a larger cluster', concept: 'Euclidean closure with three alternatives',
-        instruction: 'Complete the frame and confirm the axiom 5–Euclideanness correspondence.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
+        instruction: 'Complete the frame and verify that axiom 5 validity and Euclideanness agree on this finite instance.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 35 } }, { id: 'w1', atoms: 'p', position: { x: 40, y: 230 } }, { id: 'w2', atoms: '', position: { x: 245, y: 270 } }, { id: 'w3', atoms: '', position: { x: 450, y: 230 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], frameRules: { euclidean: 'validate' }, constraints: { minimumWorlds: 4, maximumWorlds: 4, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], maximumEdges: 12 }, editable: ['edges'],
       },

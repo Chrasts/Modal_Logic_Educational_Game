@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
-import { campaignTracks } from './campaign'
+import { campaignTracks, tutorialLevels } from './campaign'
 
 const level = (id: string) => campaignTracks.flatMap((track) => track.levels).find((item) => item.id === id)!
 const correspondenceProperties: Record<string, FramePropertyName> = { t: 'reflexive', d: 'serial', b: 'symmetric', '4': 'transitive', '5': 'euclidean' }
@@ -30,6 +30,24 @@ const expectSolved = (id: string, edges: readonly AccessibilityEdge[], valuation
 }
 
 describe('campaign level solvability', () => {
+  it('defines mathematically well-formed level data', () => {
+    for (const item of [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)]) {
+      const worldIds = item.worlds.map((world) => world.id)
+      expect(worldIds.length, `${item.id}: non-empty W`).toBeGreaterThan(0)
+      expect(new Set(worldIds).size, `${item.id}: unique worlds`).toBe(worldIds.length)
+      expect(worldIds, `${item.id}: evaluation world`).toContain(item.evaluationWorld)
+      expect(() => parseFormula(item.formula), `${item.id}: formula syntax`).not.toThrow()
+      for (const edge of item.edges) {
+        expect(worldIds, `${item.id}: edge source`).toContain(edge.from)
+        expect(worldIds, `${item.id}: edge target`).toContain(edge.to)
+      }
+      expect(item.scope === 'correspondence', `${item.id}: correspondence preset`).toBe(Boolean(item.correspondencePreset))
+      if (item.constraints?.minimumWorlds !== undefined && item.constraints.maximumWorlds !== undefined) {
+        expect(item.constraints.minimumWorlds, `${item.id}: consistent world bounds`).toBeLessThanOrEqual(item.constraints.maximumWorlds)
+      }
+    }
+  })
+
   it('defines five tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
     expect(campaignTracks).toHaveLength(5)

@@ -70,7 +70,7 @@ notation `M,w ⊨ φ`.
 - `M ⊨ φ` checks every world under the current valuation.
 - `F ⊨ φ` checks every world under every valuation.
 
-Frame validity is computed exhaustively for the finite model currently shown.
+Frame validity is computed exhaustively for the finite frame currently shown.
 A correspondence result verifies agreement on that particular frame; it is not
 by itself a general mathematical proof of a characteristic-class theorem.
 
@@ -90,6 +90,7 @@ Vite will print the local address. If Windows PowerShell blocks `npm.ps1`, use
 
 - [Campaign guide](docs/CAMPAIGNS.md) — mission descriptions without solutions
 - [Campaign solutions](docs/SOLUTIONS.md) — spoilers and reference constructions
+- [Mathematical conventions](docs/MATHEMATICAL_NOTES.md) — semantics, notation, correspondences, and scope
 - [Development guide](docs/DEVELOPMENT.md) — architecture, tests, and technical scope
 
 ## Technology
@@ -97,3 +98,9 @@ Vite will print the local address. If Windows PowerShell blocks `npm.ps1`, use
 The application is built with React, TypeScript, Vite, and React Flow. The modal
 logic engine is independent of the UI and is covered together with the primary
 user interactions by an automated Vitest test suite.
+
+## Author
+
+Created and maintained by [Chrasts](https://github.com/Chrasts).
+
+Copyright © 2026 Chrasts. No open-source license is currently included.

@@ -106,7 +106,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
   const agrees = frameValidity.valid === property.holds
   return {
     success: agrees,
-    headline: agrees ? 'Correspondence confirmed on this frame' : 'Formula and relation disagree on this frame',
+    headline: agrees ? 'Formula and relation agree on this frame' : 'Formula and relation disagree on this frame',
     formula: formulaSection,
     relation: {
       label: 'Relational property',
@@ -118,7 +118,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
       label: 'Instance comparison',
       holds: agrees,
       summary: agrees ? 'Both sides have the same truth value.' : 'The two sides have different truth values.',
-      detail: 'This verifies the equivalence on the current finite frame; it is evidence, not a proof for every frame.',
+      detail: 'This compares both sides on the current finite frame; it is an instance check, not a proof of the general frame correspondence.',
     },
   }
 }

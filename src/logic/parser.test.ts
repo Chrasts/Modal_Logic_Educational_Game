@@ -17,6 +17,11 @@ describe('tokenizer', () => {
 })
 
 describe('formula parser', () => {
+  it('keeps programmatic atom construction within the parser language', () => {
+    expect(() => atom('not-an-atom')).toThrow(/invalid atom/i)
+    expect(() => atom(' p')).toThrow(/invalid atom/i)
+  })
+
   it('parses atoms and all unary operators', () => {
     expect(parseFormula('¬□◇p')).toEqual(not(box(diamond(atom('p')))))
     expect(parseFormula('! box diamond p')).toEqual(not(box(diamond(atom('p')))))

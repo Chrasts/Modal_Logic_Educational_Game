@@ -39,7 +39,7 @@ The player edits only the valuation to expose the corresponding modal axiom.
 3. **Refute 4** — refute `□p → □□p` on a non-transitive frame.
 4. **Refute 5** — construct a countervaluation on a non-Euclidean fork.
 
-These missions represent the countervaluation direction used in correspondence
+These missions illustrate the countervaluation direction used in correspondence
 arguments: a relational failure is converted into a modal counterexample.
 
 ## Frame Engineering
