@@ -74,4 +74,22 @@ describe('sandbox user interface', () => {
     expect(screen.getByLabelText('Modal formula')).toHaveValue('□p → p')
     expect(screen.getByLabelText('Evaluation scope')).toHaveValue('frame')
   })
+
+  it('selects a remaining evaluation world after deleting the current one', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Delete world w0' }))
+    expect(screen.getByLabelText('Evaluation world')).toHaveValue('w1')
+  })
+
+  it('closes an open dialog with Escape', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Help / legend' }))
+    expect(screen.getByRole('dialog', { name: 'Help and legend' })).toBeVisible()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Help and legend' })).not.toBeInTheDocument()
+  })
 })

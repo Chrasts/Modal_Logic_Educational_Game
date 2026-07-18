@@ -149,7 +149,7 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 .node-label .reflexive-badge { position: absolute; top: -1.55rem; right: -1.65rem; display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border: 1px solid var(--brown); border-radius: 50%; background: var(--paper); color: var(--brown); font: 700 1.1rem/1 sans-serif; box-shadow: 0 3px 8px rgba(49, 39, 28, .14); }
 .react-flow__minimap .minimap-relation { stroke: var(--petrol-dark); stroke-width: 2; opacity: .28; vector-effect: non-scaling-stroke; }
 .react-flow__minimap { width: 195px; height: 130px; border: 1px solid rgba(11, 69, 87, .25); border-radius: 4px; box-shadow: 0 7px 20px rgba(31, 37, 29, .12); }
-.map-toolbar { display: flex; align-items: center; gap: .35rem; margin: .15rem; border: 1px solid rgba(92, 96, 87, .2); border-radius: 9px; background: rgba(248, 247, 241, .9); padding: .35rem; box-shadow: 0 6px 18px rgba(31, 37, 29, .1); backdrop-filter: blur(8px); }
+.map-toolbar { display: flex; max-width: calc(100% - .3rem); align-items: center; gap: .35rem; margin: .15rem; border: 1px solid rgba(92, 96, 87, .2); border-radius: 9px; background: rgba(248, 247, 241, .9); padding: .35rem; box-shadow: 0 6px 18px rgba(31, 37, 29, .1); backdrop-filter: blur(8px); }
 .map-toolbar > button, .mode-switch button { border: 0; border-radius: 6px; background: transparent; color: #515a52; padding: .48rem .6rem; font-size: .7rem; font-weight: 700; }
 .map-toolbar > button:hover:not(:disabled), .mode-switch button:hover { background: #e8e6de; }
 .map-toolbar > button:disabled { cursor: not-allowed; opacity: .4; }
@@ -275,6 +275,7 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
     grid-template-areas: "formula" "graph" "model" "edge" "verify";
   }
   .graph-canvas { height: 440px; }
+  .map-toolbar { flex-wrap: wrap; }
   .world-row { grid-template-columns: auto 1fr auto; }
   .world-number { grid-column: 1; grid-row: 1 / span 2; }
   .world-row label { grid-column: 2; }
@@ -289,4 +290,13 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
   .help-grid { grid-template-columns: 1fr; }
   .frame-rule-grid { grid-template-columns: 1fr; }
   .react-flow__minimap { width: 150px; height: 100px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }

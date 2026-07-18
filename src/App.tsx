@@ -202,6 +202,17 @@ export function App() {
     localStorage.setItem(storageKey, JSON.stringify(draft))
   }, [formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope])
 
+  useEffect(() => {
+    if (!showHelp && !showFrameRules) return
+    const closeDialog = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setShowHelp(false)
+      setShowFrameRules(false)
+    }
+    window.addEventListener('keydown', closeDialog)
+    return () => window.removeEventListener('keydown', closeDialog)
+  }, [showHelp, showFrameRules])
+
   const usableWorldIds = useMemo(
     () => worlds.map(({ id }) => id.trim()).filter((id, index, ids) => id && ids.indexOf(id) === index),
     [worlds],
@@ -364,10 +375,14 @@ export function App() {
   const removeWorld = (key: number) => {
     saveHistoryPoint()
     const removed = worlds.find((world) => world.key === key)
-    setWorlds((current) => current.filter((world) => world.key !== key))
+    const remainingWorlds = worlds.filter((world) => world.key !== key)
+    setWorlds(remainingWorlds)
     if (removed) {
-      setEdges((current) => current.filter(({ from, to }) => from !== removed.id && to !== removed.id))
+      const removedId = removed.id.trim()
+      setEdges((current) => current.filter(({ from, to }) => from !== removedId && to !== removedId))
+      if (evaluationWorld === removedId) setEvaluationWorld(remainingWorlds[0]?.id.trim() ?? '')
     }
+    setSelectedWorldKey((current) => current === key ? null : current)
     setResult(null)
   }
 
@@ -496,8 +511,8 @@ export function App() {
         <div className="topbar-actions">
           <button type="button" className="icon-button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
           <button type="button" className="icon-button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button>
-          <button type="button" className="icon-button" onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle left panels" title="Toggle left panels">◧</button>
-          <button type="button" className="icon-button" onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle right panels" title="Toggle right panels">◨</button>
+          <button type="button" className="icon-button" onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle left panels" aria-pressed={!leftPanelOpen} title="Toggle left panels">◧</button>
+          <button type="button" className="icon-button" onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle right panels" aria-pressed={!rightPanelOpen} title="Toggle right panels">◨</button>
           <button type="button" className="text-button" onClick={resetSandbox}>Reset model</button>
           <button type="button" className="help-button" onClick={() => setShowHelp(true)}>Help / legend</button>
         </div>
@@ -515,7 +530,7 @@ export function App() {
           </label>
           <div className="symbol-row" aria-label="Insert symbol">
             {['¬', '∧', '∨', '→', '□', '◇'].map((symbol) => (
-              <button key={symbol} type="button" className="symbol-button" onClick={() => setFormulaSource((value) => value + symbol)}>{symbol}</button>
+              <button key={symbol} type="button" className="symbol-button" aria-label={`Insert ${symbol}`} onClick={() => setFormulaSource((value) => value + symbol)}>{symbol}</button>
             ))}
           </div>
           <fieldset className="target-choice">
@@ -579,8 +594,8 @@ export function App() {
             >
               <Panel position="top-left" className="map-toolbar">
                 <div className="mode-switch" aria-label="Editor mode">
-                  <button type="button" className={editorMode === 'edit' ? 'active' : ''} onClick={() => setEditorMode('edit')}>Edit</button>
-                  <button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => setEditorMode('evaluate')}>Evaluate</button>
+                  <button type="button" className={editorMode === 'edit' ? 'active' : ''} aria-pressed={editorMode === 'edit'} onClick={() => setEditorMode('edit')}>Edit</button>
+                  <button type="button" className={editorMode === 'evaluate' ? 'active' : ''} aria-pressed={editorMode === 'evaluate'} onClick={() => setEditorMode('evaluate')}>Evaluate</button>
                 </div>
                 <button type="button" onClick={addWorld} disabled={editorMode !== 'edit'}>+ World</button>
                 <button type="button" onClick={() => flowInstance?.fitView({ padding: .25, duration: 250 })}>Fit view</button>

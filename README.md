@@ -22,6 +22,12 @@ npm run test:watch # rerun tests while files change
 npm run build      # type-check and build the production application
 ```
 
+## Deploy to GitHub Pages
+
+Build the application and publish the contents of `dist/` from a dedicated
+`gh-pages` branch. In the repository settings, select **Deploy from a branch**
+and use `gh-pages` with the root (`/`) folder as the Pages source.
+
 ## Current features
 
 - Visual construction of finite Kripke frames with React Flow.
