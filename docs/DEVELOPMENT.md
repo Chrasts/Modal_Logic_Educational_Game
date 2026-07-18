@@ -48,7 +48,8 @@ engine used by the sandbox.
   property on the current frame and reports both sides separately.
 
 Finite-frame validity enumerates valuations and is exponential in the number of
-worlds and atoms. A safety limit prevents impractically large checks.
+worlds and atoms. Interactive checks are capped at 65,536 valuations to prevent
+impractically long work on the browser's main thread.
 
 ## Frame rules
 
@@ -60,7 +61,28 @@ because repairing them can require arbitrary choices or deleting explicit data.
 ## Persistence
 
 Sandbox state and mission progress are stored in browser `localStorage`. There
-is currently no backend, account system, or cross-device synchronization.
+is currently no backend, account system, or cross-device synchronization. The
+Data dialog can reset these stores independently and export or import versioned
+model JSON. Imports validate formulas, world identifiers, atoms, relations, and
+supported frame-rule modes before changing the sandbox.
+
+An anonymous guest profile stores a random local identifier and up to 250 recent
+verification attempts. It does not use IP addresses or browser fingerprinting.
+Profile backups contain history and learning progress and can be restored in a
+different browser through the same Data dialog.
+
+## Verification diagnostics
+
+Objective verdicts include structured truth values for every world under the
+relevant valuation. Failed frame-validity checks additionally expose the full
+countervaluation separately from the prose explanation. The structured result
+is intended to support a future recursive subformula evaluation tree.
+
+## Optional mission bonuses
+
+A level may define `bonusConstraints` in addition to its required construction
+constraints. Bonus conditions do not block completion and are not shown before
+the primary objective is verified.
 
 ## Current technical scope
 

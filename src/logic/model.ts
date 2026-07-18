@@ -10,7 +10,7 @@ export interface AccessibilityEdge {
   readonly to: WorldId
 }
 
-/** A finite Kripke model M = (W, R, V). */
+/** A finite Kripke model M = (W, R, ν). */
 export interface KripkeModel {
   readonly worlds: ReadonlyMap<WorldId, KripkeWorld>
   readonly edges: readonly AccessibilityEdge[]

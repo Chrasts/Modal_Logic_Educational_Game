@@ -13,6 +13,8 @@ and the interaction between universal and existential modal operators.
 1. **Necessary, not actual** — satisfy `□p ∧ ¬p` under a seriality constraint.
 2. **Split the alternatives** — refute `□(p ∨ q) → (□p ∨ □q)` in a bounded model.
 3. **Open alternatives** — satisfy `◇p ∧ ◇¬p` using exactly two explicit edges.
+4. **Uniform branching** — combine two existential witnesses with a universal
+   condition on every accessible world.
 
 ## Global Model Building
 
@@ -24,6 +26,8 @@ formula at every world.
 2. **Universal possibility** — make `◇p` true at every world in a three-world
    model.
 3. **No dead ends** — satisfy both global `□p → ◇p` and seriality.
+4. **Return to truth** — coordinate nested possibility with seriality across a
+   three-world model.
 
 ## Countervaluations
 
@@ -33,6 +37,7 @@ The player edits only the valuation to expose the corresponding modal axiom.
 1. **Refute T** — refute `□p → p` on a non-reflexive frame.
 2. **Refute B** — refute `p → □◇p` on a non-symmetric frame.
 3. **Refute 4** — refute `□p → □□p` on a non-transitive frame.
+4. **Refute 5** — construct a countervaluation on a non-Euclidean fork.
 
 These missions represent the countervaluation direction used in correspondence
 arguments: a relational failure is converted into a modal counterexample.
@@ -46,6 +51,8 @@ does not determine success.
 2. **Serial foundation** — establish axiom D on a serial frame.
 3. **Build an S4 frame** — combine reflexivity and transitivity under an edge
    bound.
+4. **Build an S5 cluster** — complete a connected reflexive, symmetric, and
+   transitive frame.
 
 ## Correspondence Lab
 
@@ -57,6 +64,8 @@ and their agreement on the current finite frame.
 3. **B and symmetry** — `p → □◇p`.
 4. **4 and transitivity** — `□p → □□p`.
 5. **5 and Euclideanness** — `◇p → □◇p`.
+6. **5 on a larger cluster** — complete Euclidean closure for three accessible
+   alternatives.
 
 Agreement on a finite frame is an instance verification, not a proof of the
 general characteristic-class theorem.
@@ -71,3 +80,6 @@ compact reference.
 
 Solutions are intentionally kept out of this document. See
 [SOLUTIONS.md](SOLUTIONS.md) only when a spoiler is wanted.
+
+Some missions include optional bonus constraints. They are deliberately hidden
+until after the primary objective has been verified.

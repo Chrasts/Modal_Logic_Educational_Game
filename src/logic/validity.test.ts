@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { box, diamond, implies, atom } from './formula'
 import { createModel } from './model'
-import { checkFrameValidity, evaluateAtAllWorlds } from './validity'
+import { checkFrameValidity, DEFAULT_MAXIMUM_VALUATIONS, evaluateAtAllWorlds } from './validity'
 
 const p = atom('p')
 
@@ -54,5 +54,11 @@ describe('finite frame validity', () => {
 
   it('honors the valuation safety limit', () => {
     expect(() => checkFrameValidity(['w0', 'w1'], [], implies(p, p), 2)).toThrow(/current limit/)
+  })
+
+  it('uses a browser-safe default valuation ceiling', () => {
+    expect(DEFAULT_MAXIMUM_VALUATIONS).toBe(65_536)
+    const manyWorlds = Array.from({ length: 17 }, (_, index) => `w${index}`)
+    expect(() => checkFrameValidity(manyWorlds, [], p)).toThrow(/65,536/)
   })
 })

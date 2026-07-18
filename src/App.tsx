@@ -44,14 +44,14 @@ interface EditableEdge {
 }
 
 type VerificationResult =
-  | { readonly kind: 'success' | 'failure'; readonly message: string; readonly detail: string; readonly verdict?: ObjectiveVerdict }
+  | { readonly kind: 'success' | 'failure'; readonly message: string; readonly detail: string; readonly verdict?: ObjectiveVerdict; readonly bonus?: { achieved: boolean; detail: string } }
   | { readonly kind: 'error'; readonly message: string }
   | null
 
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'campaign'
 type GuideTab = 'theory' | 'controls' | 'objectives'
-type AppView = 'workspace' | 'tutorial' | 'campaigns' | 'guide'
+type AppView = 'workspace' | 'tutorial' | 'campaigns' | 'guide' | 'profile'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
@@ -106,31 +106,80 @@ function loadDraft(): SandboxDraft | null {
     const raw = localStorage.getItem(storageKey)
     if (!raw) return null
     const draft = JSON.parse(raw) as Partial<SandboxDraft>
-    if (
-      typeof draft.formulaSource !== 'string'
-      || !Array.isArray(draft.worlds)
-      || !Array.isArray(draft.edges)
-      || typeof draft.evaluationWorld !== 'string'
-      || typeof draft.targetTruth !== 'boolean'
-    ) return null
+    if (typeof draft.formulaSource !== 'string' || !Array.isArray(draft.worlds) || !Array.isArray(draft.edges)
+      || typeof draft.evaluationWorld !== 'string' || typeof draft.targetTruth !== 'boolean') return null
+    if (draft.worlds.some((world) => !world || typeof world !== 'object' || typeof world.id !== 'string' || typeof world.atoms !== 'string')) return null
+    if (draft.edges.some((edge) => !edge || typeof edge !== 'object' || typeof edge.from !== 'string' || typeof edge.to !== 'string')) return null
+    const normalizedWorlds = draft.worlds.map((world, index) => ({
+      ...world,
+      key: index,
+      position: world.position && typeof world.position.x === 'number' && typeof world.position.y === 'number'
+        ? world.position
+        : { x: 90 + (index % 3) * 240, y: 90 + Math.floor(index / 3) * 150 },
+    }))
+    const worldIds = new Set(normalizedWorlds.map((world) => world.id.trim()).filter(Boolean))
+    const validRuleModes = new Set<FrameRuleMode>(['off', 'validate', 'enforce'])
+    const enforceableRules = new Set(['reflexive', 'symmetric', 'transitive', 'euclidean'])
+    const normalizedFrameRules = Object.fromEntries(Object.entries(draft.frameRules ?? {})
+      .filter(([property, mode]) => property in defaultFrameRules && validRuleModes.has(mode as FrameRuleMode))
+      .map(([property, mode]) => [property, mode === 'enforce' && !enforceableRules.has(property) ? 'validate' : mode])) as Partial<FrameRules>
+    const validScopes = new Set(['pointed', 'model', 'frame', 'correspondence', 'world'])
     return {
       ...draft,
-      worlds: draft.worlds.map((world, index) => ({
-        ...world,
-        position: world.position && typeof world.position.x === 'number' && typeof world.position.y === 'number'
-          ? world.position
-          : { x: 90 + (index % 3) * 240, y: 90 + Math.floor(index / 3) * 150 },
-      })),
+      worlds: normalizedWorlds,
+      edges: draft.edges.filter((edge) => worldIds.has(edge.from.trim()) && worldIds.has(edge.to.trim()))
+        .map((edge, index) => ({ ...edge, key: index })),
+      frameRules: { ...defaultFrameRules, ...normalizedFrameRules },
+      evaluationScope: typeof draft.evaluationScope === 'string' && validScopes.has(draft.evaluationScope)
+        ? draft.evaluationScope as SandboxDraft['evaluationScope']
+        : 'pointed',
     } as SandboxDraft
   } catch {
     return null
   }
 }
 
+interface HistoryEntry {
+  readonly id: string
+  readonly timestamp: string
+  readonly mode: GameMode
+  readonly levelId?: string
+  readonly title: string
+  readonly scope: EvaluationScope
+  readonly success: boolean
+  readonly worldCount: number
+  readonly edgeCount: number
+  readonly bonusAchieved?: boolean
+}
+
+interface GuestProfile {
+  readonly id: string
+  readonly createdAt: string
+  readonly history: readonly HistoryEntry[]
+}
+
+const guestProfileKey = 'logic-game:guest-profile:v1'
+const createLocalId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
+function loadGuestProfile(): GuestProfile {
+  try {
+    const stored = JSON.parse(localStorage.getItem(guestProfileKey) ?? 'null') as Partial<GuestProfile> | null
+    if (!stored || typeof stored.id !== 'string' || typeof stored.createdAt !== 'string' || !Array.isArray(stored.history)) throw new Error('Invalid guest profile')
+    return {
+      id: stored.id,
+      createdAt: stored.createdAt,
+      history: stored.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250),
+    }
+  } catch {
+    return { id: createLocalId(), createdAt: new Date().toISOString(), history: [] }
+  }
+}
+
 function loadCampaignProgress(): ReadonlySet<string> {
   try {
     const stored = JSON.parse(localStorage.getItem(campaignProgressKey) ?? '[]')
-    return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [])
+    const knownIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].map((level) => level.id))
+    return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string' && knownIds.has(id)) : [])
   } catch {
     return new Set()
   }
@@ -144,6 +193,7 @@ export function App() {
   const [campaignTrackIndex, setCampaignTrackIndex] = useState(0)
   const [playingTrackIndex, setPlayingTrackIndex] = useState<number | null>(null)
   const [completedLevelIds, setCompletedLevelIds] = useState<ReadonlySet<string>>(loadCampaignProgress)
+  const [guestProfile, setGuestProfile] = useState<GuestProfile>(loadGuestProfile)
   const [formulaSource, setFormulaSource] = useState(initialDraft?.formulaSource ?? '◇p')
   const [worlds, setWorlds] = useState(initialDraft?.worlds ?? initialWorlds)
   const [edges, setEdges] = useState(initialDraft?.edges ?? initialEdges)
@@ -168,6 +218,10 @@ export function App() {
   const [nextEdgeKey, setNextEdgeKey] = useState(() => Math.max(-1, ...edges.map(({ key }) => key)) + 1)
   const [selectedEdgeKey, setSelectedEdgeKey] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [showDataManager, setShowDataManager] = useState(false)
+  const [importSource, setImportSource] = useState('')
+  const [dataMessage, setDataMessage] = useState('')
+  const [completionDismissed, setCompletionDismissed] = useState(false)
   const [guideTab, setGuideTab] = useState<GuideTab>('controls')
   const [showFrameRules, setShowFrameRules] = useState(false)
   const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
@@ -224,23 +278,28 @@ export function App() {
   useEffect(() => {
     if (gameMode !== 'sandbox') return
     const draft: SandboxDraft = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
-    localStorage.setItem(storageKey, JSON.stringify(draft))
+    try { localStorage.setItem(storageKey, JSON.stringify(draft)) } catch { /* Persistence is optional in restricted browsers. */ }
   }, [formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode])
 
   useEffect(() => {
-    localStorage.setItem(campaignProgressKey, JSON.stringify([...completedLevelIds]))
+    try { localStorage.setItem(campaignProgressKey, JSON.stringify([...completedLevelIds])) } catch { /* Progress remains available for this session. */ }
   }, [completedLevelIds])
 
   useEffect(() => {
-    if (!showHelp && !showFrameRules) return
+    try { localStorage.setItem(guestProfileKey, JSON.stringify(guestProfile)) } catch { /* History remains available for this session. */ }
+  }, [guestProfile])
+
+  useEffect(() => {
+    if (!showHelp && !showFrameRules && !showDataManager) return
     const closeDialog = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       setShowHelp(false)
       setShowFrameRules(false)
+      setShowDataManager(false)
     }
     window.addEventListener('keydown', closeDialog)
     return () => window.removeEventListener('keydown', closeDialog)
-  }, [showHelp, showFrameRules])
+  }, [showHelp, showFrameRules, showDataManager])
 
   const usableWorldIds = useMemo(
     () => worlds.map(({ id }) => id.trim()).filter((id, index, ids) => id && ids.indexOf(id) === index),
@@ -379,12 +438,23 @@ export function App() {
   const nextSelectedLevelIndex = selectedTrack.levels.findIndex((level) => !completedLevelIds.has(level.id))
   const overallCampaignLevels = campaignTracks.reduce((total, track) => total + track.levels.length, 0)
   const overallCampaignCompleted = campaignTracks.reduce((total, track) => total + track.levels.filter((level) => completedLevelIds.has(level.id)).length, 0)
+  const successfulAttempts = guestProfile.history.filter((entry) => entry.success).length
+  const completedHistoryLevels = new Set(guestProfile.history.filter((entry) => entry.success && entry.levelId).map((entry) => entry.levelId)).size
   const isGuidedMode = gameMode !== 'sandbox'
   const canEditWorlds = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('worlds'))
   const canEditValuations = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('valuations'))
   const canEditEdges = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('edges'))
   const canEditConstraints = !activeLevel || activeLevel.editable.includes('constraints')
   const canEditEvaluation = !activeLevel || activeLevel.editable.includes('evaluation')
+
+  useEffect(() => {
+    if (!activeLevel || result?.kind !== 'success' || completionDismissed) return
+    const dismissCompletion = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCompletionDismissed(true)
+    }
+    window.addEventListener('keydown', dismissCompletion)
+    return () => window.removeEventListener('keydown', dismissCompletion)
+  }, [activeLevel, completionDismissed, result])
 
   const updateWorld = (key: number, field: 'id' | 'atoms', value: string) => {
     const previous = worlds.find((world) => world.key === key)
@@ -475,6 +545,7 @@ export function App() {
     setSelectedEdgeKey(null)
     setEditorMode('edit')
     setResult(null)
+    setCompletionDismissed(false)
     historyPast.current = []
     historyFuture.current = []
     setHistoryVersion((version) => version + 1)
@@ -561,8 +632,20 @@ export function App() {
     setResult(null)
   }
 
+  const recordAttempt = (success: boolean, bonusAchieved?: boolean) => {
+    const entry: HistoryEntry = {
+      id: createLocalId(), timestamp: new Date().toISOString(), mode: gameMode,
+      levelId: activeLevel?.id, title: activeLevel?.title ?? 'Sandbox verification',
+      scope: evaluationScope, success, worldCount: worlds.length,
+      edgeCount: new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size,
+      bonusAchieved,
+    }
+    setGuestProfile((current) => ({ ...current, history: [entry, ...current.history].slice(0, 250) }))
+  }
+
   const verify = () => {
     try {
+      setCompletionDismissed(false)
       const ids = worlds.map(({ id }) => id.trim())
       if (ids.length === 0) throw new Error('Add at least one world before verification.')
       if (ids.some((id) => !id)) throw new Error('Every world must have a name.')
@@ -575,14 +658,16 @@ export function App() {
       ]))
       const explicitEdges: AccessibilityEdge[] = edges.map(({ from, to }) => ({ from, to }))
       const normalizedEdges: AccessibilityEdge[] = effectiveEdges.map(({ from, to }) => ({ from, to }))
-      const constraintViolation = activeLevel?.constraints && checkConstructionConstraints({
+      const constraintInput = {
         worldIds: ids,
         explicitEdges,
         effectiveEdges: normalizedEdges,
         valuation: valuations,
-      }, activeLevel.constraints)[0]
+      }
+      const constraintViolation = activeLevel?.constraints && checkConstructionConstraints(constraintInput, activeLevel.constraints)[0]
       if (constraintViolation) {
         setResult({ kind: 'failure', message: 'Construction constraint not met', detail: constraintViolation })
+        recordAttempt(false)
         return
       }
 
@@ -591,6 +676,7 @@ export function App() {
       if (requiredRule) {
         const [property, mode] = requiredRule
         setResult({ kind: 'failure', message: 'Frame constraint not configured', detail: `Set ${property} to ${mode}.` })
+        recordAttempt(false)
         return
       }
 
@@ -601,6 +687,7 @@ export function App() {
           message: `The frame is not ${failedRule.property}.`,
           detail: failedRule.violations[0] ?? 'The selected frame rule is violated.',
         })
+        recordAttempt(false)
         return
       }
 
@@ -616,24 +703,172 @@ export function App() {
         valuation: valuations,
         formula: parseFormula(formulaSource),
       })
+      const bonusViolations = verdict.success && activeLevel?.bonusConstraints
+        ? checkConstructionConstraints(constraintInput, activeLevel.bonusConstraints)
+        : []
       setResult({
         kind: verdict.success ? 'success' : 'failure',
         message: verdict.headline,
         detail: verdict.formula.summary,
         verdict,
+        bonus: verdict.success && activeLevel?.bonusConstraints ? {
+          achieved: bonusViolations.length === 0,
+          detail: bonusViolations.length === 0 ? 'Optional bonus challenge achieved.' : `Bonus challenge not achieved: ${bonusViolations[0]}`,
+        } : undefined,
       })
+      recordAttempt(verdict.success, verdict.success && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined)
       if (verdict.success && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
       }
     } catch (error) {
       setResult({ kind: 'error', message: error instanceof Error ? error.message : 'Verification failed.' })
+      recordAttempt(false)
+    }
+  }
+
+  const serializedModel = () => JSON.stringify({
+    format: 'logic-model-builder',
+    version: 1,
+    formula: formulaSource,
+    scope: evaluationScope,
+    targetTruth,
+    evaluationWorld,
+    correspondencePreset: selectedCorrespondence,
+    worlds: worlds.map(({ id, atoms, position }) => ({ id, atoms, position })),
+    edges: edges.map(({ from, to }) => ({ from, to })),
+    frameRules,
+  }, null, 2)
+
+  const serializedProfile = () => JSON.stringify({
+    format: 'logic-model-builder-profile', version: 1,
+    guest: guestProfile,
+    completedLevelIds: [...completedLevelIds],
+  }, null, 2)
+
+  const openDataManager = () => {
+    setImportSource(serializedModel())
+    setDataMessage('')
+    setShowDataManager(true)
+  }
+
+  const resetSavedProgress = () => {
+    if (!window.confirm('Reset all tutorial and campaign progress?')) return
+    setCompletedLevelIds(new Set())
+    setDataMessage('Tutorial and campaign progress was reset.')
+  }
+
+  const resetSavedSandbox = () => {
+    if (!window.confirm('Reset the sandbox to its initial model?')) return
+    setGameMode('sandbox')
+    setFormulaSource('◇p')
+    setWorlds(initialWorlds)
+    setEdges(initialEdges)
+    setEvaluationWorld('w0')
+    setTargetTruth(true)
+    setEvaluationScope('pointed')
+    setFrameRules(defaultFrameRules)
+    setNextWorldKey(2)
+    setNextEdgeKey(1)
+    setResult(null)
+    sandboxBeforeCampaign.current = null
+    setDataMessage('The sandbox was reset.')
+  }
+
+  const importModel = () => {
+    try {
+      const imported = JSON.parse(importSource) as Record<string, unknown>
+      if (imported.format === 'logic-model-builder-profile' && imported.version === 1) {
+        const guest = imported.guest as Partial<GuestProfile> | undefined
+        if (!guest || typeof guest.id !== 'string' || typeof guest.createdAt !== 'string' || !Array.isArray(guest.history)) throw new Error('Invalid guest profile backup.')
+        const history = guest.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250)
+        const knownIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].map((level) => level.id))
+        const progress = Array.isArray(imported.completedLevelIds) ? imported.completedLevelIds.filter((id): id is string => typeof id === 'string' && knownIds.has(id)) : []
+        setGuestProfile({ id: guest.id, createdAt: guest.createdAt, history })
+        setCompletedLevelIds(new Set(progress))
+        setShowDataManager(false)
+        return
+      }
+      if (imported.format !== 'logic-model-builder' || imported.version !== 1) throw new Error('Unsupported model format or version.')
+      if (typeof imported.formula !== 'string') throw new Error('The imported formula is missing.')
+      parseFormula(imported.formula)
+      if (!Array.isArray(imported.worlds) || imported.worlds.length === 0) throw new Error('The imported model must contain at least one world.')
+      const importedWorlds = imported.worlds.map((item, key) => {
+        if (!item || typeof item !== 'object') throw new Error('Invalid world data.')
+        const world = item as Record<string, unknown>
+        if (typeof world.id !== 'string' || !world.id.trim() || typeof world.atoms !== 'string') throw new Error('Every imported world needs a name and atom list.')
+        if (world.atoms.split(/[\s,]+/u).filter(Boolean).some((atom) => !/^[A-Za-z][A-Za-z0-9_]*$/u.test(atom))) throw new Error(`Invalid atom list at ${world.id}.`)
+        const position = world.position as { x?: unknown; y?: unknown } | undefined
+        return { key, id: world.id.trim(), atoms: world.atoms, position: {
+          x: typeof position?.x === 'number' ? position.x : 90 + (key % 3) * 240,
+          y: typeof position?.y === 'number' ? position.y : 90 + Math.floor(key / 3) * 150,
+        } }
+      })
+      const ids = importedWorlds.map(({ id }) => id)
+      if (new Set(ids).size !== ids.length) throw new Error('Imported world names must be unique.')
+      if (!Array.isArray(imported.edges)) throw new Error('Invalid relation data.')
+      const importedEdges = imported.edges.map((item, key) => {
+        if (!item || typeof item !== 'object') throw new Error('Invalid relation data.')
+        const edge = item as Record<string, unknown>
+        if (typeof edge.from !== 'string' || typeof edge.to !== 'string' || !ids.includes(edge.from) || !ids.includes(edge.to)) throw new Error('An imported relation references an unknown world.')
+        return { key, from: edge.from, to: edge.to }
+      })
+      const scope = ['pointed', 'model', 'frame', 'correspondence'].includes(String(imported.scope)) ? imported.scope as EvaluationScope : 'pointed'
+      const importedEvaluationWorld = typeof imported.evaluationWorld === 'string' && ids.includes(imported.evaluationWorld) ? imported.evaluationWorld : ids[0]
+      const rawRules = imported.frameRules && typeof imported.frameRules === 'object' ? imported.frameRules as Record<string, unknown> : {}
+      const importedRules = Object.fromEntries(Object.keys(defaultFrameRules).map((property) => {
+        const mode = rawRules[property]
+        const canEnforce = ['reflexive', 'symmetric', 'transitive', 'euclidean'].includes(property)
+        return [property, mode === 'validate' || (mode === 'enforce' && canEnforce) ? mode : 'off']
+      })) as FrameRules
+      setGameMode('sandbox')
+      setAppView('workspace')
+      setFormulaSource(imported.formula)
+      setWorlds(importedWorlds)
+      setEdges(importedEdges)
+      setEvaluationWorld(importedEvaluationWorld)
+      setEvaluationScope(scope)
+      setTargetTruth(typeof imported.targetTruth === 'boolean' ? imported.targetTruth : true)
+      setFrameRules(importedRules)
+      setSelectedCorrespondence(typeof imported.correspondencePreset === 'string' && correspondencePresets.some(({ id }) => id === imported.correspondencePreset) ? imported.correspondencePreset : '')
+      setNextWorldKey(importedWorlds.length)
+      setNextEdgeKey(importedEdges.length)
+      setResult(null)
+      setShowDataManager(false)
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not import the model.')
+    }
+  }
+
+  const downloadModel = () => {
+    downloadJson(serializedModel(), 'kripke-model.json')
+  }
+
+  const downloadJson = (contents: string, filename: string) => {
+    const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const clearLocalHistory = () => {
+    if (!window.confirm('Clear this guest profile history? Learning progress will remain unchanged.')) return
+    setGuestProfile((current) => ({ ...current, history: [] }))
+  }
+
+  const returnToGuidedBrowser = () => {
+    if (gameMode === 'tutorial') setAppView('tutorial')
+    else {
+      setCampaignTrackIndex(playingTrackIndex ?? campaignTrackIndex)
+      setAppView('campaigns')
     }
   }
 
   return (
     <main className="page-shell">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Game modes"><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('tutorial')}>Tutorial</button><button className={appView === 'campaigns' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => setAppView('guide')}>Guide</button></nav></div>
+        <div className="brand"><span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Game modes"><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('tutorial')}>Tutorial</button><button className={appView === 'campaigns' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => setAppView('guide')}>Guide</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
         <div className="topbar-actions">
           {appView === 'workspace' && <>
           <button type="button" className="icon-button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
@@ -643,12 +878,13 @@ export function App() {
           </>}
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Controls</button>}
+          <button type="button" className="help-button" onClick={openDataManager}>Data</button>
         </div>
       </header>
 
       {appView === 'tutorial' && (
         <section className="content-screen tutorial-screen" aria-labelledby="tutorial-screen-title">
-          <div className="screen-hero"><div><p className="eyebrow">Learn the interface</p><h1 id="tutorial-screen-title">Game Tutorial</h1><p>Eight short steps introduce evaluation worlds, model editing, relations, semantic scopes, frame constraints, and correspondence.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === 0 ? 'Start tutorial' : tutorialCompleted === tutorialLevels.length ? 'Replay tutorial' : 'Continue tutorial'}</button></div></div>
+          <div className="screen-hero"><div><p className="eyebrow">Learn the interface</p><h1 id="tutorial-screen-title">Game Tutorial</h1><p>{tutorialLevels.length} short steps introduce evaluation worlds, model editing, relations, semantic scopes, frame constraints, correspondence, and a final recap.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === 0 ? 'Start tutorial' : tutorialCompleted === tutorialLevels.length ? 'Replay tutorial' : 'Continue tutorial'}</button></div></div>
           <div className="screen-note"><strong>How it works</strong><span>Each step loads a controlled model. Change only the unlocked parts, then use Verify objective. Progress is stored in this browser.</span></div>
           <div className="level-browser">{tutorialLevels.map((level, index) => <article className={completedLevelIds.has(level.id) ? 'complete' : ''} key={level.id}><span>{String(index + 1).padStart(2, '0')}</span><div><h2>{level.title}</h2><p>{level.concept}</p></div><b>{completedLevelIds.has(level.id) ? 'Complete' : 'Not completed'}</b><button type="button" onClick={() => startGuidedLevel('tutorial', index)}>{gameMode === 'tutorial' && campaignLevelIndex === index ? 'Continue' : 'Play'}</button></article>)}</div>
         </section>
@@ -656,7 +892,7 @@ export function App() {
 
       {appView === 'campaigns' && (
         <section className="content-screen campaign-screen" aria-labelledby="campaign-screen-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Choose a path</p><h1 id="campaign-screen-title">Campaigns</h1><p>Five families organize seventeen missions by semantic objective and construction style.</p></div><div className="collection-progress"><strong>{overallCampaignCompleted}/{overallCampaignLevels}</strong><span>missions complete</span><div className="progress-meter" aria-label={`${overallCampaignCompleted} of ${overallCampaignLevels} campaign missions complete`}><i style={{ width: `${overallCampaignCompleted / overallCampaignLevels * 100}%` }} /></div></div></div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Choose a path</p><h1 id="campaign-screen-title">Campaigns</h1><p>Five campaign families organize {overallCampaignLevels} missions by semantic objective and construction style.</p></div><div className="collection-progress"><strong>{overallCampaignCompleted}/{overallCampaignLevels}</strong><span>missions complete</span><div className="progress-meter" aria-label={`${overallCampaignCompleted} of ${overallCampaignLevels} campaign missions complete`}><i style={{ width: `${overallCampaignCompleted / overallCampaignLevels * 100}%` }} /></div></div></div>
           <div className="campaign-browser">
             <aside className="track-list" aria-label="Campaign list">{campaignTracks.map((track, index) => { const completed = track.levels.filter((level) => completedLevelIds.has(level.id)).length; return <button type="button" className={campaignTrackIndex === index ? 'active' : ''} onClick={() => setCampaignTrackIndex(index)} key={track.id}><strong>{track.title}</strong><span>{completed}/{track.levels.length} complete</span></button> })}</aside>
             <div className="track-detail"><div className="track-heading"><div><p className="eyebrow">Campaign · {selectedTrackCompleted}/{selectedTrack.levels.length} complete</p><h2>{selectedTrack.title}</h2><p>{selectedTrack.description}</p></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('campaign', nextSelectedLevelIndex < 0 ? 0 : nextSelectedLevelIndex, campaignTrackIndex)}>{selectedTrackCompleted === 0 ? 'Start campaign' : selectedTrackCompleted === selectedTrack.levels.length ? 'Replay campaign' : 'Continue campaign'}</button></div><div className="level-browser">{selectedTrack.levels.map((level, index) => <article className={completedLevelIds.has(level.id) ? 'complete' : ''} key={level.id}><span>{String(index + 1).padStart(2, '0')}</span><div><h3>{level.title}</h3><p>{level.concept}</p></div><b>{completedLevelIds.has(level.id) ? 'Complete' : 'Not completed'}</b><button type="button" onClick={() => gameMode === 'campaign' && playingTrackIndex === campaignTrackIndex && campaignLevelIndex === index ? setAppView('workspace') : startGuidedLevel('campaign', index, campaignTrackIndex)}>{gameMode === 'campaign' && playingTrackIndex === campaignTrackIndex && campaignLevelIndex === index ? 'Resume' : completedLevelIds.has(level.id) ? 'Replay' : 'Play'}</button></article>)}</div></div>
@@ -670,9 +906,18 @@ export function App() {
           <div className="guide-tabs" role="tablist" aria-label="Guide sections"><button type="button" role="tab" aria-selected={guideTab === 'theory'} className={guideTab === 'theory' ? 'active' : ''} onClick={() => setGuideTab('theory')}>Modal logic</button><button type="button" role="tab" aria-selected={guideTab === 'controls'} className={guideTab === 'controls' ? 'active' : ''} onClick={() => setGuideTab('controls')}>Controls</button><button type="button" role="tab" aria-selected={guideTab === 'objectives'} className={guideTab === 'objectives' ? 'active' : ''} onClick={() => setGuideTab('objectives')}>Objectives & constraints</button></div>
           <div className="guide-page-grid">
             {guideTab === 'theory' && <><article><h2>Frames and models</h2><p>F = ⟨W,R⟩ and M = ⟨W,R,ν⟩, with ν: Prop → ℘(W).</p></article><article><h2>Satisfaction</h2><p>M,w ⊨ φ states truth at w. □ quantifies over all accessible worlds; ◇ over at least one.</p></article><article><h2>Modal clauses</h2><p>M,w ⊨ □φ iff every v with wRv satisfies φ. M,w ⊨ ◇φ iff some such v satisfies φ.</p></article><article><h2>Global scopes</h2><p>M ⊨ φ checks every world under ν; F ⊨ φ additionally checks every valuation.</p></article></>}
-            {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, collapse panels, fit the map, inspect the minimap, and open Controls while playing.</p></article></>}
-            {guideTab === 'objectives' && <><article><h2>Objective scopes</h2><p>Pointed, model-global, frame-validity, and correspondence objectives use different semantic quantification.</p></article><article><h2>Construction constraints</h2><p>Levels can bound size, require or forbid edges and atoms, and require or exclude frame properties.</p></article><article><h2>Locked inputs</h2><p>Formulas, worlds, valuations, relations, evaluation worlds, and constraint controls may be fixed.</p></article></>}
+            {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, collapse panels, fit the map, inspect the minimap, and open Controls while playing.</p></article><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
+            {guideTab === 'objectives' && <><article><h2>Objective scopes</h2><p>Pointed, model-global, frame-validity, and correspondence objectives use different semantic quantification.</p></article><article><h2>Construction constraints</h2><p>Levels can bound size, require or forbid edges and atoms, and require or exclude frame properties.</p></article><article><h2>Locked inputs</h2><p>Formulas, worlds, valuations, relations, evaluation worlds, and constraint controls may be fixed.</p></article><article><h2>Optional bonuses</h2><p>Some missions evaluate an additional construction challenge only after the primary objective succeeds.</p></article></>}
           </div>
+        </section>
+      )}
+
+      {appView === 'profile' && (
+        <section className="content-screen profile-screen" aria-labelledby="profile-title">
+          <div className="screen-hero compact"><div><p className="eyebrow">Local guest</p><h1 id="profile-title">Profile & history</h1><p>This anonymous profile belongs to this browser only. No IP address, fingerprint, e-mail, or other personal identifier is collected.</p></div><div className="profile-actions"><button type="button" className="primary-action" onClick={() => downloadJson(serializedProfile(), 'logic-model-builder-profile.json')}>Download profile</button><button type="button" className="secondary-button" onClick={openDataManager}>Import backup</button></div></div>
+          <div className="profile-summary"><article><span>Guest ID</span><strong>{guestProfile.id.slice(0, 8)}</strong><small>Created {new Date(guestProfile.createdAt).toLocaleDateString()}</small></article><article><span>Attempts</span><strong>{guestProfile.history.length}</strong><small>{successfulAttempts} successful verifications</small></article><article><span>Unique levels solved</span><strong>{completedHistoryLevels}</strong><small>{completedLevelIds.size} levels in saved progress</small></article></div>
+          <div className="history-heading"><div><p className="eyebrow">Recent activity</p><h2>Verification history</h2></div>{guestProfile.history.length > 0 && <button type="button" className="danger-button" onClick={clearLocalHistory}>Clear history</button>}</div>
+          {guestProfile.history.length === 0 ? <div className="profile-empty"><strong>No attempts recorded yet</strong><span>Verify an objective in the sandbox, tutorial, or a campaign. Up to 250 recent attempts are kept locally.</span></div> : <div className="history-list">{guestProfile.history.map((entry) => <article key={entry.id}><time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time><div><strong>{entry.title}</strong><span>{entry.mode} · {entry.scope} · {entry.worldCount} worlds · {entry.edgeCount} relations</span></div><b className={entry.success ? 'success' : 'failure'}>{entry.success ? 'Success' : 'Failed'}</b>{entry.bonusAchieved !== undefined && <em>{entry.bonusAchieved ? 'Bonus' : 'No bonus'}</em>}</article>)}</div>}
         </section>
       )}
 
@@ -910,13 +1155,37 @@ export function App() {
                     <div><span>{section.label}</span><b>{section.holds ? 'Pass' : 'Fail'}</b></div>
                     <strong>{section.summary}</strong>
                     <small>{section.detail}</small>
+                    {section.witnessValuation && <div className="valuation-diagnostic"><span>Countervaluation</span>{Object.entries(section.witnessValuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</div>}
+                    {section.truthByWorld && <div className="truth-diagnostic"><span>{section.witnessValuation ? 'Truth under countervaluation' : 'Truth by world'}</span><div>{section.truthByWorld.map(({ worldId, value }) => <code className={value ? 'true' : 'false'} key={worldId}>{worldId} <b>{value ? 'T' : 'F'}</b></code>)}</div></div>}
                   </div>
                 ))}
               </div>
             )}
+            {result && 'bonus' in result && result.bonus && <div className={`bonus-result ${result.bonus.achieved ? 'achieved' : ''}`}><strong>{result.bonus.achieved ? 'Bonus achieved' : 'Optional bonus'}</strong><span>{result.bonus.detail}</span></div>}
           </div>
         </div>
       </section>}
+
+      {appView === 'workspace' && activeLevel && result?.kind === 'success' && !completionDismissed && (
+        <div className="dialog-backdrop completion-backdrop" role="presentation">
+          <section className="completion-dialog" role="dialog" aria-modal="true" aria-labelledby="completion-title">
+            <div className="completion-mark" aria-hidden="true">✓</div>
+            <p className="eyebrow">{campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Tutorial' : 'Campaign'} complete` : 'Objective verified'}</p>
+            <h2 id="completion-title">{campaignLevelIndex === activeLevels.length - 1 ? 'Sequence complete' : 'Mission complete'}</h2>
+            <p><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</p>
+            {result.bonus && <p className={`completion-bonus ${result.bonus.achieved ? 'achieved' : ''}`}>{result.bonus.detail}</p>}
+            <div className="completion-progress"><span>{activeLevels.filter((level) => completedLevelIds.has(level.id)).length}/{activeLevels.length} complete</span><div className="progress-meter"><i style={{ width: `${activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>
+            <div className="completion-actions">
+              {campaignLevelIndex < activeLevels.length - 1
+                ? <button type="button" className="primary-action" autoFocus onClick={() => loadLevel(campaignLevelIndex + 1)}>Next mission</button>
+                : <button type="button" className="primary-action" autoFocus onClick={returnToGuidedBrowser}>{gameMode === 'tutorial' ? 'Back to tutorial' : 'Back to campaigns'}</button>}
+              <button type="button" className="secondary-button" onClick={() => loadLevel(campaignLevelIndex)}>Replay mission</button>
+              {campaignLevelIndex < activeLevels.length - 1 && <button type="button" className="text-button" onClick={returnToGuidedBrowser}>Back to overview</button>}
+            </div>
+            <button type="button" className="completion-close" onClick={() => setCompletionDismissed(true)}>Keep exploring this model</button>
+          </section>
+        </div>
+      )}
 
       {showFrameRules && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowFrameRules(false)}>
@@ -959,6 +1228,16 @@ export function App() {
                 )
               })}
             </div>
+          </section>
+        </div>
+      )}
+
+      {showDataManager && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowDataManager(false)}>
+          <section className="help-dialog data-dialog" role="dialog" aria-modal="true" aria-labelledby="data-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="dialog-heading"><div><p className="eyebrow">Local data</p><h2 id="data-title">Data management</h2></div><button type="button" className="dialog-close" onClick={() => setShowDataManager(false)} aria-label="Close data manager">×</button></div>
+            <div className="data-actions"><article><h3>JSON backup</h3><p>Export the current model for sharing, or paste a compatible model or guest-profile backup below.</p><textarea aria-label="Model JSON" value={importSource} onChange={(event) => { setImportSource(event.target.value); setDataMessage('') }} spellCheck={false} /><div><button type="button" className="primary-action" onClick={importModel}>Import JSON</button><button type="button" className="secondary-button" onClick={downloadModel}>Download model</button></div></article><article><h3>Reset local data</h3><p>These actions affect only data stored in this browser.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article></div>
+            {dataMessage && <p className="data-message" role="status">{dataMessage}</p>}
           </section>
         </div>
       )}

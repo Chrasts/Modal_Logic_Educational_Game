@@ -27,12 +27,13 @@ const relationLabel = ({ from, to }: AccessibilityEdge) => `${from}R${to}`
 export function checkConstructionConstraints(input: ConstraintInput, constraints: ConstructionConstraints): readonly string[] {
   const { worldIds, explicitEdges, effectiveEdges, valuation } = input
   const explicit = new Set(explicitEdges.map(edgeKey))
+  const explicitEdgeCount = explicit.size
   const violations: string[] = []
 
   if (constraints.minimumWorlds !== undefined && worldIds.length < constraints.minimumWorlds) violations.push(`Use at least ${constraints.minimumWorlds} worlds.`)
   if (constraints.maximumWorlds !== undefined && worldIds.length > constraints.maximumWorlds) violations.push(`Use at most ${constraints.maximumWorlds} worlds.`)
-  if (constraints.minimumEdges !== undefined && explicitEdges.length < constraints.minimumEdges) violations.push(`Use at least ${constraints.minimumEdges} explicit edges.`)
-  if (constraints.maximumEdges !== undefined && explicitEdges.length > constraints.maximumEdges) violations.push(`Use at most ${constraints.maximumEdges} explicit edges.`)
+  if (constraints.minimumEdges !== undefined && explicitEdgeCount < constraints.minimumEdges) violations.push(`Use at least ${constraints.minimumEdges} distinct explicit edges.`)
+  if (constraints.maximumEdges !== undefined && explicitEdgeCount > constraints.maximumEdges) violations.push(`Use at most ${constraints.maximumEdges} distinct explicit edges.`)
 
   for (const edge of constraints.requiredEdges ?? []) if (!explicit.has(edgeKey(edge))) violations.push(`Required edge ${relationLabel(edge)} is missing.`)
   for (const edge of constraints.forbiddenEdges ?? []) if (explicit.has(edgeKey(edge))) violations.push(`Edge ${relationLabel(edge)} is forbidden.`)

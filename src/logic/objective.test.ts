@@ -16,6 +16,13 @@ describe('game objectives', () => {
     expect(verifyObjective({ scope: 'frame', targetTruth: true }, input).formula.holds).toBe(true)
   })
 
+  it('returns structured truth diagnostics and countervaluations', () => {
+    const input = { worldIds: ['w0'], edges: [], valuation: { w0: ['p'] }, formula: implies(box(p), p) }
+    const result = verifyObjective({ scope: 'frame', targetTruth: false }, input)
+    expect(result.formula.witnessValuation).toEqual({ w0: [] })
+    expect(result.formula.truthByWorld).toEqual([{ worldId: 'w0', value: false }])
+  })
+
   it('compares frame validity with a relational property', () => {
     const input = { worldIds: ['w0'], edges: [], valuation: { w0: [] }, formula: implies(box(p), p) }
     const result = verifyObjective({ scope: 'correspondence', targetTruth: true, correspondenceProperty: 'reflexive' }, input)

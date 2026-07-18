@@ -23,6 +23,8 @@ export interface GameLevel {
   readonly frameRules?: Partial<Record<FramePropertyName, 'off' | 'validate' | 'enforce'>>
   readonly requiredFrameRules?: Partial<Record<FramePropertyName, 'validate' | 'enforce'>>
   readonly constraints?: ConstructionConstraints
+  /** Optional challenge evaluated only after the primary objective succeeds. */
+  readonly bonusConstraints?: ConstructionConstraints
   readonly editable: readonly LevelEditPermission[]
 }
 
@@ -90,6 +92,13 @@ export const tutorialLevels: readonly GameLevel[] = [
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
     edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['edges'],
   },
+  {
+    id: 'tutorial-recap', chapter: 'Tutorial', title: 'Model-building recap', concept: 'Worlds, valuations, relations, and pointed truth together',
+    briefing: 'This recap combines the editor operations from the preceding lessons. Build the required three-world model, set its valuation, and choose exactly two accessibility edges.',
+    instruction: 'Make ◇p ∧ □(p ∨ q) true at w0 using exactly three worlds and two relations.', formula: '◇p ∧ □(p ∨ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }],
+    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['worlds', 'valuations', 'edges', 'evaluation'],
+  },
 ]
 
 export const campaignTracks: readonly CampaignTrack[] = [
@@ -115,6 +124,12 @@ export const campaignTracks: readonly CampaignTrack[] = [
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
         edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['edges'],
       },
+      {
+        id: 'local-uniform-branching', chapter: 'Local Models', title: 'Uniform branching', concept: 'Existential witnesses under a universal condition',
+        instruction: 'Make ◇(p ∧ q) ∧ ◇(p ∧ ¬q) ∧ □p true at w0.', formula: '◇(p ∧ q) ∧ ◇(p ∧ ¬q) ∧ □p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: 'p q', position: { x: 90, y: 230 } }, { id: 'w2', atoms: 'p', position: { x: 400, y: 230 } }],
+        edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 3 }, bonusConstraints: { maximumEdges: 2 }, editable: ['edges'],
+      },
     ],
   },
   {
@@ -139,6 +154,12 @@ export const campaignTracks: readonly CampaignTrack[] = [
         worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
         edges: [], frameRules: { serial: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
       },
+      {
+        id: 'global-return-to-truth', chapter: 'Global Models', title: 'Return to truth', concept: 'Nested possibility under seriality',
+        instruction: 'Make p → □◇p true globally and satisfy seriality.', formula: 'p → □◇p', scope: 'model', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: 'p', position: { x: 245, y: 60 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
+        edges: [], frameRules: { serial: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumEdges: 4 }, bonusConstraints: { maximumEdges: 3 }, editable: ['edges'],
+      },
     ],
   },
   {
@@ -161,6 +182,12 @@ export const campaignTracks: readonly CampaignTrack[] = [
         instruction: 'Make □p → □□p false at w0.', formula: '□p → □□p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0',
         worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: '', position: { x: 260, y: 130 } }, { id: 'w2', atoms: '', position: { x: 450, y: 130 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], forbiddenEdges: [{ from: 'w0', to: 'w2' }] }, editable: ['valuations'],
+      },
+      {
+        id: 'witness-five', chapter: 'Countervaluations', title: 'Refute 5', concept: 'Failure of Euclideanness',
+        instruction: 'Make ◇p → □◇p false at w0.', formula: '◇p → □◇p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], maximumEdges: 2 }, bonusConstraints: { forbiddenAtoms: { w0: ['p'], w2: ['p'] } }, editable: ['valuations'],
       },
     ],
   },
@@ -185,6 +212,12 @@ export const campaignTracks: readonly CampaignTrack[] = [
         instruction: 'Satisfy both frame constraints and make □p → □□p valid.', formula: '□p → □□p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
         worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 260, y: 130 } }, { id: 'w2', atoms: '', position: { x: 450, y: 130 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], frameRules: { reflexive: 'validate', transitive: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumEdges: 6 }, editable: ['edges'],
+      },
+      {
+        id: 'frame-s5', chapter: 'Frame Engineering', title: 'Build an S5 cluster', concept: 'Reflexivity, symmetry, and transitivity together',
+        instruction: 'Complete the connected frame so all three frame constraints hold and axiom 5 is valid.', formula: '◇p → □◇p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 260, y: 130 } }, { id: 'w2', atoms: '', position: { x: 450, y: 130 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], frameRules: { reflexive: 'validate', symmetric: 'validate', transitive: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], maximumEdges: 9 }, editable: ['edges'],
       },
     ],
   },
@@ -216,6 +249,12 @@ export const campaignTracks: readonly CampaignTrack[] = [
         id: 'correspondence-five', chapter: 'Correspondence', title: '5 and Euclideanness', concept: '5 ↔ Euclidean relation',
         instruction: 'Satisfy the frame constraint and confirm the formula–relation correspondence.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], frameRules: { euclidean: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumEdges: 6 }, editable: ['edges'],
+      },
+      {
+        id: 'correspondence-five-cluster', chapter: 'Correspondence', title: '5 on a larger cluster', concept: 'Euclidean closure with three alternatives',
+        instruction: 'Complete the frame and confirm the axiom 5–Euclideanness correspondence.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 35 } }, { id: 'w1', atoms: 'p', position: { x: 40, y: 230 } }, { id: 'w2', atoms: '', position: { x: 245, y: 270 } }, { id: 'w3', atoms: '', position: { x: 450, y: 230 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], frameRules: { euclidean: 'validate' }, constraints: { minimumWorlds: 4, maximumWorlds: 4, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], maximumEdges: 12 }, editable: ['edges'],
       },
     ],
   },

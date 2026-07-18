@@ -21,6 +21,7 @@ and sandbox models and completed missions are saved locally in the browser.
 - Compare modal axioms T, D, B, 4, and 5 with their characteristic frame
   properties on concrete finite frames.
 - Inspect counterexample worlds and countervaluations when an objective fails.
+- Keep an anonymous browser-local guest history and export it as a JSON backup.
 
 The formula editor accepts `¬`, `∧`, `∨`, `→`, `□`, and `◇`, as well as the text
 alternatives `!`, `&`, `|`, `->`, `box`, and `diamond`.
@@ -35,12 +36,13 @@ all valuations.
 
 ### Tutorial
 
-Eight short interactive lessons introduce the game interface, valuations,
-accessibility, semantic scopes, frame constraints, and correspondence.
+Nine interactive lessons introduce the game interface, valuations,
+accessibility, semantic scopes, frame constraints, correspondence, and a final
+model-building recap.
 
 ### Campaigns
 
-Five campaigns contain 17 missions organized by objective type:
+Five campaigns contain 22 missions organized by objective type:
 
 - Local Models & Countermodels
 - Global Model Building
@@ -49,7 +51,8 @@ Five campaigns contain 17 missions organized by objective type:
 - Correspondence Lab
 
 Missions can restrict worlds, relations, valuations, editable inputs, and frame
-properties. The game provides no solution hints before a mission is completed.
+properties. Some include optional bonus constraints revealed only after the
+primary objective is completed. The game provides no solution hints beforehand.
 
 ### Guide
 

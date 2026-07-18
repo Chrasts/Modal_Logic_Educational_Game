@@ -33,8 +33,9 @@ describe('campaign level solvability', () => {
   it('defines five tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
     expect(campaignTracks).toHaveLength(5)
-    expect(ids).toHaveLength(17)
+    expect(ids).toHaveLength(22)
     expect(new Set(ids).size).toBe(ids.length)
+    expect(campaignTracks.flatMap((track) => track.levels).filter((item) => item.bonusConstraints).length).toBeGreaterThanOrEqual(3)
   })
 
   it('solves the constrained local satisfiability level', () => {
@@ -46,6 +47,7 @@ describe('campaign level solvability', () => {
   it('constructs the distribution countermodel', () => {
     expectSolved('local-distribution-countermodel', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
     expectSolved('local-contingent-possibility', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
+    expectSolved('local-uniform-branching', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
   })
 
   it('solves both global-model objectives', () => {
@@ -54,12 +56,14 @@ describe('campaign level solvability', () => {
       { from: 'w0', to: 'w0' }, { from: 'w1', to: 'w0' }, { from: 'w2', to: 'w0' },
     ])
     expectSolved('global-no-dead-ends', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }])
+    expectSolved('global-return-to-truth', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }, { from: 'w2', to: 'w0' }])
   })
 
   it('builds a countervaluation for T', () => {
     expectSolved('witness-t', [], { w0: [] })
     expectSolved('witness-b', [{ from: 'w0', to: 'w1' }], { w0: ['p'], w1: [] })
     expectSolved('witness-four', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], { w0: [], w1: ['p'], w2: [] })
+    expectSolved('witness-five', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: [] })
   })
 
   it('solves the frame-engineering levels', () => {
@@ -68,6 +72,11 @@ describe('campaign level solvability', () => {
     expectSolved('frame-s4', [
       { from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' },
       { from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w2' },
+    ])
+    expectSolved('frame-s5', [
+      { from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' },
+      { from: 'w1', to: 'w0' }, { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' },
+      { from: 'w2', to: 'w0' }, { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' },
     ])
   })
 
@@ -79,6 +88,12 @@ describe('campaign level solvability', () => {
     expectSolved('correspondence-five', [
       { from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' },
       { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' },
+    ])
+    expectSolved('correspondence-five-cluster', [
+      { from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' },
+      { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w1', to: 'w3' },
+      { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w2', to: 'w3' },
+      { from: 'w3', to: 'w1' }, { from: 'w3', to: 'w2' }, { from: 'w3', to: 'w3' },
     ])
   })
 })

@@ -39,4 +39,15 @@ describe('construction constraints', () => {
       requiredProperties: ['serial'],
     })).toEqual(['2 worlds', 'forbid w0Rw0', 'serial'])
   })
+
+  it('counts a repeated relation only once', () => {
+    const repeated = {
+      ...input,
+      explicitEdges: [input.explicitEdges[0], input.explicitEdges[0]],
+    }
+    expect(checkConstructionConstraints(repeated, { minimumEdges: 2 })).toEqual([
+      'Use at least 2 distinct explicit edges.',
+    ])
+    expect(checkConstructionConstraints(repeated, { maximumEdges: 1 })).toEqual([])
+  })
 })

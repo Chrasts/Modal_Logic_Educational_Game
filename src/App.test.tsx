@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
@@ -120,6 +120,52 @@ describe('sandbox user interface', () => {
 
     expect(screen.getByText('Complete')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Next level' })).toBeEnabled()
+    expect(screen.getByRole('dialog', { name: 'Mission complete' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Next mission' }))
+    expect(screen.getByText('Create a model with exactly three worlds.')).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Mission complete' })).not.toBeInTheDocument()
+  })
+
+  it('persists completed tutorial steps across application reloads', async () => {
+    const user = userEvent.setup()
+    const view = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Tutorial' }))
+    await user.click(screen.getByRole('button', { name: 'Start tutorial' }))
+    await user.selectOptions(screen.getByLabelText('Evaluation world'), 'w1')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    view.unmount()
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Tutorial' }))
+    expect(screen.getByLabelText('1 of 9 tutorial steps complete')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Continue tutorial' })).toBeVisible()
+  })
+
+  it('finishes a guided sequence and returns to its overview', async () => {
+    localStorage.setItem('logic-game:campaign-progress:v1', JSON.stringify([
+      'tutorial-evaluation', 'tutorial-add-world', 'tutorial-valuation', 'tutorial-add-relation',
+      'tutorial-remove-relation', 'tutorial-global-model', 'tutorial-frame-constraint', 'tutorial-correspondence',
+    ]))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Tutorial' }))
+    await user.click(screen.getByRole('button', { name: 'Continue tutorial' }))
+    await user.click(screen.getByRole('button', { name: '+ Add world' }))
+    await user.type(screen.getAllByLabelText('True atoms')[1], 'p')
+    await user.type(screen.getAllByLabelText('True atoms')[2], 'q')
+    await user.click(screen.getByRole('button', { name: '+ Add edge' }))
+    await user.selectOptions(screen.getAllByLabelText('Edge target world')[0], 'w1')
+    await user.click(screen.getByRole('button', { name: '+ Add edge' }))
+    await user.selectOptions(screen.getAllByLabelText('Edge target world')[1], 'w2')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+
+    expect(screen.getByRole('dialog', { name: 'Sequence complete' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Back to tutorial' }))
+    expect(screen.getByRole('heading', { name: 'Game Tutorial' })).toBeVisible()
+    expect(screen.getByLabelText('9 of 9 tutorial steps complete')).toBeVisible()
   })
 
   it('restores the sandbox after leaving campaign mode', async () => {
@@ -143,6 +189,131 @@ describe('sandbox user interface', () => {
     expect(screen.getByText('Necessary, not actual')).toBeVisible()
     await user.click(screen.getByRole('button', { name: /Global Model Building/ }))
     expect(screen.getByText('Persistence of truth')).toBeVisible()
+  })
+
+  it('preserves the active campaign while browsing another track and the guide', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getByRole('button', { name: 'Start campaign' }))
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getByRole('button', { name: /Global Model Building/ }))
+    await user.click(screen.getByRole('button', { name: 'Guide' }))
+    await user.click(screen.getByRole('button', { name: 'Return to current mission' }))
+
+    expect(screen.getByText('Necessary, not actual')).toBeVisible()
+    expect(screen.getByLabelText('Campaign track')).toHaveValue('0')
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('□p ∧ ¬p')
+  })
+
+  it('falls back to a safe initial model when persisted data is malformed', () => {
+    localStorage.setItem('logic-game:sandbox:v1', JSON.stringify({
+      formulaSource: 'p', worlds: [{ id: 42 }], edges: [], evaluationWorld: 'w0', targetTruth: true,
+    }))
+    render(<App />)
+
+    expect(screen.getAllByLabelText('World')).toHaveLength(2)
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('◇p')
+  })
+
+  it('exports and imports a validated model as JSON', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const editor = screen.getByLabelText('Model JSON') as HTMLTextAreaElement
+    const exported = JSON.parse(editor.value)
+    expect(exported).toMatchObject({ format: 'logic-model-builder', version: 1, formula: '◇p' })
+    exported.formula = 'box q'
+    exported.worlds = [{ id: 'root', atoms: 'q', position: { x: 12, y: 34 } }]
+    exported.edges = [{ from: 'root', to: 'root' }]
+    exported.evaluationWorld = 'root'
+    fireEvent.change(editor, { target: { value: JSON.stringify(exported) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('box q')
+    expect(screen.getByLabelText('World')).toHaveValue('root')
+    expect(screen.getByLabelText('Evaluation world')).toHaveValue('root')
+  })
+
+  it('resets learning progress independently of the sandbox', async () => {
+    localStorage.setItem('logic-game:campaign-progress:v1', JSON.stringify(['tutorial-evaluation']))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: 'Reset learning progress' }))
+    expect(screen.getByRole('status')).toHaveTextContent('progress was reset')
+    await user.click(screen.getByRole('button', { name: 'Close data manager' }))
+    await user.click(screen.getByRole('button', { name: 'Tutorial' }))
+    expect(screen.getByLabelText('0 of 9 tutorial steps complete')).toBeVisible()
+  })
+
+  it('shows truth by world and a structured countervaluation', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.selectOptions(screen.getByLabelText('Semantic target'), 'frame')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Countervaluation')).toBeVisible()
+    expect(screen.getByText('Truth under countervaluation')).toBeVisible()
+    expect(screen.getAllByText(/w0:/).length).toBeGreaterThan(0)
+  })
+
+  it('records verification history in the local guest profile across reloads', async () => {
+    const user = userEvent.setup()
+    const view = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('Sandbox verification')).toBeVisible()
+    expect(screen.getByText('1 successful verifications')).toBeVisible()
+    view.unmount()
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('Sandbox verification')).toBeVisible()
+    expect(screen.getByText('1 successful verifications')).toBeVisible()
+  })
+
+  it('clears guest history without deleting learning progress', async () => {
+    localStorage.setItem('logic-game:campaign-progress:v1', JSON.stringify(['tutorial-evaluation']))
+    localStorage.setItem('logic-game:guest-profile:v1', JSON.stringify({
+      id: 'guest-test', createdAt: '2026-01-01T00:00:00.000Z', history: [{
+        id: 'attempt-1', timestamp: '2026-01-02T00:00:00.000Z', mode: 'tutorial',
+        levelId: 'tutorial-evaluation', title: 'Evaluation world', scope: 'pointed',
+        success: true, worldCount: 2, edgeCount: 0,
+      }],
+    }))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    await user.click(screen.getByRole('button', { name: 'Clear history' }))
+    expect(screen.getByText('No attempts recorded yet')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Tutorial' }))
+    expect(screen.getByLabelText('1 of 9 tutorial steps complete')).toBeVisible()
+  })
+
+  it('imports a guest profile backup with history and progress', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const backup = {
+      format: 'logic-model-builder-profile', version: 1,
+      guest: { id: 'restored-guest', createdAt: '2026-01-01T00:00:00.000Z', history: [{
+        id: 'restored-attempt', timestamp: '2026-01-02T00:00:00.000Z', mode: 'campaign',
+        levelId: 'local-necessary-not-actual', title: 'Necessary, not actual', scope: 'pointed',
+        success: true, worldCount: 2, edgeCount: 2,
+      }] },
+      completedLevelIds: ['local-necessary-not-actual'],
+    }
+    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(backup) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('Necessary, not actual')).toBeVisible()
+    expect(screen.getByText('1 levels in saved progress')).toBeVisible()
   })
 
   it('requires the tutorial frame rule to be globally enforced', async () => {

@@ -19,6 +19,8 @@ export interface FrameValidityResult {
   readonly counterexample?: FrameCounterexample
 }
 
+export const DEFAULT_MAXIMUM_VALUATIONS = 65_536
+
 export function evaluateAtAllWorlds(model: KripkeModel, formula: Formula): ModelValidityResult {
   for (const worldId of model.worlds.keys()) {
     const explanation = evaluateWithExplanation(model, worldId, formula)
@@ -31,7 +33,7 @@ export function checkFrameValidity(
   worldIds: readonly WorldId[],
   edges: readonly AccessibilityEdge[],
   formula: Formula,
-  maximumValuations = 1_048_576,
+  maximumValuations = DEFAULT_MAXIMUM_VALUATIONS,
 ): FrameValidityResult {
   const atoms = collectAtoms(formula)
   const slots = worldIds.length * atoms.length

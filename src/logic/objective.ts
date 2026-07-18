@@ -25,6 +25,8 @@ export interface VerdictSection {
   readonly holds: boolean
   readonly summary: string
   readonly detail: string
+  readonly truthByWorld?: readonly { readonly worldId: WorldId; readonly value: boolean }[]
+  readonly witnessValuation?: Readonly<Record<WorldId, readonly string[]>>
 }
 
 export interface ObjectiveVerdict {
@@ -41,6 +43,10 @@ const formatCountervaluation = (counterexample: FrameCounterexample) => Object.e
 
 export function verifyObjective(definition: ObjectiveDefinition, input: ObjectiveInput): ObjectiveVerdict {
   const { worldIds, edges, valuation, formula } = input
+  const truthByWorld = (activeValuation: Readonly<Record<WorldId, readonly string[]>>) => {
+    const model = createModel(activeValuation, edges)
+    return worldIds.map((worldId) => ({ worldId, value: evaluateWithExplanation(model, worldId, formula).value }))
+  }
 
   if (definition.scope === 'pointed') {
     const world = definition.evaluationWorld
@@ -55,6 +61,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
         holds: evaluation.value,
         summary: `The formula is ${evaluation.value ? 'true' : 'false'} at ${world}.`,
         detail: evaluation.explanation,
+        truthByWorld: truthByWorld(valuation),
       },
     }
   }
@@ -72,6 +79,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
         detail: evaluation.counterexample
           ? `Counterexample at ${evaluation.counterexample.worldId}. ${evaluation.counterexample.explanation.explanation}`
           : `The formula is true at all ${worldIds.length} worlds.`,
+        truthByWorld: truthByWorld(valuation),
       },
     }
   }
@@ -84,6 +92,8 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
     detail: frameValidity.counterexample
       ? `Countervaluation at ${frameValidity.counterexample.worldId}: ${formatCountervaluation(frameValidity.counterexample)}. ${frameValidity.counterexample.explanation.explanation}`
       : `Checked all ${frameValidity.checkedValuations.toLocaleString('en-US')} valuations at every world.`,
+    truthByWorld: truthByWorld(frameValidity.counterexample?.valuation ?? valuation),
+    witnessValuation: frameValidity.counterexample?.valuation,
   }
 
   if (definition.scope === 'frame') {
