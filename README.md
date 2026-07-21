@@ -73,10 +73,11 @@ all valuations.
 
 ### Learn
 
-Learn Modal Logic is the guided course. Its first chapter, **How to Play**,
-adapts the original interface lessons; **Possibility** is the first fully
-authored semantic chapter with concepts, worked examples, predictions, tasks,
-feedback, and optional transfer.
+Learn Modal Logic is the guided course for newcomers. It begins with **How to
+Play**, which introduces the interface and core interactions, and continues
+with semantic chapters built around concepts, worked examples, predictions,
+tasks, feedback, and optional transfer. **Possibility** is the first fully
+authored semantic chapter; further chapters are still being developed.
 
 ### Practice
 
@@ -110,6 +111,18 @@ concept and failure summaries, and distinct successful constructions. Players
 can back up the full profile as JSON or export attempt-level results as CSV for
 an educator or personal study review. Nothing is uploaded automatically.
 
+### Campaigns
+
+Campaigns are longer guided mission arcs with their own sequencing, hints,
+debriefs, and learning objectives. The current built-in campaigns are:
+
+- **Countermodel Hunter** — construct small Kripke models that refute invalid
+  modal claims.
+- **Frame Architect** — design accessibility relations with selected structural
+  properties.
+- **Formula Laboratory** — compare modal formulas and build distinguishing
+  models.
+
 ### Guide
 
 The in-game guide separates a notation-free introduction for newcomers from
@@ -117,10 +130,8 @@ formal Kripke semantics. Its sections then cover box and diamond, semantic
 scopes, relations and modal axioms, objectives, controls, and a notation
 glossary.
 
-**Campaigns** is reserved for longer guided mission arcs with their own
-pedagogical structure; its first campaign is currently in preparation. Create
-keeps authored custom missions and custom campaign packages separate from all
-built-in content.
+Create keeps authored custom missions and custom campaign packages separate
+from all built-in content.
 
 ### Settings
 
@@ -176,4 +187,6 @@ user interactions by an automated Vitest test suite.
 
 Created and maintained by [Chrasts](https://github.com/Chrasts).
 
-Copyright © 2026 Chrasts. No open-source license is currently included.
+Copyright © 2026 Štěpán Chrast.
+
+Released under the [MIT License](LICENSE).
