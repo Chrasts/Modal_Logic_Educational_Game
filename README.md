@@ -4,7 +4,7 @@ Logic Model Builder is an interactive game for constructing finite Kripke
 models and frames, testing modal formulas, and exploring the connection between
 modal axioms and relational properties.
 
-## [Play online](https://chrasts.github.io/Logic_semantics_game/)
+## [Play online](https://chrasts.github.io/Modal_Logic_Educational_Game/)
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
