@@ -11,6 +11,7 @@ export interface ObjectiveDefinition {
   readonly targetTruth: boolean
   readonly evaluationWorld?: WorldId
   readonly correspondenceProperty?: FramePropertyName
+  readonly comparisonTarget?: { readonly formulaATruth: boolean; readonly formulaBTruth: boolean }
 }
 
 export interface ObjectiveInput {
@@ -64,12 +65,15 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
       const world = definition.evaluationWorld
       if (!world || !worldIds.includes(world)) throw new Error('Select an existing evaluation world.')
       const comparison = compareAt(world)
-      const success = comparison.equivalent === definition.targetTruth
+      const exactTarget = definition.comparisonTarget
+      const success = exactTarget
+        ? comparison.left.value === exactTarget.formulaATruth && comparison.right.value === exactTarget.formulaBTruth
+        : comparison.equivalent === definition.targetTruth
       return {
         success, headline: success ? 'Objective met' : 'Objective not met',
         formula: {
-          label: 'Pointed equivalence', holds: comparison.equivalent,
-          summary: `${leftLabel} and ${rightLabel} are ${comparison.equivalent ? 'equivalent' : 'different'} at ${world}.`,
+          label: exactTarget ? 'Formula comparison' : 'Pointed equivalence', holds: exactTarget ? success : comparison.equivalent,
+          summary: exactTarget ? `Formula A is ${comparison.left.value ? 'true' : 'false'} and Formula B is ${comparison.right.value ? 'true' : 'false'} at ${world}.` : `${leftLabel} and ${rightLabel} are ${comparison.equivalent ? 'equivalent' : 'different'} at ${world}.`,
           detail: `${leftLabel} is ${comparison.left.value ? 'true' : 'false'}; ${rightLabel} is ${comparison.right.value ? 'true' : 'false'} at ${world}.`,
           truthByWorld: worldIds.map((worldId) => ({ worldId, value: compareAt(worldId).equivalent })),
           evaluationTraces: [comparison.left.trace, comparison.right.trace],

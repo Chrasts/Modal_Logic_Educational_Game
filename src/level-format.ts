@@ -60,6 +60,9 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
   parseFormula(formula)
   const comparisonFormula = typeof source.comparisonFormula === 'string' && source.comparisonFormula.trim() ? source.comparisonFormula.trim() : undefined
   if (comparisonFormula) parseFormula(comparisonFormula)
+  const comparisonTargetSource = source.comparisonTarget === undefined ? undefined : object(source.comparisonTarget, 'Invalid formula comparison target.')
+  const comparisonTarget = comparisonTargetSource ? { formulaATruth: comparisonTargetSource.formulaATruth, formulaBTruth: comparisonTargetSource.formulaBTruth } : undefined
+  if (comparisonTarget && (!comparisonFormula || typeof comparisonTarget.formulaATruth !== 'boolean' || typeof comparisonTarget.formulaBTruth !== 'boolean')) throw new Error('A formula comparison target needs Formula A and Formula B Boolean values.')
   if (!scopes.has(source.scope as ObjectiveScope)) throw new Error('Invalid custom mission objective scope.')
   const correspondencePreset = typeof source.correspondencePreset === 'string' && ['t', 'd', 'b', '4', '5'].includes(source.correspondencePreset)
     ? source.correspondencePreset as GameLevel['correspondencePreset']
@@ -147,8 +150,9 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     expectedChoice: predictionSource.expectedChoice,
     countervaluationChoices: predictionSource.countervaluationChoices,
     modelChoices: predictionSource.modelChoices,
+    worldChoices: predictionSource.worldChoices,
   } : undefined
-  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation', 'model-choice'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
+  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation', 'model-choice', 'world-choice'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
   if (prediction && (typeof prediction.prompt !== 'string' || !prediction.prompt.trim())) throw new Error('A custom mission prediction needs a prompt.')
   if (prediction?.kind === 'counterexample-world' && source.scope !== 'model') throw new Error('Counterexample-world prediction requires model-global scope.')
   if (prediction?.mustBeCorrect !== undefined && typeof prediction.mustBeCorrect !== 'boolean') throw new Error('Invalid prediction correctness requirement.')
@@ -194,6 +198,10 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     }
     if (!choiceIds.has(prediction.expectedChoice)) throw new Error('The expected candidate model must be present among the choices.')
   }
+  if (prediction?.kind === 'world-choice') {
+    if (typeof prediction.expectedChoice !== 'string' || !ids.includes(prediction.expectedChoice)) throw new Error('A world-choice interaction needs an existing expected world.')
+    if (!Array.isArray(prediction.worldChoices) || prediction.worldChoices.length < 2 || prediction.worldChoices.some((world) => typeof world !== 'string' || !ids.includes(world)) || !prediction.worldChoices.includes(prediction.expectedChoice)) throw new Error('A world-choice interaction needs valid answer choices containing the expected world.')
+  }
   const constraints = parseConstraints(source.constraints, 'custom mission constraints')
   const bonusConstraints = parseConstraints(source.bonusConstraints, 'custom mission bonus constraints')
   if (constraints) assertCompatibleAuthoredConstraints(constraints)
@@ -202,7 +210,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     id: requiredText('id'), chapter: requiredText('chapter'), title: requiredText('title'), concept: requiredText('concept'),
     briefing: typeof source.briefing === 'string' ? source.briefing : undefined,
     learningObjective: typeof source.learningObjective === 'string' ? source.learningObjective : undefined,
-    instruction: requiredText('instruction'), formula, comparisonFormula, scope: source.scope as ObjectiveScope,
+    instruction: requiredText('instruction'), formula, comparisonFormula, comparisonTarget: comparisonTarget as GameLevel['comparisonTarget'], scope: source.scope as ObjectiveScope,
     targetTruth: source.targetTruth, evaluationWorld: source.evaluationWorld,
     correspondencePreset, worlds, edges, frameRules,
     constraints, bonusConstraints,

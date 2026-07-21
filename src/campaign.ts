@@ -9,7 +9,7 @@ export interface GameLevel {
   readonly concept: string
   readonly learningObjective?: string
   readonly prediction?: {
-    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice'
+    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice'
     readonly prompt: string
     readonly expectedProperty?: FramePropertyName
     readonly propertyChoices?: readonly FramePropertyName[]
@@ -25,11 +25,26 @@ export interface GameLevel {
       readonly edges: readonly { readonly from: string; readonly to: string }[]
       readonly evaluationWorld: string
     }[]
+    readonly worldChoices?: readonly string[]
   }
   readonly briefing?: string
+  /** Progressive strategic guidance for guided campaigns. */
+  readonly hints?: readonly [string, string, string]
+  /** A concise post-success explanation of the construction. */
+  readonly successDebrief?: string
+  /** Optional high-level decomposition, without revealing a concrete construction. */
+  readonly targetAnalysis?: readonly string[]
+  /** One validated construction, revealed separately from ordinary hints. */
+  readonly referenceSolution?: {
+    readonly worlds: readonly { readonly id: string; readonly atoms: string; readonly position: { readonly x: number; readonly y: number } }[]
+    readonly edges: readonly { readonly from: string; readonly to: string }[]
+    readonly evaluationWorld: string
+  }
   readonly instruction: string
   readonly formula: string
   readonly comparisonFormula?: string
+  /** Require exact truth values for Formula A and Formula B at the objective scope. */
+  readonly comparisonTarget?: { readonly formulaATruth: boolean; readonly formulaBTruth: boolean }
   readonly scope: ObjectiveScope
   readonly targetTruth: boolean
   readonly evaluationWorld: string

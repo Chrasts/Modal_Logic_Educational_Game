@@ -8,8 +8,8 @@ modal axioms and relational properties.
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
-The application opens on a home menu with direct routes to the tutorial,
-campaigns, sandbox, guide, profile, settings, and local data tools. Shared
+The application opens on a home menu with direct routes to Learn, Campaigns,
+Practice, Sandbox, Create, Reference, Profile, settings, and local data tools. Shared
 mission URLs intentionally bypass the menu and launch their validated content.
 
 ## What you can do
@@ -71,16 +71,17 @@ Build and inspect models freely. Choose whether a formula should hold at one
 world, globally under the displayed valuation, or on the underlying frame under
 all valuations.
 
-### Tutorial
+### Learn
 
-Thirteen interactive lessons with explicit learning objectives introduce
-valuations, evaluation worlds, model editing, accessibility, nested modalities,
-countermodels, semantic scopes, frame constraints, correspondence, and a final
-model-building recap. Selected lessons require a prediction before verification.
+Learn Modal Logic is the guided course. Its first chapter, **How to Play**,
+adapts the original interface lessons; **Possibility** is the first fully
+authored semantic chapter with concepts, worked examples, predictions, tasks,
+feedback, and optional transfer.
 
-### Campaigns
+### Practice
 
-Six campaigns contain 33 missions organized by objective type:
+The Practice Library is non-linear. Its existing collections contain 33
+missions organized by objective type:
 
 - Local Models & Countermodels
 - Global Model Building
@@ -89,7 +90,7 @@ Six campaigns contain 33 missions organized by objective type:
 - Correspondence Lab
 - Formula Equivalence Lab
 
-Missions can restrict worlds, relations, valuations, editable inputs, and frame
+Practice missions can restrict worlds, relations, valuations, editable inputs, and frame
 properties. Some include optional bonus constraints revealed only after the
 primary objective is completed. The game provides no solution hints beforehand.
 Selected missions also require the player to identify a relational property;
@@ -116,10 +117,10 @@ formal Kripke semantics. Its sections then cover box and diamond, semantic
 scopes, relations and modal axioms, objectives, controls, and a notation
 glossary.
 
-The home screen separates **Play** from **Learn & Reference**. Play leads to the
-tutorial, campaigns, and sandbox; the learning guide starts intuitively and
-also serves as the formal and interface reference. Back controls follow this
-hierarchy instead of depending on browser history.
+**Campaigns** is reserved for longer guided mission arcs with their own
+pedagogical structure; its first campaign is currently in preparation. Create
+keeps authored custom missions and custom campaign packages separate from all
+built-in content.
 
 ### Settings
 
@@ -160,6 +161,10 @@ Vite will print the local address. If Windows PowerShell blocks `npm.ps1`, use
 - [Campaign solutions](docs/SOLUTIONS.md) — spoilers and reference constructions
 - [Mathematical conventions](docs/MATHEMATICAL_NOTES.md) — semantics, notation, correspondences, and scope
 - [Development guide](docs/DEVELOPMENT.md) — architecture, tests, and technical scope
+- [Learn course architecture](docs/LEARN_COURSE.md) — data-driven guided-course structure and local progress
+- [Countermodel Hunter](docs/COUNTERMODEL_HUNTER.md) — first guided campaign and its semantic strategies
+- [Frame Architect](docs/FRAME_ARCHITECT.md) — guided campaign on relational frame properties
+- [Formula Laboratory](docs/FORMULA_LABORATORY.md) — guided campaign on semantic formula comparison
 
 ## Technology
 
