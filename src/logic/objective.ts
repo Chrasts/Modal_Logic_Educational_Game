@@ -22,6 +22,11 @@ export interface ObjectiveInput {
   readonly comparisonFormula?: Formula
 }
 
+/** A deterministic, non-semantic objective for teaching editor interactions. */
+export interface ConstructionObjectiveDefinition {
+  readonly requiredEvaluationWorld?: WorldId
+}
+
 export interface VerdictSection {
   readonly label: string
   readonly holds: boolean
@@ -38,6 +43,18 @@ export interface ObjectiveVerdict {
   readonly formula: VerdictSection
   readonly relation?: VerdictSection
   readonly correspondence?: VerdictSection
+}
+
+export function verifyConstructionObjective(definition: ConstructionObjectiveDefinition, input: { readonly evaluationWorld: WorldId }): ObjectiveVerdict {
+  const holds = !definition.requiredEvaluationWorld || input.evaluationWorld === definition.requiredEvaluationWorld
+  const summary = definition.requiredEvaluationWorld
+    ? holds ? `${input.evaluationWorld} is the evaluation world.` : `Set ${definition.requiredEvaluationWorld} as the evaluation world.`
+    : 'The required model construction is present.'
+  return {
+    success: holds,
+    headline: holds ? 'Objective met' : 'Objective not met',
+    formula: { label: 'Construction step', holds, summary, detail: summary },
+  }
 }
 
 const formatCountervaluation = (counterexample: FrameCounterexample) => Object.entries(counterexample.valuation)

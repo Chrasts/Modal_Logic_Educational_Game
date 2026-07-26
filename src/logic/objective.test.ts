@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { atom, box, diamond, implies } from './formula'
-import { verifyObjective } from './objective'
+import { verifyConstructionObjective, verifyObjective } from './objective'
 
 const p = atom('p')
 
 describe('game objectives', () => {
+  it('checks an editor-only construction objective without evaluating a formula', () => {
+    expect(verifyConstructionObjective({ requiredEvaluationWorld: 'w1' }, { evaluationWorld: 'w0' })).toMatchObject({ success: false, formula: { label: 'Construction step' } })
+    expect(verifyConstructionObjective({ requiredEvaluationWorld: 'w1' }, { evaluationWorld: 'w1' }).success).toBe(true)
+  })
+
   it('distinguishes pointed truth from model-global truth', () => {
     const input = { worldIds: ['w0', 'w1'], edges: [], valuation: { w0: ['p'], w1: [] }, formula: p }
     expect(verifyObjective({ scope: 'pointed', targetTruth: true, evaluationWorld: 'w0' }, input).success).toBe(true)
