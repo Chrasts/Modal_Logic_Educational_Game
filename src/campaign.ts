@@ -1,6 +1,7 @@
 import type { ConstructionConstraints, FramePropertyName, ObjectiveScope } from './logic'
 
 export type LevelEditPermission = 'worlds' | 'valuations' | 'edges' | 'constraints' | 'evaluation'
+export type TutorialControl = 'worlds' | 'valuations' | 'edges' | 'evaluation' | 'history'
 
 export interface GameLevel {
   readonly id: string
@@ -61,6 +62,12 @@ export interface GameLevel {
   /** Optional challenge evaluated only after the primary objective succeeds. */
   readonly bonusConstraints?: ConstructionConstraints
   readonly editable: readonly LevelEditPermission[]
+  /** A UI-only construction check. Semantic objectives keep using the deterministic modal evaluator. */
+  readonly structuralObjective?: { readonly requiredEvaluationWorld?: string }
+  /** Controls deliberately exposed in the short How to Play flow. */
+  readonly tutorialControls?: readonly TutorialControl[]
+  /** Limits the atom vocabulary shown and accepted by a tutorial step. */
+  readonly atomVocabulary?: readonly string[]
 }
 
 export interface CampaignTrack {
@@ -70,7 +77,7 @@ export interface CampaignTrack {
   readonly levels: readonly GameLevel[]
 }
 
-const tutorialLevelDefinitions: readonly GameLevel[] = [
+const legacyTutorialLevelDefinitions: readonly GameLevel[] = [
   {
     id: 'tutorial-evaluation', chapter: 'Tutorial', title: 'Evaluation world', concept: 'Truth at the selected world',
     learningObjective: 'Distinguish truth at a designated world from truth elsewhere in the same model.',
@@ -179,7 +186,7 @@ const tutorialLevelDefinitions: readonly GameLevel[] = [
   },
 ]
 
-const tutorialOrder = [
+export const legacyTutorialLevelIds = [
   'tutorial-valuation',
   'tutorial-evaluation',
   'tutorial-add-world',
@@ -195,11 +202,74 @@ const tutorialOrder = [
   'tutorial-recap',
 ] as const
 
-export const tutorialLevels: readonly GameLevel[] = tutorialOrder.map((id) => {
-  const level = tutorialLevelDefinitions.find((candidate) => candidate.id === id)
+const legacyTutorialLevels: readonly GameLevel[] = legacyTutorialLevelIds.map((id) => {
+  const level = legacyTutorialLevelDefinitions.find((candidate) => candidate.id === id)
   if (!level) throw new Error(`Unknown tutorial level: ${id}`)
   return level
 })
+
+/**
+ * Version 2 of How to Play intentionally replaces the former semantic course.
+ * The old IDs remain out of this list so old tutorial completions never mark an
+ * unrelated new control step as done; non-tutorial progress is migrated by App.
+ */
+export const tutorialLevels: readonly GameLevel[] = [
+  {
+    id: 'tutorial-v2-evaluation-world', chapter: 'How to Play', title: 'Choose the evaluation world', concept: 'World selection',
+    learningObjective: 'Select a world and set it as the evaluation world.',
+    briefing: 'Click w1 to inspect it, then choose Set as evaluation world.',
+    successDebrief: 'Formulas are evaluated relative to a selected world.',
+    instruction: 'Make w1 the evaluation world.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+    edges: [], editable: ['evaluation'], structuralObjective: { requiredEvaluationWorld: 'w1' }, tutorialControls: ['evaluation'], atomVocabulary: ['p'],
+  },
+  {
+    id: 'tutorial-v2-valuation', chapter: 'How to Play', title: 'Edit a world valuation', concept: 'Atoms in a world',
+    learningObjective: 'Add an atom to the valuation of a selected world.',
+    briefing: 'Select w0 and add p to its valuation.',
+    successDebrief: 'Atoms written inside a world are true at that world.',
+    instruction: 'Make p true at w0.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { requiredAtoms: { w0: ['p'] } },
+    editable: ['valuations'], structuralObjective: {}, tutorialControls: ['valuations'], atomVocabulary: ['p'],
+  },
+  {
+    id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility edge', concept: 'Directed arrows',
+    learningObjective: 'Create a directed accessibility edge.',
+    briefing: 'Drag from the connection handle on w0 to w1. The arrow must point from w0 to w1.',
+    successDebrief: 'Accessibility is directional: w0 → w1 is different from w1 → w0.',
+    instruction: 'Draw an arrow from w0 to w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
+    edges: [], constraints: { requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'], structuralObjective: {}, tutorialControls: ['edges'], atomVocabulary: ['p'],
+  },
+  {
+    id: 'tutorial-v2-correct-edge', chapter: 'How to Play', title: 'Correct an edge', concept: 'Editing arrows',
+    learningObjective: 'Select, delete, and redraw a directed edge.',
+    briefing: 'Select the existing arrow and delete it. Then draw the arrow in the opposite direction.',
+    successDebrief: 'Select an edge to edit or delete it.',
+    instruction: 'Replace w1 → w0 with w0 → w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
+    edges: [{ from: 'w1', to: 'w0' }], constraints: { minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] },
+    editable: ['edges'], structuralObjective: {}, tutorialControls: ['edges'], atomVocabulary: ['p'],
+  },
+  {
+    id: 'tutorial-v2-add-world', chapter: 'How to Play', title: 'Add a world', concept: 'Extending a model',
+    learningObjective: 'Add a world and assign a valuation to it.',
+    briefing: 'Use + World, select the new world, and add p to its valuation.',
+    successDebrief: 'Models can be extended by adding worlds and assigning their valuations.',
+    instruction: 'Add one new world and make p true there.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredAtoms: { w1: ['p'] } },
+    editable: ['worlds', 'valuations'], structuralObjective: {}, tutorialControls: ['worlds', 'valuations'], atomVocabulary: ['p'],
+  },
+  {
+    id: 'tutorial-v2-build-model', chapter: 'How to Play', title: 'Build a small model', concept: 'Worlds, valuations, and relations',
+    learningObjective: 'Combine the basic model-building controls.',
+    briefing: 'Add a second world, make p true there, then draw w0 → w1. Undo and redo are available from the map toolbar.',
+    successDebrief: 'You can now build the basic parts of a Kripke model: worlds, valuations, and accessibility relations.',
+    instruction: 'Create a second world, make p true there, and draw w0 → w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredAtoms: { w1: ['p'] }, requiredEdges: [{ from: 'w0', to: 'w1' }] },
+    editable: ['worlds', 'valuations', 'edges'], structuralObjective: {}, tutorialControls: ['worlds', 'valuations', 'edges', 'history'], atomVocabulary: ['p'],
+  },
+]
 
 export const campaignTracks: readonly CampaignTrack[] = [
   {

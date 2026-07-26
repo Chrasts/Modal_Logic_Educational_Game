@@ -141,6 +141,9 @@ a { color: inherit; }
 .learn-chapter-list h2 { margin: 0; color: var(--petrol-dark); font: 700 1.2rem "Source Serif 4", Georgia, serif; }
 .learn-chapter-list p:not(.eyebrow) { margin: .25rem 0; color: #626a62; font-size: .76rem; }
 .learn-chapter-list small { color: #687068; font-size: .65rem; }
+.chapter-actions { display: grid; flex: 0 0 auto; gap: .4rem; min-width: 8.2rem; }
+.chapter-actions .primary-action, .chapter-actions .secondary-button { width: 100%; padding: .5rem .65rem; font-size: .68rem; }
+.learn-chapter-list article.expanded { align-items: start; }
 .chapter-coming { color: #747a73; font-size: .68rem; font-weight: 700; }
 .course-lesson-bar { display: flex; align-items: center; gap: .55rem; margin: 0 0 .45rem; border: 1px solid rgba(20,100,122,.22); border-radius: 9px; background: rgba(220,235,239,.35); padding: .42rem .6rem; }
 .course-lesson-bar > div:first-child { display: grid; flex: 1; gap: .15rem; }
@@ -324,6 +327,11 @@ a { color: inherit; }
 .campaign-card > strong { color: var(--petrol-dark); font: 700 1rem "Source Serif 4", Georgia, serif; }
 .campaign-card > small { color: var(--brown-dark); font: .62rem DM Mono, monospace; }
 .tutorial-briefing { margin: .35rem 0; border-left: 2px solid var(--petrol); padding-left: .6rem; color: #515a52; font-size: .72rem; line-height: 1.55; }
+.tutorial-hidden-panel { display: none; }
+.tutorial-task-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+.tutorial-task-card > div { border-left: 2px solid var(--petrol); padding-left: .6rem; }
+.tutorial-task-card span { color: var(--petrol); font-size: .58rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.tutorial-task-card p { margin: .2rem 0 0; font-size: .75rem; line-height: 1.45; }
 .campaign-track-picker { display: grid; gap: .3rem; margin-bottom: .35rem; border-bottom: 1px solid rgba(20, 100, 122, .16); padding-bottom: .65rem; }
 .campaign-track-picker > span, .level-objective > span, .level-constraints > span { color: #687068; font-size: .56rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .campaign-track-picker select { padding: .45rem .55rem; font-size: .7rem; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
+import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyConstructionObjective, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
 import { campaignTracks, tutorialLevels } from './campaign'
 
 const level = (id: string) => [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].find((item) => item.id === id)!
@@ -97,11 +97,37 @@ describe('campaign level solvability', () => {
     expectSolved('local-compare-candidates', [])
   })
 
-  it('solves the added tutorial constructions', () => {
-    expectSolved('tutorial-accessibility', [{ from: 'w0', to: 'w1' }])
-    expectSolved('tutorial-nested-modalities', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }])
-    expectSolved('tutorial-local-countermodel', [{ from: 'w0', to: 'w1' }])
-    expectSolved('tutorial-relational-property', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }])
+  it('defines six incomplete-on-load, structural How to Play steps', () => {
+    expect(tutorialLevels).toHaveLength(6)
+    expect(tutorialLevels.map(({ id }) => id)).toEqual([
+      'tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge',
+      'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model',
+    ])
+    for (const item of tutorialLevels) {
+      expect(item.prediction, item.id).toBeUndefined()
+      expect(item.atomVocabulary, item.id).toEqual(['p'])
+      expect(item.structuralObjective, item.id).toBeDefined()
+      const valuation = Object.fromEntries(item.worlds.map(({ id, atoms }) => [id, atoms ? atoms.split(' ') : []]))
+      const violations = checkConstructionConstraints({ worldIds: item.worlds.map(({ id }) => id), explicitEdges: item.edges, effectiveEdges: item.edges, valuation }, item.constraints ?? {})
+      const construction = verifyConstructionObjective(item.structuralObjective!, { evaluationWorld: item.evaluationWorld })
+      expect(violations.length === 0 && construction.success, `${item.id}: initial state`).toBe(false)
+    }
+  })
+
+  it('accepts each intended tutorial construction and preserves edge direction', () => {
+    const tutorial = (id: string) => tutorialLevels.find((level) => level.id === id)!
+    const check = (id: string, worldIds: string[], edges: AccessibilityEdge[], valuation: Record<string, string[]>, evaluationWorld = 'w0') => {
+      const item = tutorial(id)
+      expect(checkConstructionConstraints({ worldIds, explicitEdges: edges, effectiveEdges: edges, valuation }, item.constraints ?? {})).toEqual([])
+      expect(verifyConstructionObjective(item.structuralObjective!, { evaluationWorld }).success).toBe(true)
+    }
+    check('tutorial-v2-evaluation-world', ['w0', 'w1'], [], { w0: [], w1: ['p'] }, 'w1')
+    check('tutorial-v2-valuation', ['w0'], [], { w0: ['p'] })
+    check('tutorial-v2-draw-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: [] })
+    check('tutorial-v2-correct-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: [] })
+    check('tutorial-v2-add-world', ['w0', 'w1'], [], { w0: [], w1: ['p'] })
+    check('tutorial-v2-build-model', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: ['p'] })
+    expect(checkConstructionConstraints({ worldIds: ['w0', 'w1'], explicitEdges: [{ from: 'w1', to: 'w0' }], effectiveEdges: [{ from: 'w1', to: 'w0' }], valuation: { w0: [], w1: [] } }, tutorial('tutorial-v2-draw-edge').constraints!)).not.toEqual([])
   })
 
   it('solves both global-model objectives', () => {
