@@ -67,6 +67,11 @@ Data dialog can reset these stores independently and export or import versioned
 model JSON. Imports validate formulas, world identifiers, atoms, relations, and
 supported frame-rule modes before changing the sandbox.
 
+How to Play uses `logic-game:campaign-progress:v2`. On first load it reads the
+former v1 progress when necessary, preserves recognised practice and campaign
+mission IDs, and intentionally drops only the obsolete semantic tutorial IDs:
+they do not map safely to the six UI-control steps.
+
 An anonymous guest profile stores a random local identifier and up to 250 recent
 verification attempts. It does not use IP addresses or browser fingerprinting.
 Profile backups contain history and learning progress and can be restored in a

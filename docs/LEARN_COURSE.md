@@ -1,8 +1,8 @@
 # Learn Modal Logic
 
-`Learn Modal Logic` is a data-driven guided course, separate from the practice tutorial and campaigns.
+`Learn Modal Logic` is a data-driven semantic course, separate from How to Play, practice, and campaigns.
 
-Course data lives in `src/learn.ts`. A chapter declares prerequisites, lessons, completion recap text, and a next-chapter preview. A lesson contains its concept material, optional worked example, prediction, workspace task, three progressive hints, feedback, and an optional transfer task. **How to Play** adapts the stable legacy tutorial missions into the first course chapter; **Possibility** is the first fully authored semantic vertical slice. The remaining chapters are intentional placeholders rather than partially implemented content.
+Course data lives in `src/learn.ts`. A chapter declares prerequisites, lessons, completion recap text, and a next-chapter preview. A lesson contains its concept material, optional worked example, prediction, workspace task, three progressive hints, feedback, and an optional transfer task. The six-step **How to Play** control tutorial lives separately in `src/campaign.ts` and sends completion here. **Possibility** is the first fully authored semantic vertical slice. The remaining chapters are intentional placeholders rather than partially implemented content.
 
 Progress is stored locally under the versioned `logic-game:learn-progress:v1` key. It records completed lessons and chapters, attempts, predictions, hint use, optional transfer completion, and timestamps. Existing practice/campaign progress is intentionally kept separate, so no older completion is mistakenly treated as course completion.
 
