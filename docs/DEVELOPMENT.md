@@ -276,10 +276,13 @@ navigation uses a compact segmented treatment; destructive and negative states
 reserve the brown accent. Short entrance and result transitions clarify state
 changes and are disabled by the reduced-motion preference.
 
-The initial app view is a concise home menu with two primary branches. `Play`
-contains the tutorial, campaign browsers, and sandbox; `Learn & Reference`
-combines the intuitive introduction, formal semantics, objectives, glossary,
-and interface controls. Back navigation follows this explicit hierarchy. Shared
+The initial app view is a concise home menu. The top-level destinations are
+Home, Campaigns, Sandbox, Create, Modal Logic Guide, and Profile. Campaigns
+contains four roles: the short How to Play tutorial entry, Intro to Modal Logic
+(presented by the internal Learn engine), General Challenges, and the non-linear
+Practice Library. Introductory structural missions use ordinary `GameLevel`
+constraints (exact worlds and required/forbidden edges) together with the same
+deterministic evaluator as semantic missions; no second workspace exists. Shared
 URL fragments remain direct navigation instructions and therefore launch the
 validated custom mission or campaign without stopping at Home. Interface
 settings are versioned separately from sandbox and learning data.
