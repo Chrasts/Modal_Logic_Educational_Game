@@ -40,6 +40,20 @@ The logic modules do not depend on React or React Flow. Campaign and tutorial
 missions are declarative data consumed by the same objective and constraint
 engine used by the sandbox.
 
+`GameLevel.objectiveKind` distinguishes normal semantic objectives from narrow
+construction-only objectives. A construction level omits `formula`, `scope`,
+and `targetTruth`; `validateLevelObjective` rejects ambiguous combinations.
+Its normal verification path applies existing construction constraints followed
+by `verifyConstructionObjective`, without invoking the formula evaluator.
+`workspacePresentation` declares the focused Intro controls (`worlds`,
+`valuations`, `edges`, and `evaluation`) so absent panels are not merely
+disabled or keyboard-focusable. Existing semantic/custom formats remain
+compatible because semantic fields and custom-file parsing are unchanged.
+
+Campaigns keeps its selected Intro, General Challenges, or Practice Library
+section in component state. Guided return navigation selects the originating
+section while direct Campaigns navigation defaults to Intro.
+
 ## Verification scopes
 
 - **Pointed:** evaluates `M,w ⊨ φ` at the designated world.
