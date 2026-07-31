@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyConstructionObjective, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
-import { campaignTracks, tutorialLevels } from './campaign'
+import { campaignTracks, isConstructionLevel, tutorialLevels, validateLevelObjective } from './campaign'
 
 const level = (id: string) => [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].find((item) => item.id === id)!
 const correspondenceProperties: Record<string, FramePropertyName> = { t: 'reflexive', d: 'serial', b: 'symmetric', '4': 'transitive', '5': 'euclidean' }
@@ -8,15 +8,15 @@ const verify = (id: string, edges: readonly AccessibilityEdge[], valuation?: Rec
   const item = level(id)
   const worldIds = item.worlds.map((world) => world.id)
   return verifyObjective({
-    scope: item.scope,
-    targetTruth: item.targetTruth,
+    scope: item.scope!,
+    targetTruth: item.targetTruth!,
     evaluationWorld: item.evaluationWorld,
     correspondenceProperty: item.correspondencePreset ? correspondenceProperties[item.correspondencePreset] : undefined,
   }, {
     worldIds,
     edges,
     valuation: valuation ?? Object.fromEntries(item.worlds.map((world) => [world.id, world.atoms ? world.atoms.split(' ') : []])),
-    formula: parseFormula(item.formula),
+    formula: parseFormula(item.formula!),
     comparisonFormula: item.comparisonFormula ? parseFormula(item.comparisonFormula) : undefined,
   })
 }
@@ -42,14 +42,15 @@ describe('campaign level solvability', () => {
       expect(worldIds.length, `${item.id}: non-empty W`).toBeGreaterThan(0)
       expect(new Set(worldIds).size, `${item.id}: unique worlds`).toBe(worldIds.length)
       expect(worldIds, `${item.id}: evaluation world`).toContain(item.evaluationWorld)
-      expect(() => parseFormula(item.formula), `${item.id}: formula syntax`).not.toThrow()
+      expect(() => validateLevelObjective(item), `${item.id}: objective configuration`).not.toThrow()
+      if (!isConstructionLevel(item)) expect(() => parseFormula(item.formula!), `${item.id}: formula syntax`).not.toThrow()
       const comparisonFormula = item.comparisonFormula
       if (comparisonFormula) expect(() => parseFormula(comparisonFormula), `${item.id}: comparison formula syntax`).not.toThrow()
       for (const edge of item.edges) {
         expect(worldIds, `${item.id}: edge source`).toContain(edge.from)
         expect(worldIds, `${item.id}: edge target`).toContain(edge.to)
       }
-      expect(item.scope === 'correspondence', `${item.id}: correspondence preset`).toBe(Boolean(item.correspondencePreset))
+      if (!isConstructionLevel(item)) expect(item.scope === 'correspondence', `${item.id}: correspondence preset`).toBe(Boolean(item.correspondencePreset))
       if (item.prediction) {
         expect(item.prediction.prompt.trim(), `${item.id}: prediction prompt`).not.toBe('')
         if (item.prediction.kind === 'counterexample-world') expect(item.scope, `${item.id}: world prediction scope`).toBe('model')
@@ -104,6 +105,10 @@ describe('campaign level solvability', () => {
       'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model',
     ])
     for (const item of tutorialLevels) {
+      expect(isConstructionLevel(item), item.id).toBe(true)
+      expect(item.formula, item.id).toBeUndefined()
+      expect(item.scope, item.id).toBeUndefined()
+      expect(item.targetTruth, item.id).toBeUndefined()
       expect(item.prediction, item.id).toBeUndefined()
       expect(item.atomVocabulary, item.id).toEqual(['p'])
       expect(item.structuralObjective, item.id).toBeDefined()

@@ -14,17 +14,17 @@ describe('Countermodel Hunter campaign data', () => {
       expect(level.targetTruth).toBe(false)
       expect(level.hints).toHaveLength(3)
       expect(level.successDebrief).toBeTruthy()
-      expect(() => parseFormula(level.formula)).not.toThrow()
+      expect(() => parseFormula(level.formula!)).not.toThrow()
     }
   })
 
   it('keeps every initial state unsolved and every reference construction valid', () => {
     for (const level of countermodelHunter.levels) {
-      const initial = verifyObjective({ scope: level.scope, targetTruth: level.targetTruth, evaluationWorld: level.evaluationWorld }, { worldIds: level.worlds.map(({ id }) => id), edges: level.edges, valuation: valuation(level.worlds), formula: parseFormula(level.formula) })
+      const initial = verifyObjective({ scope: level.scope!, targetTruth: level.targetTruth!, evaluationWorld: level.evaluationWorld }, { worldIds: level.worlds.map(({ id }) => id), edges: level.edges, valuation: valuation(level.worlds), formula: parseFormula(level.formula!) })
       expect(initial.success, level.title).toBe(false)
       expect(level.referenceSolution, `${level.title} needs a reference solution`).toBeDefined()
       const solution = level.referenceSolution!
-      const verdict = verifyObjective({ scope: level.scope, targetTruth: level.targetTruth, evaluationWorld: solution.evaluationWorld }, { worldIds: solution.worlds.map(({ id }) => id), edges: solution.edges, valuation: valuation(solution.worlds), formula: parseFormula(level.formula) })
+      const verdict = verifyObjective({ scope: level.scope!, targetTruth: level.targetTruth!, evaluationWorld: solution.evaluationWorld }, { worldIds: solution.worlds.map(({ id }) => id), edges: solution.edges, valuation: valuation(solution.worlds), formula: parseFormula(level.formula!) })
       expect(verdict.success, level.title).toBe(true)
       if (level.constraints) expect(checkConstructionConstraints({ worldIds: solution.worlds.map(({ id }) => id), explicitEdges: solution.edges, effectiveEdges: solution.edges, valuation: valuation(solution.worlds) }, level.constraints), level.title).toEqual([])
     }
@@ -66,7 +66,7 @@ describe('Formula Laboratory campaign data', () => {
     for (const level of campaign.levels) {
       const solution = level.referenceSolution!
       expect(level.comparisonFormula, level.title).toBeTruthy()
-      const verdict = verifyObjective({ scope: level.scope, targetTruth: level.targetTruth, evaluationWorld: solution.evaluationWorld, comparisonTarget: level.comparisonTarget }, { worldIds: solution.worlds.map(({ id }) => id), edges: solution.edges, valuation: valuation(solution.worlds), formula: parseFormula(level.formula), comparisonFormula: parseFormula(level.comparisonFormula!) })
+      const verdict = verifyObjective({ scope: level.scope!, targetTruth: level.targetTruth!, evaluationWorld: solution.evaluationWorld, comparisonTarget: level.comparisonTarget }, { worldIds: solution.worlds.map(({ id }) => id), edges: solution.edges, valuation: valuation(solution.worlds), formula: parseFormula(level.formula!), comparisonFormula: parseFormula(level.comparisonFormula!) })
       expect(verdict.success, level.title).toBe(true)
       if (level.constraints) expect(checkConstructionConstraints({ worldIds: solution.worlds.map(({ id }) => id), explicitEdges: solution.edges, effectiveEdges: solution.edges, valuation: valuation(solution.worlds) }, level.constraints), level.title).toEqual([])
     }

@@ -1,5 +1,4 @@
 import type { GameLevel } from './campaign'
-import { tutorialLevels } from './campaign'
 
 export type LearnStage = 'concept' | 'example' | 'prediction' | 'task' | 'feedback' | 'transfer' | 'completion'
 
@@ -112,7 +111,16 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
 const possibilityLessons: readonly LearnLesson[] = possibilityLessonDefinitions.map((lesson) => ({
   ...lesson,
   stages: lesson.stages.filter((stage) => stage !== 'prediction'),
-  task: { ...lesson.task, prediction: undefined },
+  task: {
+    ...lesson.task,
+    prediction: undefined,
+    workspacePresentation: lesson.task.workspacePresentation ?? {
+      worlds: lesson.task.editable.includes('worlds'),
+      valuations: lesson.task.editable.includes('valuations'),
+      edges: lesson.task.editable.includes('edges'),
+      evaluation: lesson.task.editable.includes('evaluation'),
+    },
+  },
 }))
 
 const truthAtAWorldLessons: readonly LearnLesson[] = [
@@ -121,7 +129,7 @@ const truthAtAWorldLessons: readonly LearnLesson[] = [
     learningObjective: 'Understand that p is true at w exactly when p belongs to the valuation of w.',
     stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Truth starts with the valuation', intuitive: 'An atom is true at a world exactly when it appears in that world’s True atoms list.', formal: 'M,w ⊨ p iff w ∈ ν(p).', formula: 'p', keyPoints: ['Valuations belong to individual worlds.', 'Only the selected evaluation world matters for this task.'] },
-    task: { id: 'learn-truth-atomic-task', chapter: 'Truth at a World', title: 'Atomic truth', concept: 'Atomic valuation', learningObjective: 'Make p true at w0.', briefing: 'Edit only the True atoms list for w0.', instruction: 'Make p true at w0.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0 }, editable: ['valuations'] },
+    task: { id: 'learn-truth-atomic-task', chapter: 'Truth at a World', title: 'Atomic truth', concept: 'Atomic valuation', learningObjective: 'Make p true at w0.', briefing: 'Edit only the True atoms list for w0.', instruction: 'Make p true at w0.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0 }, editable: ['valuations'], workspacePresentation: { valuations: true } },
     hints: ['Look at the True atoms field for w0.', 'p is not assigned to w0 yet.', 'Add p to w0.'],
     successExplanation: 'p is true at w0 because p is assigned to w0.',
     diagnosticFeedback: { 'formula-false': 'p is true at w0 only when p is included in w0’s valuation.' },
@@ -131,7 +139,7 @@ const truthAtAWorldLessons: readonly LearnLesson[] = [
     learningObjective: 'Distinguish truth at one world from truth elsewhere in the same model.',
     stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'The evaluation world matters', intuitive: 'The same formula can have different truth values at different worlds in one model.', formal: 'M,w ⊨ p depends on the chosen w.', formula: 'p', keyPoints: ['w0 has p.', 'w1 does not have p.'] },
-    task: { id: 'learn-truth-selected-world-task', chapter: 'Truth at a World', title: 'Truth depends on the selected world', concept: 'World-relative truth', learningObjective: 'Make p false by selecting w1 as the evaluation world.', briefing: 'Do not change the model; change only the selected evaluation world.', instruction: 'Make p false at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', 'p', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], structuralObjective: { requiredEvaluationWorld: 'w1' } },
+    task: { id: 'learn-truth-selected-world-task', chapter: 'Truth at a World', title: 'Truth depends on the selected world', concept: 'World-relative truth', learningObjective: 'Make p false by selecting w1 as the evaluation world.', briefing: 'Do not change the model; change only the selected evaluation world.', instruction: 'Make p false at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', 'p', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], workspacePresentation: { evaluation: true } },
     hints: ['p is true at w0.', 'Find the world where p is absent.', 'Set w1 as the evaluation world.'],
     successExplanation: 'The same formula can be true at one world and false at another.',
   },
@@ -139,21 +147,21 @@ const truthAtAWorldLessons: readonly LearnLesson[] = [
     id: 'learn-truth-negation', chapterId: 'truth-at-a-world', title: 'Negation',
     learningObjective: 'Understand local negation.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Negation reverses local truth', intuitive: '¬p is true at a world when p is false at that same world.', formal: 'M,w ⊨ ¬p iff M,w ⊭ p.', formula: '¬p', keyPoints: ['Check p at w0.', 'Change only w0’s valuation.'] },
-    task: { id: 'learn-truth-negation-task', chapter: 'Truth at a World', title: 'Negation', concept: 'Local negation', learningObjective: 'Make ¬p true at w0.', briefing: 'Remove p from w0; no other control is needed.', instruction: 'Make ¬p true at w0.', formula: '¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', 'p', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0, forbiddenAtoms: { w0: ['p'] } }, editable: ['valuations'] },
+    task: { id: 'learn-truth-negation-task', chapter: 'Truth at a World', title: 'Negation', concept: 'Local negation', learningObjective: 'Make ¬p true at w0.', briefing: 'Remove p from w0; no other control is needed.', instruction: 'Make ¬p true at w0.', formula: '¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', 'p', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0, forbiddenAtoms: { w0: ['p'] } }, editable: ['valuations'], workspacePresentation: { valuations: true } },
     hints: ['¬p is true when p is false.', 'p is currently assigned to w0.', 'Remove p from w0.'], successExplanation: '¬p is true at w0 because p is false there.',
   },
   {
     id: 'learn-truth-conjunction', chapterId: 'truth-at-a-world', title: 'Conjunction at one world',
     learningObjective: 'Understand that both conjuncts must hold at the same evaluation world.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Both facts must hold here', intuitive: 'A conjunction is true only when both of its parts are true at the selected world.', formal: 'M,w ⊨ p ∧ q iff M,w ⊨ p and M,w ⊨ q.', formula: 'p ∧ q', keyPoints: ['p already holds at w0.', 'Add q at the same world.'] },
-    task: { id: 'learn-truth-conjunction-task', chapter: 'Truth at a World', title: 'Conjunction at one world', concept: 'Local conjunction', learningObjective: 'Make p ∧ q true at w0.', briefing: 'Keep p and add q to the valuation of w0.', instruction: 'Make p ∧ q true at w0.', formula: 'p ∧ q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', 'p', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0, requiredAtoms: { w0: ['p', 'q'] } }, editable: ['valuations'] },
+    task: { id: 'learn-truth-conjunction-task', chapter: 'Truth at a World', title: 'Conjunction at one world', concept: 'Local conjunction', learningObjective: 'Make p ∧ q true at w0.', briefing: 'Keep p and add q to the valuation of w0.', instruction: 'Make p ∧ q true at w0.', formula: 'p ∧ q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', 'p', 220, 130)], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0, requiredAtoms: { w0: ['p', 'q'] } }, editable: ['valuations'], workspacePresentation: { valuations: true } },
     hints: ['A conjunction needs both conjuncts.', 'p is already true at w0.', 'Add q to w0.'], successExplanation: 'p ∧ q is true because both p and q hold at w0.',
   },
   {
     id: 'learn-truth-same-model', chapterId: 'truth-at-a-world', title: 'Same model, different truth',
     learningObjective: 'Apply atomic truth, negation, and world-relative evaluation together.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Choose the world that fits the formula', intuitive: 'The model can contain different facts at different worlds; choose the one where both parts of the formula fit.', formula: 'p ∧ ¬q', keyPoints: ['w0 has p and not q.', 'w1 has q.'] },
-    task: { id: 'learn-truth-same-model-task', chapter: 'Truth at a World', title: 'Same model, different truth', concept: 'World-relative evaluation', learningObjective: 'Choose the world where p ∧ ¬q is true.', briefing: 'Only the evaluation world is editable.', instruction: 'Make p ∧ ¬q true at the evaluation world.', formula: 'p ∧ ¬q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w1', worlds: [w('w0', 'p', 100, 130), w('w1', 'q', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], structuralObjective: { requiredEvaluationWorld: 'w0' } },
+    task: { id: 'learn-truth-same-model-task', chapter: 'Truth at a World', title: 'Same model, different truth', concept: 'World-relative evaluation', learningObjective: 'Choose the world where p ∧ ¬q is true.', briefing: 'Only the evaluation world is editable.', instruction: 'Make p ∧ ¬q true at the evaluation world.', formula: 'p ∧ ¬q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w1', worlds: [w('w0', 'p', 100, 130), w('w1', 'q', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], workspacePresentation: { evaluation: true } },
     hints: ['Find a world with p.', 'At that same world, q must be absent.', 'Set w0 as the evaluation world.'], successExplanation: 'At w0, p holds and q does not.',
   },
 ]
@@ -162,47 +170,29 @@ const worldsAndAccessibilityLessons: readonly LearnLesson[] = [
   {
     id: 'learn-worlds-add', chapterId: 'worlds-accessibility', title: 'Add a world', learningObjective: 'Understand the carrier set W as a finite collection of worlds.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Worlds form the carrier set', intuitive: 'A finite Kripke model begins with a collection of worlds.', formal: 'W is the set of worlds.', keyPoints: ['The model currently has w0.', 'Add one more world.'] },
-    task: { id: 'learn-worlds-add-task', chapter: 'Worlds and Accessibility', title: 'Add a world', concept: 'Carrier set', learningObjective: 'Add exactly one new world.', briefing: 'Use + World or + Add world once.', instruction: 'Add exactly one new world.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 220, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['worlds'] }, hints: ['Look for the + World control.', 'The task needs two worlds total.', 'Add one world and verify.'], successExplanation: 'The model now has two worlds.',
+    task: { id: 'learn-worlds-add-task', chapter: 'Worlds and Accessibility', title: 'Add a world', concept: 'Carrier set', learningObjective: 'Add exactly one new world.', briefing: 'Use + World or + Add world once.', instruction: 'Add exactly one new world.', objectiveKind: 'construction', evaluationWorld: 'w0', worlds: [w('w0', '', 220, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['worlds'], structuralObjective: {}, workspacePresentation: { worlds: true } }, hints: ['Look for the + World control.', 'The task needs two worlds total.', 'Add one world and verify.'], successExplanation: 'The model now has two worlds.',
   },
   {
     id: 'learn-worlds-directed-edge', chapterId: 'worlds-accessibility', title: 'Directed accessibility', learningObjective: 'Understand that accessibility is a directed binary relation.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'An arrow is an ordered pair', intuitive: 'w0 → w1 says w0 can access w1; it says nothing about the reverse direction.', formal: 'R ⊆ W × W.', keyPoints: ['Edges have a source and target.', 'The arrow points from w0 to w1.'] },
-    task: { id: 'learn-worlds-directed-edge-task', chapter: 'Worlds and Accessibility', title: 'Directed accessibility', concept: 'Directed relation', learningObjective: 'Draw w0 → w1.', briefing: 'Create one edge from w0 to w1.', instruction: 'Draw w0 → w1.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'] }, hints: ['Start at w0.', 'Drag to w1 or use the Accessibility panel.', 'The required pair is w0Rw1.'], successExplanation: 'w0 can access w1; this does not imply w1 can access w0.',
+    task: { id: 'learn-worlds-directed-edge-task', chapter: 'Worlds and Accessibility', title: 'Directed accessibility', concept: 'Directed relation', learningObjective: 'Draw w0 → w1.', briefing: 'Create one edge from w0 to w1.', instruction: 'Draw w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true } }, hints: ['Start at w0.', 'Drag to w1 or use the Accessibility panel.', 'The required pair is w0Rw1.'], successExplanation: 'w0 can access w1; this does not imply w1 can access w0.',
   },
   {
     id: 'learn-worlds-direction', chapterId: 'worlds-accessibility', title: 'Direction matters', learningObjective: 'Distinguish source and target.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Reverse the pair', intuitive: 'w1 → w0 is a different relation pair from w0 → w1.', keyPoints: ['The current edge points the wrong way.', 'Replace it rather than adding another edge.'] },
-    task: { id: 'learn-worlds-direction-task', chapter: 'Worlds and Accessibility', title: 'Direction matters', concept: 'Edge direction', learningObjective: 'Replace w1 → w0 with w0 → w1.', briefing: 'Delete the current edge, then draw the reversed direction.', instruction: 'Replace w1 → w0 with w0 → w1.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [{ from: 'w1', to: 'w0' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] }, editable: ['edges'] }, hints: ['The relation currently contains w1Rw0.', 'Remove that pair.', 'Create w0Rw1.'], successExplanation: 'Accessibility is directional.',
+    task: { id: 'learn-worlds-direction-task', chapter: 'Worlds and Accessibility', title: 'Direction matters', concept: 'Edge direction', learningObjective: 'Replace w1 → w0 with w0 → w1.', briefing: 'Delete the current edge, then draw the reversed direction.', instruction: 'Replace w1 → w0 with w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [{ from: 'w1', to: 'w0' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true } }, hints: ['The relation currently contains w1Rw0.', 'Remove that pair.', 'Create w0Rw1.'], successExplanation: 'Accessibility is directional.',
   },
   {
     id: 'learn-worlds-branching', chapterId: 'worlds-accessibility', title: 'Branching', learningObjective: 'Understand that one world can have multiple accessible successors.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'A relation can branch', intuitive: 'One world can access more than one alternative.', keyPoints: ['w0 is the shared source.', 'Both w1 and w2 are successors.'] },
-    task: { id: 'learn-worlds-branching-task', chapter: 'Worlds and Accessibility', title: 'Branching', concept: 'Branching relation', learningObjective: 'Create two edges leaving w0.', briefing: 'Draw exactly w0 → w1 and w0 → w2.', instruction: 'Create exactly w0 → w1 and w0 → w2.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 80, 130), w('w1', '', 380, 60), w('w2', '', 380, 200)], edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }] }, editable: ['edges'] }, hints: ['Both arrows start at w0.', 'Use w1 and w2 as separate targets.', 'There should be exactly two edges.'], successExplanation: 'The relation branches from w0 to two alternatives.',
+    task: { id: 'learn-worlds-branching-task', chapter: 'Worlds and Accessibility', title: 'Branching', concept: 'Branching relation', learningObjective: 'Create two edges leaving w0.', briefing: 'Draw exactly w0 → w1 and w0 → w2.', instruction: 'Create exactly w0 → w1 and w0 → w2.', objectiveKind: 'construction', evaluationWorld: 'w0', worlds: [w('w0', '', 80, 130), w('w1', '', 380, 60), w('w2', '', 380, 200)], edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true } }, hints: ['Both arrows start at w0.', 'Use w1 and w2 as separate targets.', 'There should be exactly two edges.'], successExplanation: 'The relation branches from w0 to two alternatives.',
   },
   {
     id: 'learn-worlds-reflexive-edge', chapterId: 'worlds-accessibility', title: 'Reflexive edge', learningObjective: 'Recognize a reflexive edge as a world accessing itself.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'A world may access itself', intuitive: 'A loop is an ordinary relation pair whose source and target are the same world.', formal: 'w0Rw0.', keyPoints: ['Keep the existing edge.', 'Add a loop at w0.'] },
-    task: { id: 'learn-worlds-reflexive-edge-task', chapter: 'Worlds and Accessibility', title: 'Reflexive edge', concept: 'Self-loop', learningObjective: 'Add w0 → w0 while retaining w0 → w1.', briefing: 'Keep the existing arrow and add a self-loop at w0.', instruction: 'Add the self-loop w0 → w0 without removing the existing edge.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] }, editable: ['edges'] }, hints: ['Do not remove w0 → w1.', 'A self-loop begins and ends at w0.', 'Add w0 → w0.'], successExplanation: 'A self-loop represents w0Rw0.',
+    task: { id: 'learn-worlds-reflexive-edge-task', chapter: 'Worlds and Accessibility', title: 'Reflexive edge', concept: 'Self-loop', learningObjective: 'Add w0 → w0 while retaining w0 → w1.', briefing: 'Keep the existing arrow and add a self-loop at w0.', instruction: 'Add the self-loop w0 → w0 without removing the existing edge.', objectiveKind: 'construction', evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', '', 390, 130)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true } }, hints: ['Do not remove w0 → w1.', 'A self-loop begins and ends at w0.', 'Add w0 → w0.'], successExplanation: 'A self-loop represents w0Rw0.',
   },
 ]
-
-// Legacy tutorial missions stay stable for saved progress and links, but are now
-// presented as the first chapter of the guided Learn course.
-const howToPlayLessons: readonly LearnLesson[] = tutorialLevels.map((task) => ({
-  id: `learn-how-to-play-${task.id}`,
-  chapterId: 'how-to-play',
-  title: task.title,
-  learningObjective: task.learningObjective ?? task.concept,
-  stages: ['concept', 'task', 'feedback'],
-  concept: {
-    heading: task.concept,
-    intuitive: task.briefing ?? task.instruction,
-    keyPoints: ['Work only with the controls unlocked for this task.', 'Use Verify objective to check the model when you are ready.'],
-  },
-  task,
-  hints: ['Read the objective and identify which part of the model is currently editable.', 'Use the relevant panel or map control, then check the objective again.', task.instruction],
-  successExplanation: `You completed the interface step “${task.title}”. The same workspace controls will be used throughout Learn, Practice, and future Campaigns.`,
-}))
 
 export const learnCourse: LearnCourse = {
   id: 'learn-modal-logic', title: 'Intro to Modal Logic', description: 'Foundational campaigns in building and evaluating finite Kripke models.',

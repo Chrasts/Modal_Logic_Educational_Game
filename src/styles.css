@@ -615,6 +615,10 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 .dialog-close { width: 2.5rem; height: 2.5rem; border: 1px solid #c7c4b9; border-radius: 50%; background: transparent; color: var(--brown); font-size: 1.4rem; }
 .dialog-close:hover { background: var(--brown-soft); }
 .guide-tabs { display: flex; gap: .3rem; margin: -1rem 0 1rem; border-bottom: 1px solid #d0cec4; overflow-x: auto; }
+.campaign-section-tabs { display: flex; gap: .3rem; margin: 0 0 1rem; border-bottom: 1px solid #d0cec4; overflow-x: auto; }
+.campaign-section-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #687068; padding: .65rem .75rem; font-size: .72rem; font-weight: 700; }
+.campaign-section-tabs button:hover { color: var(--petrol-dark); }
+.campaign-section-tabs button.active { border-bottom-color: var(--petrol); color: var(--petrol-dark); }
 .guide-tabs button { flex: 0 0 auto; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #687068; padding: .65rem .75rem; font-size: .72rem; font-weight: 700; }
 .guide-tabs button:hover { color: var(--petrol-dark); }
 .guide-tabs button.active { border-bottom-color: var(--petrol); color: var(--petrol-dark); }

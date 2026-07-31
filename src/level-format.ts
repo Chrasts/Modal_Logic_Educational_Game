@@ -278,8 +278,8 @@ export function assertValidReferenceSolution(level: GameLevel, solution: Referen
   }
   if (violations.length) throw new Error(`Reference solution is invalid: ${violations[0]}`)
   const verdict = verifyObjective({
-    scope: level.scope, targetTruth: level.targetTruth, evaluationWorld: solution.evaluationWorld,
+    scope: level.scope!, targetTruth: level.targetTruth!, evaluationWorld: solution.evaluationWorld,
     correspondenceProperty: level.correspondencePreset ? correspondenceProperties[level.correspondencePreset] : undefined,
-  }, { worldIds, edges: effectiveEdges, valuation, formula: parseFormula(level.formula), comparisonFormula: level.comparisonFormula ? parseFormula(level.comparisonFormula) : undefined })
+  }, { worldIds, edges: effectiveEdges, valuation, formula: parseFormula(level.formula!), comparisonFormula: level.comparisonFormula ? parseFormula(level.comparisonFormula) : undefined })
   if (!verdict.success) throw new Error(`Reference solution does not meet the objective: ${verdict.formula.detail}`)
 }

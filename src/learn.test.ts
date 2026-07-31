@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { learnCourse, learnLessons } from './learn'
 import { emptyLearnProgress } from './learn-progress'
-import { parseFormula } from './logic'
+import { checkConstructionConstraints, parseFormula, verifyConstructionObjective, verifyObjective } from './logic'
+import { isConstructionLevel, validateLevelObjective } from './campaign'
 
 describe('Learn Modal Logic course data', () => {
   it('contains an ordered five-lesson Possibility vertical slice', () => {
@@ -33,10 +34,51 @@ describe('Learn Modal Logic course data', () => {
 
   it('defines parseable formulas and valid task worlds', () => {
     for (const lesson of learnLessons) {
-      expect(() => parseFormula(lesson.task.formula)).not.toThrow()
+      expect(() => validateLevelObjective(lesson.task)).not.toThrow()
+      if (!isConstructionLevel(lesson.task)) expect(() => parseFormula(lesson.task.formula!)).not.toThrow()
       expect(lesson.task.worlds.map(({ id }) => id)).toContain(lesson.task.evaluationWorld)
       expect(lesson.hints).toHaveLength(3)
     }
+  })
+
+  it('behaviourally verifies all ten introductory missions', () => {
+    const task = (id: string) => learnLessons.find((lesson) => lesson.id === id)!.task
+    const semantic = (id: string, evaluationWorld: string, valuation: Record<string, string[]>) => {
+      const item = task(id)
+      return verifyObjective({ scope: item.scope!, targetTruth: item.targetTruth!, evaluationWorld }, {
+        worldIds: item.worlds.map(({ id }) => id), edges: item.edges, valuation, formula: parseFormula(item.formula!),
+      }).success
+    }
+    const construction = (id: string, worldIds: string[], edges: { from: string; to: string }[]) => {
+      const item = task(id)
+      const valuation = Object.fromEntries(worldIds.map((id) => [id, []]))
+      return checkConstructionConstraints({ worldIds, explicitEdges: edges, effectiveEdges: edges, valuation }, item.constraints ?? {}).length === 0
+        && verifyConstructionObjective(item.structuralObjective ?? {}, { evaluationWorld: item.evaluationWorld }).success
+    }
+
+    expect(semantic('learn-truth-atomic', 'w0', { w0: [] })).toBe(false)
+    expect(semantic('learn-truth-atomic', 'w0', { w0: ['p'] })).toBe(true)
+    expect(semantic('learn-truth-selected-world', 'w0', { w0: ['p'], w1: [] })).toBe(false)
+    expect(semantic('learn-truth-selected-world', 'w1', { w0: ['p'], w1: [] })).toBe(true)
+    expect(semantic('learn-truth-negation', 'w0', { w0: ['p'] })).toBe(false)
+    expect(semantic('learn-truth-negation', 'w0', { w0: [] })).toBe(true)
+    expect(semantic('learn-truth-conjunction', 'w0', { w0: ['p'] })).toBe(false)
+    expect(semantic('learn-truth-conjunction', 'w0', { w0: ['p', 'q'] })).toBe(true)
+    expect(semantic('learn-truth-same-model', 'w1', { w0: ['p'], w1: ['q'] })).toBe(false)
+    expect(semantic('learn-truth-same-model', 'w0', { w0: ['p'], w1: ['q'] })).toBe(true)
+
+    expect(construction('learn-worlds-add', ['w0'], [])).toBe(false)
+    expect(construction('learn-worlds-add', ['w0', 'w1'], [])).toBe(true)
+    expect(construction('learn-worlds-directed-edge', ['w0', 'w1'], [])).toBe(false)
+    expect(construction('learn-worlds-directed-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }])).toBe(true)
+    expect(construction('learn-worlds-directed-edge', ['w0', 'w1'], [{ from: 'w1', to: 'w0' }])).toBe(false)
+    expect(construction('learn-worlds-direction', ['w0', 'w1'], [{ from: 'w1', to: 'w0' }])).toBe(false)
+    expect(construction('learn-worlds-direction', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }])).toBe(true)
+    expect(construction('learn-worlds-branching', ['w0', 'w1', 'w2'], [{ from: 'w0', to: 'w1' }])).toBe(false)
+    expect(construction('learn-worlds-branching', ['w0', 'w1', 'w2'], [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])).toBe(true)
+    expect(construction('learn-worlds-branching', ['w0', 'w1', 'w2'], [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w2' }])).toBe(false)
+    expect(construction('learn-worlds-reflexive-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w0' }])).toBe(false)
+    expect(construction('learn-worlds-reflexive-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }])).toBe(true)
   })
 
   it('initializes isolated versioned course progress', () => {

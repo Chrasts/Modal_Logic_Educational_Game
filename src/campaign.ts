@@ -2,6 +2,14 @@ import type { ConstructionConstraints, FramePropertyName, ObjectiveScope } from 
 
 export type LevelEditPermission = 'worlds' | 'valuations' | 'edges' | 'constraints' | 'evaluation'
 export type TutorialControl = 'worlds' | 'valuations' | 'edges' | 'evaluation' | 'history'
+export type ObjectiveKind = 'semantic' | 'construction'
+
+export interface WorkspacePresentation {
+  readonly worlds?: boolean
+  readonly valuations?: boolean
+  readonly edges?: boolean
+  readonly evaluation?: boolean
+}
 
 export interface GameLevel {
   readonly id: string
@@ -42,12 +50,14 @@ export interface GameLevel {
     readonly evaluationWorld: string
   }
   readonly instruction: string
-  readonly formula: string
+  /** Semantic objectives retain the existing formula/scope fields. */
+  readonly objectiveKind?: ObjectiveKind
+  readonly formula?: string
   readonly comparisonFormula?: string
   /** Require exact truth values for Formula A and Formula B at the objective scope. */
   readonly comparisonTarget?: { readonly formulaATruth: boolean; readonly formulaBTruth: boolean }
-  readonly scope: ObjectiveScope
-  readonly targetTruth: boolean
+  readonly scope?: ObjectiveScope
+  readonly targetTruth?: boolean
   readonly evaluationWorld: string
   readonly correspondencePreset?: 't' | 'd' | 'b' | '4' | '5'
   readonly worlds: readonly {
@@ -64,6 +74,8 @@ export interface GameLevel {
   readonly editable: readonly LevelEditPermission[]
   /** A UI-only construction check. Semantic objectives keep using the deterministic modal evaluator. */
   readonly structuralObjective?: { readonly requiredEvaluationWorld?: string }
+  /** Explicitly controls the focused workspace used by introductory content. */
+  readonly workspacePresentation?: WorkspacePresentation
   /** Controls deliberately exposed in the short How to Play flow. */
   readonly tutorialControls?: readonly TutorialControl[]
   /** Limits the atom vocabulary shown and accepted by a tutorial step. */
@@ -75,6 +87,25 @@ export interface CampaignTrack {
   readonly title: string
   readonly description: string
   readonly levels: readonly GameLevel[]
+}
+
+/** Construction objectives intentionally carry no semantic formula or target. */
+export const isConstructionLevel = (level: GameLevel): boolean => level.objectiveKind === 'construction'
+
+/**
+ * Keeps the backwards-compatible level shape while rejecting ambiguous objective
+ * configurations at the boundary where authored level data is tested/loaded.
+ */
+export function validateLevelObjective(level: GameLevel): void {
+  if (isConstructionLevel(level)) {
+    if (level.formula !== undefined || level.scope !== undefined || level.targetTruth !== undefined) {
+      throw new Error(`Construction objective "${level.id}" must not define semantic formula, scope, or truth target.`)
+    }
+    return
+  }
+  if (!level.formula || !level.scope || level.targetTruth === undefined) {
+    throw new Error(`Semantic objective "${level.id}" requires formula, scope, and truth target.`)
+  }
 }
 
 const legacyTutorialLevelDefinitions: readonly GameLevel[] = [
@@ -219,55 +250,55 @@ export const tutorialLevels: readonly GameLevel[] = [
     learningObjective: 'Select a world and set it as the evaluation world.',
     briefing: 'Click w1 to inspect it, then choose Set as evaluation world.',
     successDebrief: 'Formulas are evaluated relative to a selected world.',
-    instruction: 'Make w1 the evaluation world.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Make w1 the evaluation world.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], editable: ['evaluation'], structuralObjective: { requiredEvaluationWorld: 'w1' }, tutorialControls: ['evaluation'], atomVocabulary: ['p'],
+    edges: [], editable: ['evaluation'], structuralObjective: { requiredEvaluationWorld: 'w1' }, workspacePresentation: { evaluation: true }, tutorialControls: ['evaluation'], atomVocabulary: ['p'],
   },
   {
     id: 'tutorial-v2-valuation', chapter: 'How to Play', title: 'Edit a world valuation', concept: 'Atoms in a world',
     learningObjective: 'Add an atom to the valuation of a selected world.',
     briefing: 'Select w0 and add p to its valuation.',
     successDebrief: 'Atoms written inside a world are true at that world.',
-    instruction: 'Make p true at w0.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Make p true at w0.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { requiredAtoms: { w0: ['p'] } },
-    editable: ['valuations'], structuralObjective: {}, tutorialControls: ['valuations'], atomVocabulary: ['p'],
+    editable: ['valuations'], structuralObjective: {}, workspacePresentation: { valuations: true }, tutorialControls: ['valuations'], atomVocabulary: ['p'],
   },
   {
     id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility edge', concept: 'Directed arrows',
     learningObjective: 'Create a directed accessibility edge.',
     briefing: 'Drag from the connection handle on w0 to w1. The arrow must point from w0 to w1.',
     successDebrief: 'Accessibility is directional: w0 → w1 is different from w1 → w0.',
-    instruction: 'Draw an arrow from w0 to w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Draw an arrow from w0 to w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'], structuralObjective: {}, tutorialControls: ['edges'], atomVocabulary: ['p'],
+    edges: [], constraints: { requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true }, tutorialControls: ['edges'], atomVocabulary: ['p'],
   },
   {
     id: 'tutorial-v2-correct-edge', chapter: 'How to Play', title: 'Correct an edge', concept: 'Editing arrows',
     learningObjective: 'Select, delete, and redraw a directed edge.',
     briefing: 'Select the existing arrow and delete it. Then draw the arrow in the opposite direction.',
     successDebrief: 'Select an edge to edit or delete it.',
-    instruction: 'Replace w1 → w0 with w0 → w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Replace w1 → w0 with w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
     edges: [{ from: 'w1', to: 'w0' }], constraints: { minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] },
-    editable: ['edges'], structuralObjective: {}, tutorialControls: ['edges'], atomVocabulary: ['p'],
+    editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true }, tutorialControls: ['edges'], atomVocabulary: ['p'],
   },
   {
     id: 'tutorial-v2-add-world', chapter: 'How to Play', title: 'Add a world', concept: 'Extending a model',
     learningObjective: 'Add a world and assign a valuation to it.',
     briefing: 'Use + World, select the new world, and add p to its valuation.',
     successDebrief: 'Models can be extended by adding worlds and assigning their valuations.',
-    instruction: 'Add one new world and make p true there.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Add one new world and make p true there.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredAtoms: { w1: ['p'] } },
-    editable: ['worlds', 'valuations'], structuralObjective: {}, tutorialControls: ['worlds', 'valuations'], atomVocabulary: ['p'],
+    editable: ['worlds', 'valuations'], structuralObjective: {}, workspacePresentation: { worlds: true, valuations: true }, tutorialControls: ['worlds', 'valuations'], atomVocabulary: ['p'],
   },
   {
     id: 'tutorial-v2-build-model', chapter: 'How to Play', title: 'Build a small model', concept: 'Worlds, valuations, and relations',
     learningObjective: 'Combine the basic model-building controls.',
     briefing: 'Add a second world, make p true there, then draw w0 → w1. Undo and redo are available from the map toolbar.',
     successDebrief: 'You can now build the basic parts of a Kripke model: worlds, valuations, and accessibility relations.',
-    instruction: 'Create a second world, make p true there, and draw w0 → w1.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    instruction: 'Create a second world, make p true there, and draw w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredAtoms: { w1: ['p'] }, requiredEdges: [{ from: 'w0', to: 'w1' }] },
-    editable: ['worlds', 'valuations', 'edges'], structuralObjective: {}, tutorialControls: ['worlds', 'valuations', 'edges', 'history'], atomVocabulary: ['p'],
+    editable: ['worlds', 'valuations', 'edges'], structuralObjective: {}, workspacePresentation: { worlds: true, valuations: true, edges: true }, tutorialControls: ['worlds', 'valuations', 'edges', 'history'], atomVocabulary: ['p'],
   },
 ]
 
