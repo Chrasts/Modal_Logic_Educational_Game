@@ -84,6 +84,13 @@ World**, **Worlds and Accessibility**, and **Possibility**. Necessity, Box and
 Diamond, Countermodels, Local, Global, and Frame Truth, and Frame Properties
 are shown as coming later.
 
+Campaigns uses compact **Intro to Modal Logic**, **General Challenges**, and
+**Practice Library** tabs, returning to the relevant tab after a mission.
+Purely structural introductory tasks use construction-only objectives: they
+check the required worlds, atoms, edges, and evaluation world without showing
+an artificial tautological formula. Semantic lessons still show their concise,
+read-only formula and only the workspace controls relevant to that lesson.
+
 ### Practice Library
 
 The Practice Library is a non-linear secondary area within **Campaigns**. Its existing collections contain 33
