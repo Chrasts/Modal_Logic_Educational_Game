@@ -8,8 +8,8 @@ modal axioms and relational properties.
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
-The application opens on a home menu with direct routes to Learn, Campaigns,
-Practice, Sandbox, Create, Reference, Profile, settings, and local data tools. Shared
+The application opens on a home menu with direct routes to Campaigns, Sandbox,
+Create, Modal Logic Guide, Profile, settings, and local data tools. Shared
 mission URLs intentionally bypass the menu and launch their validated content.
 
 ## What you can do
@@ -71,17 +71,22 @@ Build and inspect models freely. Choose whether a formula should hold at one
 world, globally under the displayed valuation, or on the underlying frame under
 all valuations.
 
-### Learn
+### How to Play and Campaigns
 
-Learn Modal Logic is the guided course for newcomers. It begins with **How to
-Play**, which introduces the interface and core interactions, and continues
-with semantic chapters built around concepts, worked examples, predictions,
-tasks, feedback, and optional transfer. **Possibility** is the first fully
-authored semantic chapter; further chapters are still being developed.
+**How to Play** is a replayable six-step workspace tutorial. It teaches only
+the controls: selecting an evaluation world, editing a valuation, drawing and
+correcting directed edges, adding a world, and combining those actions in a
+small model. It has no modal-semantics lesson or prediction gate. Completion
+continues to **Intro to Modal Logic**, the foundational Campaigns block.
 
-### Practice
+**Intro to Modal Logic** currently contains the guided campaigns **Truth at a
+World**, **Worlds and Accessibility**, and **Possibility**. Necessity, Box and
+Diamond, Countermodels, Local, Global, and Frame Truth, and Frame Properties
+are shown as coming later.
 
-The Practice Library is non-linear. Its existing collections contain 33
+### Practice Library
+
+The Practice Library is a non-linear secondary area within **Campaigns**. Its existing collections contain 33
 missions organized by objective type:
 
 - Local Models & Countermodels
@@ -111,9 +116,9 @@ concept and failure summaries, and distinct successful constructions. Players
 can back up the full profile as JSON or export attempt-level results as CSV for
 an educator or personal study review. Nothing is uploaded automatically.
 
-### Campaigns
+### General Challenges
 
-Campaigns are longer guided mission arcs with their own sequencing, hints,
+General Challenges are longer guided mission arcs with their own sequencing, hints,
 debriefs, and learning objectives. The current built-in campaigns are:
 
 - **Countermodel Hunter** — construct small Kripke models that refute invalid
@@ -123,7 +128,7 @@ debriefs, and learning objectives. The current built-in campaigns are:
 - **Formula Laboratory** — compare modal formulas and build distinguishing
   models.
 
-### Guide
+### Modal Logic Guide
 
 The in-game guide separates a notation-free introduction for newcomers from
 formal Kripke semantics. Its sections then cover box and diamond, semantic
@@ -132,6 +137,13 @@ glossary.
 
 Create keeps authored custom missions and custom campaign packages separate
 from all built-in content.
+
+### Workspace shortcuts
+
+- Select an explicit edge, then press `Delete` or `Backspace` to remove it.
+- Press `Escape` to clear the current world or edge selection.
+- Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo model edits.
+  The short tutorial enables undo and redo only in its final combined step.
 
 ### Settings
 
