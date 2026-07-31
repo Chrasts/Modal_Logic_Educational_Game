@@ -42,7 +42,7 @@ describe('sandbox user interface', () => {
 
   it('links to the game repository', () => {
     render(<App initialView="workspace" />)
-    expect(screen.getByRole('link', { name: 'Open the Logic Model Builder GitHub repository' })).toHaveAttribute('href', 'https://github.com/Chrasts/Logic_semantics_game')
+    expect(screen.getByRole('link', { name: 'Open the Logic Model Builder GitHub repository' })).toHaveAttribute('href', 'https://github.com/Chrasts/Modal_Logic_Educational_Game')
   })
 
   beforeEach(() => {
@@ -182,7 +182,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByRole('button', { name: 'Open Modal Logic Guide' }))
     expect(screen.getByRole('dialog', { name: 'Guide' })).toBeVisible()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Guide' })).not.toBeInTheDocument()
@@ -216,12 +216,11 @@ describe('sandbox user interface', () => {
     await user.clear(screen.getByLabelText('Modal formula'))
     await user.type(screen.getByLabelText('Modal formula'), 'box q')
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Browse campaigns' }))
-    await user.click(screen.getByRole('button', { name: 'Start campaign' }))
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getAllByRole('button', { name: 'Open collection' })[0])
+    await user.click(screen.getByRole('button', { name: 'Start practice' }))
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Open sandbox' }))
+    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
 
     expect(screen.getByLabelText('Modal formula')).toHaveValue('box q')
   })
@@ -231,8 +230,8 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
 
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Browse campaigns' }))
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getAllByRole('button', { name: 'Open collection' })[0])
     expect(screen.getByText('Necessary, not actual')).toBeVisible()
     await user.click(screen.getByRole('button', { name: /Global Model Building/ }))
     expect(screen.getByText('Persistence of truth')).toBeVisible()
@@ -243,14 +242,14 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
 
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Browse campaigns' }))
-    await user.click(screen.getByRole('button', { name: 'Start campaign' }))
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getAllByRole('button', { name: 'Open collection' })[0])
+    await user.click(screen.getByRole('button', { name: 'Start practice' }))
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Browse campaigns' }))
+    await user.click(screen.getByRole('button', { name: 'Campaigns' }))
+    await user.click(screen.getAllByRole('button', { name: 'Open collection' })[0])
     await user.click(screen.getByRole('button', { name: /Global Model Building/ }))
-    await user.click(screen.getByRole('button', { name: 'Reference' }))
+    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
     await user.click(screen.getByRole('button', { name: 'Return to current mission' }))
 
     expect(screen.getByText('Necessary, not actual')).toBeVisible()
@@ -298,9 +297,8 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('status')).toHaveTextContent('progress was reset')
     await user.click(screen.getByRole('button', { name: 'Close data manager' }))
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Open tutorial' }))
-    expect(screen.getByLabelText('0 of 13 tutorial steps complete')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'START HOW TO PLAY' }))
+    expect(screen.getByLabelText('0 of 6 tutorial steps complete')).toBeVisible()
   })
 
   it('shows truth by world and a structured countervaluation', async () => {
@@ -349,9 +347,8 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Clear history' }))
     expect(screen.getByText('No attempts recorded yet')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Open tutorial' }))
-    expect(screen.getByLabelText('1 of 13 tutorial steps complete')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'START HOW TO PLAY' }))
+    expect(screen.getByLabelText('0 of 6 tutorial steps complete')).toBeVisible()
   })
 
   it('imports a guest profile backup with history and progress', async () => {
@@ -562,8 +559,7 @@ describe('sandbox user interface', () => {
     expect(screen.getByText('Satisfy the configured objective.')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Open sandbox' }))
+    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
     expect(screen.getByLabelText('Modal formula')).toBeEnabled()
   })
 
@@ -580,35 +576,23 @@ describe('sandbox user interface', () => {
     expect(screen.getByLabelText('Modal formula')).toHaveValue('\u25c7p')
   })
 
-  it('requires the tutorial frame rule to be globally enforced', async () => {
-    localStorage.setItem('logic-game:campaign-progress:v1', JSON.stringify([
-      'tutorial-valuation', 'tutorial-evaluation', 'tutorial-add-world', 'tutorial-accessibility',
-      'tutorial-add-relation', 'tutorial-remove-relation', 'tutorial-nested-modalities',
-      'tutorial-local-countermodel', 'tutorial-global-model',
-    ]))
+  it('keeps How to Play separate from semantic campaign content', async () => {
     const user = userEvent.setup()
-    render(<App initialView="workspace" />)
+    render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Practice' }))
-    await user.click(screen.getByRole('button', { name: 'Open tutorial' }))
-    await user.click(screen.getByRole('button', { name: 'Continue tutorial' }))
-    expect(screen.getByText('Frames and global constraints')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { name: /^Constraints/ }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Reflexive rule mode' }), 'enforce')
-    await user.keyboard('{Escape}')
-    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
-    expect(screen.getByText('Complete')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'START HOW TO PLAY' }))
+    expect(screen.getByLabelText('0 of 6 tutorial steps complete')).toBeVisible()
+    expect(screen.getByText('Choose the evaluation world')).toBeVisible()
+    expect(screen.queryByText('Frames and global constraints')).not.toBeInTheDocument()
   })
 
   it('opens the formal modal logic introduction', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Reference' }))
+    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
     await user.click(screen.getByRole('button', { name: /Formal Modal Semantics/ }))
-    expect(screen.getByRole('heading', { name: 'Learn & Reference' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Modal Logic Guide' })).toBeVisible()
     expect(screen.getByText(/M = ⟨W,R,ν⟩/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Satisfaction' })).toBeVisible()
   })
@@ -617,7 +601,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Reference' }))
+    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
     await user.click(screen.getByRole('button', { name: /Modal Logic: Intuitive Introduction/ }))
     const explanation = screen.getByText(/Ordinary logic asks whether a statement is true or false/)
     expect(explanation).not.toBeVisible()
@@ -629,8 +613,8 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Reference' }))
-    await user.click(screen.getByRole('button', { name: /How to Play/ }))
+    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByText('Open game guide →'))
     await user.click(screen.getByRole('tab', { name: 'Objectives & constraints' }))
     expect(screen.getByText('Objective scopes')).toBeVisible()
     expect(screen.getByText('Construction constraints')).toBeVisible()
