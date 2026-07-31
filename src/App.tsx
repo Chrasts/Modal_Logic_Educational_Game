@@ -306,7 +306,7 @@ function loadCampaignProgress(): ReadonlySet<string> {
     const knownIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)].map((level) => level.id))
     const legacyTutorialIds = new Set<string>(legacyTutorialLevelIds)
     // Old semantic tutorial completions have no safe one-to-one mapping to the
-    // six interaction steps. Keep all other progress and start How to Play v2 fresh.
+    // six interaction steps. Keep all other progress and reset How to Play v2.
     return new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string' && !legacyTutorialIds.has(id) && knownIds.has(id)) : [])
   } catch {
     return new Set()
@@ -1579,8 +1579,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <section className="content-screen home-screen" aria-labelledby="home-title">
           <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div><div className="home-progress"><span>Intro to Modal Logic progress</span><strong>{introCompleted}/{learnLessons.length}</strong><small>foundational lessons complete</small></div></div>
           <div className="home-actions home-primary-actions" aria-label="Main menu">
-            <button type="button" className="home-menu-tile featured" onClick={() => setAppView('tutorial')}>START HOW TO PLAY</button>
-            <button type="button" className="home-menu-tile" onClick={continueIntroToModalLogic}>{introCompleted ? 'CONTINUE INTRO TO MODAL LOGIC' : 'START INTRO TO MODAL LOGIC'}</button>
+            <button type="button" className="home-menu-tile featured" onClick={() => setAppView('tutorial')}>HOW TO PLAY</button>
+            <button type="button" className="home-menu-tile" onClick={continueIntroToModalLogic}>INTRO TO MODAL LOGIC</button>
             <button type="button" className="home-menu-tile" onClick={() => setAppView('campaigns')}>CAMPAIGNS</button>
             <button type="button" className="home-menu-tile" onClick={returnToSandbox}>OPEN SANDBOX</button>
           </div>
@@ -1620,7 +1620,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'tutorial' && (
         <section className="content-screen tutorial-screen" aria-labelledby="tutorial-screen-title">
-          <div className="screen-hero"><div><p className="eyebrow">Explore the interface</p><h1 id="tutorial-screen-title">How to Play</h1><p>{tutorialLevels.length} short steps teach the basic workspace controls: worlds, valuations, directed arrows, and the evaluation world.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === 0 ? 'Start How to Play' : tutorialCompleted === tutorialLevels.length ? 'Replay How to Play' : 'Continue How to Play'}</button></div></div>
+          <div className="screen-hero"><div><p className="eyebrow">Explore the interface</p><h1 id="tutorial-screen-title">How to Play</h1><p>{tutorialLevels.length} short steps teach the basic workspace controls: worlds, valuations, directed arrows, and the evaluation world.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay How to Play' : 'How to Play'}</button></div></div>
           <div className="screen-note"><strong>How it works</strong><span>Each step opens the shared workspace with only the required controls unlocked. Progress is stored in this browser.</span></div>
           <div className="level-browser">{tutorialLevels.map((level, index) => <article className={completedLevelIds.has(level.id) ? 'complete' : ''} key={level.id}><span>{String(index + 1).padStart(2, '0')}</span><div><h2>{level.title}</h2><p>{level.concept}</p></div><b>{completedLevelIds.has(level.id) ? 'Complete' : 'Not completed'}</b><button type="button" onClick={() => startGuidedLevel('tutorial', index)}>{gameMode === 'tutorial' && campaignLevelIndex === index ? 'Continue' : 'Play'}</button></article>)}</div>
         </section>
