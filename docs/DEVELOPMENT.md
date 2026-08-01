@@ -295,7 +295,7 @@ changes and are disabled by the reduced-motion preference.
 
 The initial app view is a concise home menu. The top-level destinations are
 Home, Campaigns, Sandbox, Create, Modal Logic Guide, and Profile. Campaigns
-contains four roles: the short How to Play tutorial entry, Intro to Modal Logic
+contains four roles: the short Learn the Controls tutorial entry, the Learn Modal Logic
 (presented by the internal Learn engine), General Challenges, and the non-linear
 Practice Library. Introductory structural missions use ordinary `GameLevel`
 constraints (exact worlds and required/forbidden edges) together with the same

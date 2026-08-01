@@ -1,4 +1,4 @@
-# Intro to Modal Logic (internal Learn engine)
+# Learn Modal Logic (internal Learn engine)
 
 `Learn Modal Logic` remains the internal data-driven lesson engine. In the UI it
 is part of one **Learn Modal Logic** path: Welcome to Modal Logic, Learn the
