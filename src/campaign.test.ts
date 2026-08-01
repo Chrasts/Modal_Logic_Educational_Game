@@ -110,7 +110,7 @@ describe('campaign level solvability', () => {
       expect(item.scope, item.id).toBeUndefined()
       expect(item.targetTruth, item.id).toBeUndefined()
       expect(item.prediction, item.id).toBeUndefined()
-      expect(item.atomVocabulary, item.id).toEqual(['p'])
+      expect(item.atomVocabulary, item.id).toEqual(item.id === 'tutorial-v2-valuation' ? undefined : ['p'])
       expect(item.structuralObjective, item.id).toBeDefined()
       const valuation = Object.fromEntries(item.worlds.map(({ id, atoms }) => [id, atoms ? atoms.split(' ') : []]))
       const violations = checkConstructionConstraints({ worldIds: item.worlds.map(({ id }) => id), explicitEdges: item.edges, effectiveEdges: item.edges, valuation }, item.constraints ?? {})

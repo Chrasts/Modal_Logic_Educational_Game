@@ -333,6 +333,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [learnConceptOpen, setLearnConceptOpen] = useState(false)
   const [expandedLearnChapterId, setExpandedLearnChapterId] = useState<string | null>(null)
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false)
+  const utilityMenuRef = useRef<HTMLDivElement>(null)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
@@ -514,6 +515,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     }
     window.addEventListener('keydown', closeUtilityMenu)
     return () => window.removeEventListener('keydown', closeUtilityMenu)
+  }, [])
+
+  useEffect(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (utilityMenuRef.current && !utilityMenuRef.current.contains(event.target as Node)) setUtilityMenuOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
   }, [])
 
   const usableWorldIds = useMemo(
@@ -858,7 +867,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setNextEdgeKey(level.edges.length)
     setSelectedWorldKey(null)
     setSelectedEdgeKey(null)
-    setLeftPanelOpen(false)
+    setLeftPanelOpen(tutorialLevels.some((candidate) => candidate.id === level.id) || learnLessonByTaskId.has(level.id))
     setRightPanelOpen(false)
     setEditorMode('edit')
     setResult(null)
@@ -1583,12 +1592,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
-        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || gameMode === 'learn' || gameMode === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || gameMode === 'guidedCampaign' || gameMode === 'campaign' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'learn' ? 'Learn' : gameMode === 'guidedCampaign' ? 'General Challenge' : gameMode === 'tutorial' ? 'Learn the Controls' : gameMode === 'campaign' ? 'Practice' : customSequenceLabel}</span>}</nav></div>
+        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || (appView === 'workspace' && (gameMode === 'learn' || gameMode === 'tutorial')) ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || (appView === 'workspace' && (gameMode === 'guidedCampaign' || gameMode === 'campaign')) ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'learn' ? 'Learn' : gameMode === 'guidedCampaign' ? 'General Challenge' : gameMode === 'tutorial' ? 'Learn the Controls' : gameMode === 'campaign' ? 'Practice' : customSequenceLabel}</span>}</nav></div>
         <div className="topbar-actions">
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open Modal Logic Guide" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Guide</button>}
-          <div className="utility-menu"><button type="button" className="text-button" aria-haspopup="menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div role="menu" className="utility-menu-popover"><button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><button type="button" role="menuitem" onClick={() => { void toggleFullscreen(); setUtilityMenuOpen(false) }} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
-          <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button><button type="button" className="text-button" onClick={() => setAppView('profile')}>Profile</button><a className="author-link" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">GitHub</a>
+          <div className="utility-menu" ref={utilityMenuRef}><button type="button" className="text-button" aria-haspopup="menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div role="menu" className="utility-menu-popover"><button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><button type="button" role="menuitem" onClick={() => { void toggleFullscreen(); setUtilityMenuOpen(false) }} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
         </div>
       </header>
 
@@ -1598,9 +1606,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <section className="content-screen home-screen" aria-labelledby="home-title">
           <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div><div className="home-progress"><span>Learning progress</span><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><small>currently available tasks complete</small></div></div>
           <div className="home-actions home-primary-actions" aria-label="Main menu">
-            <button type="button" className="home-menu-tile featured learn-home-tile" onClick={continueLearningPath}><strong>{playableLearningCompleted === 0 ? 'START LEARNING' : 'CONTINUE LEARNING'}</strong><span>Next: {!learnProgress.welcomeViewed ? 'Welcome to Modal Logic' : nextTutorialIndex >= 0 ? 'Learn the Controls' : learnCourse.chapters.find((chapter) => chapter.id === learnLessons.find((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))?.chapterId)?.title ?? 'Learn overview'}</span><small>Learn the controls, then work through the basic ideas of finite Kripke semantics.</small></button>
-            <button type="button" className="home-menu-tile" onClick={() => setAppView('campaigns')}><strong>BROWSE CAMPAIGNS</strong><small>Choose longer challenges or focused practice.</small></button>
-            <button type="button" className="home-menu-tile" onClick={returnToSandbox}><strong>OPEN SANDBOX</strong><small>Build and test models freely without a guided task.</small></button>
+            <button type="button" className="home-menu-tile featured learn-home-tile" onClick={continueLearningPath}><strong>{playableLearningCompleted === 0 ? 'START LEARNING' : 'CONTINUE LEARNING'}</strong><span>{!learnProgress.welcomeViewed ? 'Welcome to Modal Logic' : nextTutorialIndex >= 0 ? 'Learn the Controls' : learnCourse.chapters.find((chapter) => chapter.id === learnLessons.find((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))?.chapterId)?.title ?? 'Learn overview'}</span><small>Learn the controls, then work through the basic ideas of finite Kripke semantics.</small></button>
+            <button type="button" className="home-menu-tile" aria-label="Campaigns: longer challenges and focused practice" onClick={() => setAppView('campaigns')}><strong>CAMPAIGNS</strong></button>
+            <button type="button" className="home-menu-tile" aria-label="Sandbox: build and test models freely" onClick={returnToSandbox}><strong>SANDBOX</strong></button>
           </div>
           <div className="home-secondary"><button type="button" aria-label="Open profile from home" onClick={() => setAppView('profile')}><strong>Profile</strong></button><button type="button" aria-label="Open settings from home" onClick={() => setAppView('settings')}><strong>Settings</strong></button><button type="button" aria-label="Open data manager from home" onClick={openDataManager}><strong>Data</strong></button></div>
         </section>
@@ -1658,7 +1666,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'create' && (
         <section className="content-screen create-screen" aria-labelledby="create-screen-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Authoring tools</p><h1 id="create-screen-title">Create</h1><p>Author a custom mission or package missions into a shareable custom campaign. Your content remains separate from Intro to Modal Logic, General Challenges, and Practice Library.</p></div></div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Authoring tools</p><h1 id="create-screen-title">Create</h1><p>Author a custom mission or package missions into a shareable custom campaign. Your content remains separate from Learn, General Challenges, and Practice Library.</p></div></div>
           <div className="home-actions play-actions"><article className="featured"><span>Custom mission</span><h2>Build a constrained objective</h2><p>Capture a starting model, configure its objective and constraints, then verify a reference solution.</p><button type="button" className="primary-action" onClick={openDataManager}>Open creation studio</button></article><article><span>Custom campaign</span><h2>Package missions</h2><p>Combine authored missions, download a JSON package, or create a browser-shareable link.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage custom campaigns</button></article></div>
         </section>
       )}
@@ -1666,7 +1674,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'guide' && (
         <section className="content-screen guide-screen" aria-labelledby="guide-screen-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Concepts and controls</p><h1 id="guide-screen-title" className="clean-display">Modal Logic Guide</h1><p>Begin with an intuitive picture of modal logic, continue into formal Kripke semantics, or look up exactly how the game works.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
-          <div className="guide-actions"><button type="button" className="secondary-button" onClick={() => setAppView('tutorial')}>Replay How to Play</button><button type="button" className="secondary-button" onClick={() => setAppView('campaigns')}>Open Campaigns</button><button type="button" className="secondary-button" onClick={returnToSandbox}>Try in Sandbox</button></div>
+          <div className="guide-actions"><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>Replay Welcome to Modal Logic</button><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button><button type="button" className="secondary-button" onClick={() => setAppView('tutorial')}>Replay Learn the Controls</button><button type="button" className="secondary-button" onClick={() => setAppView('campaigns')}>Open Campaigns</button><button type="button" className="secondary-button" onClick={returnToSandbox}>Try in Sandbox</button></div>
           {guideTab !== 'overview' && <div className="guide-local-nav"><button type="button" className="guide-overview-back" onClick={() => setGuideTab('overview')}>← Guide overview</button><div className="guide-path-label">{guideTab === 'start' ? 'Intuitive introduction' : guideTab === 'objectives' || guideTab === 'controls' ? 'How to play' : 'Formal semantics'}</div></div>}
           {guideTab !== 'overview' && <div className="guide-tabs" role="tablist" aria-label="Guide sections">{activeGuideTabs.map(([tab, label]) => <button type="button" role="tab" aria-selected={guideTab === tab} className={guideTab === tab ? 'active' : ''} onClick={() => setGuideTab(tab)} key={tab}>{label}</button>)}</div>}
           <div className="guide-page-grid">
@@ -1726,9 +1734,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           </div>
           <div className="campaign-navigation">
             {courseLesson && <><button type="button" onClick={() => setLearnConceptOpen(true)}>Concept</button><button type="button" onClick={() => setAppView('learn')}>Back to Learn</button></>}
-            <button type="button" disabled={courseLesson ? activeLearnChapterIndex === 0 : campaignLevelIndex === 0} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex - 1].id)) : loadLevel(campaignLevelIndex - 1)}>{courseLesson ? 'Previous lesson' : 'Previous'}</button>
+            <button type="button" disabled={courseLesson ? activeLearnChapterIndex === 0 : campaignLevelIndex === 0} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex - 1].id)) : loadLevel(campaignLevelIndex - 1)}>{focusedIntroWorkspace ? 'Previous lesson' : 'Previous'}</button>
             {focusedIntroWorkspace && <div className="guided-action"><button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>Check task</button><small>When the model is ready, check the task.</small>{result && <span className={result.kind}>{result.message}</span>}</div>}
-            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || (courseLesson ? activeLearnChapterIndex === activeLearnChapter!.lessons.length - 1 : campaignLevelIndex === activeLevels.length - 1)} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex + 1].id)) : loadLevel(campaignLevelIndex + 1)}>{courseLesson ? 'Next lesson' : 'Next level'}</button>
+            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || (courseLesson ? activeLearnChapterIndex === activeLearnChapter!.lessons.length - 1 : campaignLevelIndex === activeLevels.length - 1)} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex + 1].id)) : loadLevel(campaignLevelIndex + 1)}>{focusedIntroWorkspace ? 'Next lesson' : 'Next mission'}</button>
           </div>
         </section>
       )}
@@ -1821,15 +1829,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               colorMode="light"
             >
               <Panel position="top-left" className="map-toolbar">
-                <div className="mode-switch" aria-label="Editor mode">
+                {!focusedIntroWorkspace && <div className="mode-switch" aria-label="Editor mode">
                   <button type="button" className={editorMode === 'edit' ? 'active' : ''} aria-pressed={editorMode === 'edit'} onClick={() => setEditorMode('edit')}>Edit</button>
                   {!focusedIntroWorkspace && <button type="button" className={editorMode === 'evaluate' ? 'active' : ''} aria-pressed={editorMode === 'evaluate'} onClick={() => setEditorMode('evaluate')}>Evaluate</button>}
-                </div>
+                </div>}
                 {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" onClick={addWorld} disabled={!canEditWorlds}>+ World</button>}
-                <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Formula and goal plus Verification panels" aria-pressed={leftPanelOpen} title="Formula and goal / Verification">◧</button>
-                <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle Worlds and valuations plus Accessibility panels" aria-pressed={rightPanelOpen} title="Worlds and valuations / Accessibility">◨</button>
-                <button type="button" onClick={undo} disabled={!canUseHistory || historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
-                <button type="button" onClick={redo} disabled={!canUseHistory || historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button>
+                <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Verification panel" aria-pressed={leftPanelOpen} title="Toggle Verification panel">◧</button>
+                {(!focusedIntroWorkspace || showWorldPanel || showEdgePanel) && <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle world and accessibility panels" aria-pressed={rightPanelOpen} title="Toggle world and accessibility panels">◨</button>}
+                {canUseHistory && <><button type="button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button><button type="button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button></>}
                 {!focusedIntroWorkspace && <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>}
                 {!focusedIntroWorkspace && <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Constraints{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>}
                 {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
@@ -1978,7 +1985,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <section className="completion-dialog" role="dialog" aria-modal="true" aria-labelledby="completion-title">
             <div className="completion-mark" aria-hidden="true">✓</div>
             <p className="eyebrow">{courseLesson || isHowToPlay ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'custom' ? customSequenceLabel : gameMode === 'guidedCampaign' ? 'Campaign complete' : 'Practice collection complete'}` : 'Objective verified'}</p>
-            <h2 id="completion-title">{courseLesson ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
+            <h2 id="completion-title">{courseLesson || isHowToPlay ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
             <p>{courseLesson ? <><strong>What this shows:</strong> {courseLesson.successExplanation}</> : <><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</>}</p>
             {courseLesson?.commonMistake && <p className="completion-common-mistake"><strong>Common mistake:</strong> {courseLesson.commonMistake}</p>}
             {(gameMode === 'guidedCampaign' || isHowToPlay) && activeLevel.successDebrief && <p className="completion-common-mistake"><strong>What this shows:</strong> {activeLevel.successDebrief}</p>}
@@ -2000,7 +2007,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'workspace' && courseLesson && learnConceptOpen && (
         <div className="dialog-backdrop concept-backdrop" role="presentation" onMouseDown={() => setLearnConceptOpen(false)}>
           <section className="help-dialog lesson-concept-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-concept-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="dialog-heading"><div><p className="eyebrow">Intro to Modal Logic · Lesson {campaignLevelIndex + 1}</p><h2 id="lesson-concept-title">{courseLesson.title}</h2></div><button type="button" className="dialog-close" onClick={() => setLearnConceptOpen(false)} aria-label="Close lesson concept">×</button></div>
+            <div className="dialog-heading"><div><p className="eyebrow">Learn Modal Logic · Lesson {activeLearnChapterIndex + 1}</p><h2 id="lesson-concept-title">{courseLesson.title}</h2></div><button type="button" className="dialog-close" onClick={() => setLearnConceptOpen(false)} aria-label="Close lesson concept">×</button></div>
             <div className="lesson-concept-grid"><article><h3>What to do</h3><p>{activeLevel?.instruction}</p></article><article><h3>How it works</h3><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <code>{courseLesson.concept.formal}</code>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></article></div>
             <button type="button" className="primary-action" autoFocus onClick={() => setLearnConceptOpen(false)}>Start task</button>
           </section>
@@ -2107,7 +2114,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <button type="button" role="tab" aria-selected={guideTab === 'controls'} className={guideTab === 'controls' ? 'active' : ''} onClick={() => setGuideTab('controls')}>Controls</button>
               <button type="button" role="tab" aria-selected={guideTab === 'objectives'} className={guideTab === 'objectives' ? 'active' : ''} onClick={() => setGuideTab('objectives')}>Objectives & constraints</button>
             </div>
-            {isHowToPlay && <button type="button" className="secondary-button" onClick={() => { setShowHelp(false); setAppView('tutorial') }}>Replay How to Play</button>}
+            {isHowToPlay && <button type="button" className="secondary-button" onClick={() => { setShowHelp(false); setAppView('tutorial') }}>Replay Learn the Controls</button>}
             {guideTab === 'theory' && <div className="introduction-grid">
               <article><span>01</span><div><h3>Frames</h3><p>A Kripke frame is <strong>F = ⟨W,R⟩</strong>, with non-empty W and <strong>R ⊆ W × W</strong>. We write wRv when v is accessible from w.</p></div></article>
               <article><span>02</span><div><h3>Valuation and model</h3><p>A valuation is <strong>ν: Prop → ℘(W)</strong>, and <strong>M = ⟨W,R,ν⟩</strong>. Thus M,w ⊨ p exactly when w ∈ ν(p).</p></div></article>
@@ -2117,7 +2124,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <article><span>06</span><div><h3>Global and frame validity</h3><p><strong>M ⊨ φ</strong> quantifies over worlds under ν. <strong>F ⊨ φ</strong> additionally quantifies over every valuation ν.</p></div></article>
             </div>}
             {guideTab === 'controls' && <div className="help-grid">
-              <div><h3>Build the model</h3><p>Drag worlds to move them. Drag between handles to create an accessibility edge. Click a world to inspect it, then select Set as evaluation world.</p></div>
+              <div><h3>Build the model</h3><p>Drag worlds to move them. Drag from a bottom/source handle to a top/target handle to create an accessibility edge; reversing source and target reverses the arrow. Click a world to inspect it, then select Set as evaluation world.</p></div>
               <div><h3>Guided tasks</h3><p>Make the requested edit, select Check task, then continue after the task is confirmed.</p></div>
               <div><h3>Editor modes</h3><p>Edit mode unlocks construction tools. Evaluate mode locks the graph against accidental changes and keeps verification close at hand.</p></div>
               <div><h3>Edit and delete</h3><p>Edit names and valuations in the side panel. Double-click an explicit edge, or select it and use the delete button.</p></div>
