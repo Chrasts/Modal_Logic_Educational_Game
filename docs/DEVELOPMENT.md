@@ -45,14 +45,17 @@ construction-only objectives. A construction level omits `formula`, `scope`,
 and `targetTruth`; `validateLevelObjective` rejects ambiguous combinations.
 Its normal verification path applies existing construction constraints followed
 by `verifyConstructionObjective`, without invoking the formula evaluator.
-`workspacePresentation` declares the focused Intro controls (`worlds`,
+`workspacePresentation` declares the focused Learn controls (`worlds`,
 `valuations`, `edges`, and `evaluation`) so absent panels are not merely
 disabled or keyboard-focusable. Existing semantic/custom formats remain
 compatible because semantic fields and custom-file parsing are unchanged.
 
-Campaigns keeps its selected Intro, General Challenges, or Practice Library
-section in component state. Guided return navigation selects the originating
-section while direct Campaigns navigation defaults to Intro.
+Home and global navigation direct newcomers to Learn. Campaigns keeps its
+selected General Challenges or Practice Library section in component state.
+Guided Learn HUDs keep Check task visible, hide raw technical constraints unless
+authored `workspacePresentation.visibleConstraints` is present, and invalidate
+the current verification result after semantic or structural edits. Historical
+completion is kept separately from the current pending/success/failure attempt.
 
 ## Verification scopes
 
