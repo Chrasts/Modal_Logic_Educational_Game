@@ -9,6 +9,8 @@ export interface WorkspacePresentation {
   readonly valuations?: boolean
   readonly edges?: boolean
   readonly evaluation?: boolean
+  /** Authored, learner-facing guardrails. Raw implementation bounds stay hidden. */
+  readonly visibleConstraints?: readonly string[]
 }
 
 export interface GameLevel {

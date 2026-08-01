@@ -19,6 +19,7 @@ import { guidedCampaigns } from './guided-campaigns'
 import { learnCourse, learnLessons, learnLessonByTaskId } from './learn'
 import { learnProgressKey, loadLearnProgress, type LearnProgress } from './learn-progress'
 import { LearnLessonView } from './LearnLessonView'
+import { ModalLogicWelcome } from './ModalLogicWelcome'
 import type { LearnStage } from './learn'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
@@ -33,7 +34,6 @@ import {
   collectAtoms,
   countConstructionChanges,
   DEFAULT_MAXIMUM_VALUATIONS,
-  describeConstructionConstraints,
   parseFormula,
   verifyObjective,
   verifyConstructionObjective,
@@ -66,8 +66,8 @@ type VerificationResult =
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom'
 type GuideTab = 'overview' | 'start' | 'theory' | 'operators' | 'scopes' | 'relations' | 'objectives' | 'controls' | 'glossary'
-type AppView = 'home' | 'practice' | 'workspace' | 'learn' | 'learnLesson' | 'tutorial' | 'campaigns' | 'create' | 'guide' | 'profile' | 'settings'
-type CampaignSection = 'intro' | 'challenges' | 'practice'
+type AppView = 'home' | 'practice' | 'workspace' | 'learn' | 'welcome' | 'learnLesson' | 'tutorial' | 'campaigns' | 'create' | 'guide' | 'profile' | 'settings'
+type CampaignSection = 'challenges' | 'practice'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
@@ -332,12 +332,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [learnTransferActive, setLearnTransferActive] = useState(false)
   const [learnConceptOpen, setLearnConceptOpen] = useState(false)
   const [expandedLearnChapterId, setExpandedLearnChapterId] = useState<string | null>(null)
+  const [utilityMenuOpen, setUtilityMenuOpen] = useState(false)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
   const [authoredCampaignMissions, setAuthoredCampaignMissions] = useState<readonly ParsedCustomLevelFile[]>([])
   const [appView, setAppView] = useState<AppView>(initialView)
-  const [campaignSection, setCampaignSection] = useState<CampaignSection>('intro')
+  const [campaignSection, setCampaignSection] = useState<CampaignSection>('challenges')
   const [campaignLevelIndex, setCampaignLevelIndex] = useState(0)
   const [campaignTrackIndex, setCampaignTrackIndex] = useState(0)
   const [playingTrackIndex, setPlayingTrackIndex] = useState<number | null>(null)
@@ -507,6 +508,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return () => window.removeEventListener('keydown', closeDialog)
   }, [showHelp, showFrameRules, showDataManager])
 
+  useEffect(() => {
+    const closeUtilityMenu = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUtilityMenuOpen(false)
+    }
+    window.addEventListener('keydown', closeUtilityMenu)
+    return () => window.removeEventListener('keydown', closeUtilityMenu)
+  }, [])
+
   const usableWorldIds = useMemo(
     () => worlds.map(({ id }) => id.trim()).filter((id, index, ids) => id && ids.indexOf(id) === index),
     [worlds],
@@ -644,6 +653,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const tutorialCompleted = tutorialLevels.filter((level) => completedLevelIds.has(level.id)).length
   const nextTutorialIndex = tutorialLevels.findIndex((level) => !completedLevelIds.has(level.id))
   const introCompleted = learnProgress.completedLessonIds.length
+  const playableLearningCompleted = tutorialCompleted + introCompleted
+  const availableLearningTotal = tutorialLevels.length + learnLessons.length
   const selectedTrackCompleted = selectedTrack.levels.filter((level) => completedLevelIds.has(level.id)).length
   const nextSelectedLevelIndex = selectedTrack.levels.findIndex((level) => !completedLevelIds.has(level.id))
   const overallCampaignLevels = campaignTracks.reduce((total, track) => total + track.levels.length, 0)
@@ -684,6 +695,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return summary
   }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const courseLesson = activeLevel ? learnLessonByTaskId.get(activeLevel.id) : undefined
+  const activeLearnChapter = courseLesson ? learnCourse.chapters.find((chapter) => chapter.id === courseLesson.chapterId) : undefined
+  const activeLearnChapterIndex = activeLearnChapter && courseLesson ? activeLearnChapter.lessons.findIndex((lesson) => lesson.id === courseLesson.id) : -1
+  const activeLearnChapterCompleted = activeLearnChapter?.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length ?? 0
+  const nextLearnChapter = activeLearnChapter ? learnCourse.chapters[learnCourse.chapters.findIndex((chapter) => chapter.id === activeLearnChapter.id) + 1] : undefined
   const isGuidedMode = gameMode !== 'sandbox'
   const isHowToPlay = gameMode === 'tutorial'
   const isConstructionObjective = activeLevel?.objectiveKind === 'construction'
@@ -939,10 +954,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setAppView('workspace')
   }
 
-  const continueIntroToModalLogic = () => {
-    const nextLearn = learnLessons.findIndex((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))
-    if (nextLearn >= 0) { startLearnLesson(nextLearn); return }
-    startLearnLesson(0)
+  const markWelcomeViewed = () => setLearnProgress((current) => current.welcomeViewed ? current : { ...current, welcomeViewed: true })
+
+  const continueLearningPath = () => {
+    if (!learnProgress.welcomeViewed) { setAppView('welcome'); return }
+    if (nextTutorialIndex >= 0) { startGuidedLevel('tutorial', nextTutorialIndex); return }
+    for (const chapter of learnCourse.chapters.filter((item) => item.lessons.length > 0)) {
+      const lesson = chapter.lessons.find((item) => !learnProgress.completedLessonIds.includes(item.id))
+      if (lesson) { startLearnLesson(learnLessons.findIndex((item) => item.id === lesson.id)); return }
+    }
+    setAppView('learn')
   }
 
   const returnToSandbox = () => {
@@ -1528,7 +1549,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   }
 
   const returnToGuidedBrowser = () => {
-    if (gameMode === 'learn' || gameMode === 'tutorial') { setCampaignSection('intro'); setAppView('campaigns') }
+    if (gameMode === 'learn' || gameMode === 'tutorial') setAppView('learn')
     else if (gameMode === 'guidedCampaign') { setCampaignSection('challenges'); setAppView('campaigns') }
     else if (gameMode === 'custom') {
       exitCampaign()
@@ -1547,7 +1568,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       else setAppView('home')
       return
     }
-    if (appView === 'learnLesson') setAppView('campaigns')
+    if (appView === 'learnLesson' || appView === 'welcome') setAppView('learn')
     else if (appView === 'tutorial' || appView === 'campaigns' || appView === 'practice' || appView === 'create') setAppView('home')
     else setAppView('home')
   }
@@ -1562,14 +1583,12 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
-        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'campaigns' || appView === 'learn' || appView === 'learnLesson' || gameMode === 'learn' || gameMode === 'guidedCampaign' ? 'active' : ''} type="button" onClick={() => { setCampaignSection('intro'); setAppView('campaigns') }}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'create' ? 'active' : ''} type="button" onClick={() => setAppView('create')}>Create</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'learn' ? 'Intro to Modal Logic' : gameMode === 'guidedCampaign' ? 'General Challenge' : gameMode === 'tutorial' ? 'How to Play' : gameMode === 'campaign' ? 'Practice' : customSequenceLabel}</span>}<button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
+        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || gameMode === 'learn' || gameMode === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || gameMode === 'guidedCampaign' || gameMode === 'campaign' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'learn' ? 'Learn' : gameMode === 'guidedCampaign' ? 'General Challenge' : gameMode === 'tutorial' ? 'Learn the Controls' : gameMode === 'campaign' ? 'Practice' : customSequenceLabel}</span>}</nav></div>
         <div className="topbar-actions">
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open Modal Logic Guide" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Guide</button>}
-          <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button>
-          <button type="button" className="text-button" onClick={() => setAppView('settings')}>Settings</button>
-          <button type="button" className="text-button fullscreen-button" onClick={() => void toggleFullscreen()} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
-          <a className="author-link" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">GitHub</a>
+          <div className="utility-menu"><button type="button" className="text-button" aria-haspopup="menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div role="menu" className="utility-menu-popover"><button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><button type="button" role="menuitem" onClick={() => { void toggleFullscreen(); setUtilityMenuOpen(false) }} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
+          <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button><button type="button" className="text-button" onClick={() => setAppView('profile')}>Profile</button><a className="author-link" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">GitHub</a>
         </div>
       </header>
 
@@ -1577,12 +1596,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'home' && (
         <section className="content-screen home-screen" aria-labelledby="home-title">
-          <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div><div className="home-progress"><span>Intro to Modal Logic progress</span><strong>{introCompleted}/{learnLessons.length}</strong><small>foundational lessons complete</small></div></div>
+          <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div><div className="home-progress"><span>Learning progress</span><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><small>currently available tasks complete</small></div></div>
           <div className="home-actions home-primary-actions" aria-label="Main menu">
-            <button type="button" className="home-menu-tile featured" onClick={() => setAppView('tutorial')}>HOW TO PLAY</button>
-            <button type="button" className="home-menu-tile" onClick={continueIntroToModalLogic}>INTRO TO MODAL LOGIC</button>
-            <button type="button" className="home-menu-tile" onClick={() => setAppView('campaigns')}>CAMPAIGNS</button>
-            <button type="button" className="home-menu-tile" onClick={returnToSandbox}>OPEN SANDBOX</button>
+            <button type="button" className="home-menu-tile featured learn-home-tile" onClick={continueLearningPath}><strong>{playableLearningCompleted === 0 ? 'START LEARNING' : 'CONTINUE LEARNING'}</strong><span>Next: {!learnProgress.welcomeViewed ? 'Welcome to Modal Logic' : nextTutorialIndex >= 0 ? 'Learn the Controls' : learnCourse.chapters.find((chapter) => chapter.id === learnLessons.find((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))?.chapterId)?.title ?? 'Learn overview'}</span><small>Learn the controls, then work through the basic ideas of finite Kripke semantics.</small></button>
+            <button type="button" className="home-menu-tile" onClick={() => setAppView('campaigns')}><strong>BROWSE CAMPAIGNS</strong><small>Choose longer challenges or focused practice.</small></button>
+            <button type="button" className="home-menu-tile" onClick={returnToSandbox}><strong>OPEN SANDBOX</strong><small>Build and test models freely without a guided task.</small></button>
           </div>
           <div className="home-secondary"><button type="button" aria-label="Open profile from home" onClick={() => setAppView('profile')}><strong>Profile</strong></button><button type="button" aria-label="Open settings from home" onClick={() => setAppView('settings')}><strong>Settings</strong></button><button type="button" aria-label="Open data manager from home" onClick={openDataManager}><strong>Data</strong></button></div>
         </section>
@@ -1600,11 +1618,12 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'learn' && (
         <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Introductory campaign</p><h1 id="learn-course-title">{learnCourse.title}</h1><p>{learnCourse.description}</p><button type="button" className="text-button" onClick={() => { setCampaignSection('intro'); setAppView('campaigns') }}>Back to Campaigns</button></div><div className="collection-progress"><strong>{learnProgress.completedLessonIds.length}/{learnLessons.length}</strong><span>lessons complete</span><div className="progress-meter"><i style={{ width: `${learnProgress.completedLessonIds.length / learnLessons.length * 100}%` }} /></div></div></div>
-          <div className="learn-chapter-list">{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); const expanded = expandedLearnChapterId === chapter.id; return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{chapter.lessons.length > 0 && <small>{completed}/{chapter.lessons.length} lessons · {chapter.lessons[currentIndex < 0 ? 0 : currentIndex]?.learningObjective}</small>}{chapterComplete && expanded && <div className="chapter-recap"><strong>Chapter recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}{chapter.lessons.length > 0 && expanded && <ol className="lesson-series">{chapter.lessons.map((lesson) => { const lessonIndex = learnLessons.findIndex(({ id }) => id === lesson.id); const done = learnProgress.completedLessonIds.includes(lesson.id); return <li key={lesson.id}><span>{lessonIndex + 1}</span><div><strong>{lesson.title}</strong><small>{lesson.learningObjective}</small></div><button type="button" onClick={() => startLearnLesson(lessonIndex)}>{done ? 'Replay' : 'Open'}</button></li> })}</ol>}</div>{chapter.lessons.length > 0 ? <div className="chapter-actions"><button type="button" className="primary-action" disabled={!available} onClick={() => startLearnLesson(currentIndex < 0 ? 0 : currentIndex)}>{completed ? chapterComplete ? 'Replay chapter' : 'Continue' : 'Start'}</button><button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide lessons' : 'View lessons'}</button></div> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p><button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : 'Continue Learning'}</button></div><div className="collection-progress"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>available tasks complete</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
+          <div className="learn-chapter-list"><article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article><article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : 'Continue'}</button></article>{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); const expanded = expandedLearnChapterId === chapter.id; return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{chapterComplete && expanded && <div className="chapter-recap"><strong>Section recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>{available ? <div className="chapter-actions"><button type="button" className="primary-action" onClick={() => startLearnLesson(currentIndex < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : currentIndex)}>{chapterComplete ? 'Replay section' : 'Continue'}</button><button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide recap' : 'View recap'}</button></div> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
         </section>
       )}
-      {appView === 'learnLesson' && activeLearnLesson && <LearnLessonView lesson={activeLearnLesson} stage={learnStage} predictionAnswer={predictionAnswer} predictionMessage={predictionAnswer ? (activeLearnLesson.task.prediction?.kind === 'truth' ? `You predict ${predictionAnswer}. You will test this in the workspace.` : `You selected ${predictionAnswer}. You will test this in the workspace.`) : undefined} exampleStep={learnExampleStep} onStage={(stage) => { setLearnStage(stage); if (stage === 'transfer') setLearnTransferActive(true) }} onPrediction={(answer) => { setPredictionAnswer(answer); const prediction = activeLearnLesson.task.prediction; const correct = prediction?.kind === 'truth' ? undefined : prediction?.expectedChoice === answer; setLearnProgress((current) => ({ ...current, predictionAnswers: { ...current.predictionAnswers, [activeLearnLesson.id]: answer }, predictionCorrectness: correct === undefined ? current.predictionCorrectness : { ...current.predictionCorrectness, [activeLearnLesson.id]: correct } })) }} onExampleStep={setLearnExampleStep} onBeginTask={beginLearnTask} onBack={() => { setLearnTransferActive(false); setCampaignSection('intro'); setAppView('campaigns') }} />}
+      {appView === 'welcome' && <ModalLogicWelcome onBegin={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onSkip={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onBack={() => setAppView('learn')} />}
+      {appView === 'learnLesson' && activeLearnLesson && <LearnLessonView lesson={activeLearnLesson} stage={learnStage} predictionAnswer={predictionAnswer} predictionMessage={predictionAnswer ? (activeLearnLesson.task.prediction?.kind === 'truth' ? `You predict ${predictionAnswer}. You will test this in the workspace.` : `You selected ${predictionAnswer}. You will test this in the workspace.`) : undefined} exampleStep={learnExampleStep} onStage={(stage) => { setLearnStage(stage); if (stage === 'transfer') setLearnTransferActive(true) }} onPrediction={(answer) => { setPredictionAnswer(answer); const prediction = activeLearnLesson.task.prediction; const correct = prediction?.kind === 'truth' ? undefined : prediction?.expectedChoice === answer; setLearnProgress((current) => ({ ...current, predictionAnswers: { ...current.predictionAnswers, [activeLearnLesson.id]: answer }, predictionCorrectness: correct === undefined ? current.predictionCorrectness : { ...current.predictionCorrectness, [activeLearnLesson.id]: correct } })) }} onExampleStep={setLearnExampleStep} onBeginTask={beginLearnTask} onBack={() => { setLearnTransferActive(false); setAppView('learn') }} />}
 
       {appView === 'settings' && (
         <section className="content-screen settings-screen" aria-labelledby="settings-title">
@@ -1620,7 +1639,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'tutorial' && (
         <section className="content-screen tutorial-screen" aria-labelledby="tutorial-screen-title">
-          <div className="screen-hero"><div><p className="eyebrow">Explore the interface</p><h1 id="tutorial-screen-title">How to Play</h1><p>{tutorialLevels.length} short steps teach the basic workspace controls: worlds, valuations, directed arrows, and the evaluation world.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay How to Play' : 'How to Play'}</button></div></div>
+          <div className="screen-hero"><div><p className="eyebrow">Learn Modal Logic · controls</p><h1 id="tutorial-screen-title">Learn the Controls</h1><p>{tutorialLevels.length} short steps teach the basic workspace controls: worlds, valuations, directed arrows, and the evaluation world.</p></div><div className="hero-action"><strong>{tutorialCompleted}/{tutorialLevels.length}</strong><span>steps complete</span><div className="progress-meter" aria-label={`${tutorialCompleted} of ${tutorialLevels.length} tutorial steps complete`}><i style={{ width: `${tutorialCompleted / tutorialLevels.length * 100}%` }} /></div><button type="button" className="primary-action" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay controls' : 'Begin controls'}</button></div></div>
           <div className="screen-note"><strong>How it works</strong><span>Each step opens the shared workspace with only the required controls unlocked. Progress is stored in this browser.</span></div>
           <div className="level-browser">{tutorialLevels.map((level, index) => <article className={completedLevelIds.has(level.id) ? 'complete' : ''} key={level.id}><span>{String(index + 1).padStart(2, '0')}</span><div><h2>{level.title}</h2><p>{level.concept}</p></div><b>{completedLevelIds.has(level.id) ? 'Complete' : 'Not completed'}</b><button type="button" onClick={() => startGuidedLevel('tutorial', index)}>{gameMode === 'tutorial' && campaignLevelIndex === index ? 'Continue' : 'Play'}</button></article>)}</div>
         </section>
@@ -1628,11 +1647,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'campaigns' && (
         <section className="content-screen campaign-screen" aria-labelledby="campaign-screen-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Structured learning and challenges</p><h1 id="campaign-screen-title">Campaigns</h1><p>Start with the foundations, then take on longer guided challenges or focused practice collections.</p><button type="button" className="text-button" onClick={() => setAppView('tutorial')}>Need help with controls?</button></div></div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Challenges and practice</p><h1 id="campaign-screen-title">Campaigns</h1><p>Choose longer challenges or focused practice collections.</p><div className="learn-callout"><strong>New to modal logic?</strong><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button></div></div></div>
           <div className="campaign-section-tabs" role="tablist" aria-label="Campaign sections">
-            {([['intro', 'Intro to Modal Logic'], ['challenges', 'General Challenges'], ['practice', 'Practice Library']] as const).map(([section, label]) => <button key={section} type="button" role="tab" aria-selected={campaignSection === section} aria-controls={`campaign-${section}`} className={campaignSection === section ? 'active' : ''} onClick={() => setCampaignSection(section)}>{label}</button>)}
+            {([['challenges', 'General Challenges'], ['practice', 'Practice Library']] as const).map(([section, label]) => <button key={section} type="button" role="tab" aria-selected={campaignSection === section} aria-controls={`campaign-${section}`} className={campaignSection === section ? 'active' : ''} onClick={() => setCampaignSection(section)}>{label}</button>)}
           </div>
-          {campaignSection === 'intro' && <section className="campaign-block" id="campaign-intro" role="tabpanel" aria-labelledby="intro-block-title"><div className="track-heading"><div><p className="eyebrow">Foundational, guided, and ordered</p><h2 id="intro-block-title">Intro to Modal Logic</h2><p>Learn finite Kripke semantics through short workspace missions.</p></div><div className="collection-progress"><strong>{introCompleted}/{learnLessons.length}</strong><span>lessons complete</span></div></div><div className="learn-chapter-list">{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const available = chapter.lessons.length > 0; const next = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); return <article className={completed === chapter.lessons.length && available ? 'complete' : ''} key={chapter.id}><div><p className="eyebrow">{available ? completed === chapter.lessons.length ? 'Completed' : 'Available' : 'Coming later'}</p><h3>{chapter.title}</h3><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}</div>{available ? <button type="button" className="primary-action" onClick={() => startLearnLesson(next < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : next)}>{completed === chapter.lessons.length ? 'Replay campaign' : completed ? 'Continue campaign' : 'Start campaign'}</button> : <span className="chapter-coming">Coming later</span>}</article> })}</div></section>}
           {campaignSection === 'challenges' && <section className="campaign-block" id="campaign-challenges" role="tabpanel" aria-labelledby="challenges-block-title"><div className="track-heading"><div><p className="eyebrow">Longer guided campaigns</p><h2 id="challenges-block-title">General Challenges</h2><p>Combine skills after completing the corresponding introductory ideas. Recommendations are not locks.</p></div></div><div className="learn-chapter-list">{guidedCampaigns.map((campaign, index) => { const completed = campaign.levels.filter((level) => completedLevelIds.has(level.id)).length; return <article className={completed === campaign.levels.length ? 'complete' : ''} key={campaign.id}><div><p className="eyebrow">Recommended after: {campaign.recommendedAfter}</p><h3>{campaign.title}</h3><p>{campaign.description}</p><small>{completed}/{campaign.levels.length} missions · {campaign.difficulty} · {campaign.estimatedTime}</small></div><button type="button" className="primary-action" onClick={() => startGuidedCampaign(index)}>{completed === campaign.levels.length ? 'Replay campaign' : completed ? 'Continue campaign' : 'Start campaign'}</button></article> })}</div></section>}
           {campaignSection === 'practice' && <section className="campaign-block" id="campaign-practice" role="tabpanel" aria-labelledby="practice-block-title"><div className="track-heading"><div><p className="eyebrow">Non-linear targeted exercises</p><h2 id="practice-block-title">Practice Library</h2><p>Choose a collection to rehearse a particular semantic objective or construction technique.</p></div><div className="collection-progress"><strong>{overallCampaignCompleted}/{overallCampaignLevels}</strong><span>practice missions complete</span></div></div><div className="learn-chapter-list">{campaignTracks.map((track, index) => { const completed = track.levels.filter((level) => completedLevelIds.has(level.id)).length; return <article className={completed === track.levels.length ? 'complete' : ''} key={track.id}><div><p className="eyebrow">Practice collection</p><h3>{track.title}</h3><p>{track.description}</p><small>{completed}/{track.levels.length} missions</small></div><button type="button" className="secondary-button" onClick={() => { setCampaignTrackIndex(index); setAppView('practice') }}>{completed === track.levels.length ? 'Replay collection' : completed ? 'Continue practice' : 'Open collection'}</button></article> })}</div></section>}
         </section>
@@ -1695,25 +1713,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <section className={`mission-hud ${courseLesson ? 'course-mission-hud' : ''}`} aria-label="Current level">
           <div className="mission-context">
             {gameMode === 'campaign' && <label className="campaign-track-picker"><span>Campaign</span><select aria-label="Campaign track" value={playingTrackIndex ?? campaignTrackIndex} onChange={(event) => selectCampaignTrack(Number(event.target.value))}>{campaignTracks.map((track, index) => <option key={track.id} value={index}>{track.title}</option>)}</select></label>}
-            <div className="campaign-progress"><span>{activeLevel.chapter} · {campaignLevelIndex + 1}/{activeLevels.length}</span>{completedLevelIds.has(activeLevel.id) && <b>Complete</b>}</div>
+            <div className="campaign-progress"><span>{courseLesson && activeLearnChapter ? `${activeLearnChapter.title} · Lesson ${activeLearnChapterIndex + 1} of ${activeLearnChapter.lessons.length}` : isHowToPlay ? `Learn the Controls · Step ${campaignLevelIndex + 1} of ${tutorialLevels.length}` : `${activeLevel.chapter} · ${campaignLevelIndex + 1}/${activeLevels.length}`}</span>{completedLevelIds.has(activeLevel.id) && <b>Previously completed</b>}</div>
             <strong>{activeLevel.title}</strong>
           </div>
           <div className="mission-copy">
-            {isHowToPlay && <div className="tutorial-task-card"><div><span>What to do</span><p>{activeLevel.instruction}</p></div><div><span>How</span><p>{activeLevel.briefing}</p></div></div>}
-            {focusedIntroWorkspace && !isConstructionObjective && activeLevel.formula && <div className="formula-comparison-header"><span>Formula <code>{activeLevel.formula}</code></span><small>Evaluate it at the selected world.</small></div>}
+            {isHowToPlay && <div className="tutorial-task-card"><div><span>Task</span><p>{activeLevel.instruction}</p></div></div>}
+            {focusedIntroWorkspace && !isConstructionObjective && activeLevel.formula && <div className="formula-comparison-header"><span>Formula <code>{activeLevel.formula}</code></span></div>}
             {activeLevel.comparisonFormula && <div className="formula-comparison-header"><span>Formula A <code>{activeLevel.formula}</code></span><span>Formula B <code>{activeLevel.comparisonFormula}</code></span>{activeLevel.comparisonTarget && <small>Goal: A {activeLevel.comparisonTarget.formulaATruth ? 'true' : 'false'} · B {activeLevel.comparisonTarget.formulaBTruth ? 'true' : 'false'} at {activeLevel.evaluationWorld}</small>}</div>}
             {!isHowToPlay && <div className="level-objective"><span>Objective</span><p>{activeLevel.instruction}</p></div>}
-            {!isHowToPlay && (activeLevel.constraints || activeLevel.frameRules || activeLevel.requiredFrameRules) && <div className="level-constraints"><span>Constraints</span><small>{[
-              ...describeConstructionConstraints(activeLevel.constraints ?? {}),
-              ...Object.entries(activeLevel.frameRules ?? {}).filter(([, mode]) => mode !== 'off').map(([property]) => property),
-              ...Object.entries(activeLevel.requiredFrameRules ?? {}).map(([property, mode]) => `${property}: ${mode}`),
-            ].filter(Boolean).join(' · ')}</small></div>}
+            {!isHowToPlay && activeLevel.workspacePresentation?.visibleConstraints?.length && <div className="level-constraints"><span>Remember</span><small>{activeLevel.workspacePresentation.visibleConstraints.join(' ')}</small></div>}
             {!isHowToPlay && !courseLesson && (activeLevel.briefing || activeLevel.learningObjective) && <details className="mission-details"><summary>Level details</summary><div>{activeLevel.briefing && <p>{activeLevel.briefing}</p>}<span>Learning objective</span><p>{activeLevel.learningObjective ?? activeLevel.concept}</p></div></details>}
           </div>
           <div className="campaign-navigation">
-            {courseLesson && <><button type="button" onClick={() => setLearnConceptOpen(true)}>Concept</button><button type="button" onClick={() => setAppView('campaigns')}>Campaigns</button></>}
-            <button type="button" disabled={campaignLevelIndex === 0} onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex - 1) : loadLevel(campaignLevelIndex - 1)}>Previous</button>
-            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || campaignLevelIndex === activeLevels.length - 1} onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex + 1) : loadLevel(campaignLevelIndex + 1)}>Next level</button>
+            {courseLesson && <><button type="button" onClick={() => setLearnConceptOpen(true)}>Concept</button><button type="button" onClick={() => setAppView('learn')}>Back to Learn</button></>}
+            <button type="button" disabled={courseLesson ? activeLearnChapterIndex === 0 : campaignLevelIndex === 0} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex - 1].id)) : loadLevel(campaignLevelIndex - 1)}>{courseLesson ? 'Previous lesson' : 'Previous'}</button>
+            {focusedIntroWorkspace && <div className="guided-action"><button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>Check task</button><small>When the model is ready, check the task.</small>{result && <span className={result.kind}>{result.message}</span>}</div>}
+            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || (courseLesson ? activeLearnChapterIndex === activeLearnChapter!.lessons.length - 1 : campaignLevelIndex === activeLevels.length - 1)} onClick={() => courseLesson ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex + 1].id)) : loadLevel(campaignLevelIndex + 1)}>{courseLesson ? 'Next lesson' : 'Next level'}</button>
           </div>
         </section>
       )}
@@ -1829,7 +1844,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               {selectedWorld && (
                 <Panel position="bottom-left" className="world-inspector">
                   <div className="inspector-heading"><strong>{selectedWorld.id || 'Unnamed world'}</strong><button type="button" onClick={() => setSelectedWorldKey(null)} aria-label="Close world inspector">×</button></div>
-                  <label><span>Name</span><input disabled={!canEditWorlds} value={selectedWorld.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'id', event.target.value)} /></label>
+                  {canEditWorlds && <label><span>Name</span><input value={selectedWorld.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'id', event.target.value)} /></label>}
                   {showValuations && tutorialAllows('valuations') && <label><span>True atoms</span><input disabled={!canEditValuations} value={selectedWorld.atoms} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'atoms', event.target.value)} /></label>}
                   <div className="inspector-actions">
                     {showEvaluationControl && tutorialAllows('evaluation') && <button type="button" onClick={() => selectEvaluationWorld(selectedWorld.id.trim())} disabled={!selectedWorld.id.trim() || !canEditEvaluation}>Set as evaluation world</button>}
@@ -1863,9 +1878,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             {worlds.map((world, index) => (
               <div className="world-row" key={world.key}>
                 <span className="world-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-                <label><span>World</span><input disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></label>
+                {canEditWorlds || !focusedIntroWorkspace ? <label><span>World</span><input disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></label> : <span className="readonly-world"><small>World</small>{world.id}</span>}
                 {showValuations && tutorialAllows('valuations') && <label className="atoms-field"><span>True atoms</span><input disabled={!canEditValuations} value={world.atoms} placeholder={isHowToPlay ? 'p' : 'p, q'} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></label>}
-                <button type="button" className="remove-button" disabled={!canEditWorlds} onClick={() => removeWorld(world.key)} aria-label={`Delete world ${world.id}`}>×</button>
+                {canEditWorlds && <button type="button" className="remove-button" onClick={() => removeWorld(world.key)} aria-label={`Delete world ${world.id}`}>×</button>}
               </div>
             ))}
           </div>
@@ -1882,11 +1897,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             {edges.map((edge) => (
               <div className="edge-row" key={edge.key}>
                 <span className="edge-mark" aria-hidden="true">R</span>
-                <select disabled={!canEditEdges} aria-label="Edge source world" value={edge.from} onFocus={saveHistoryPoint} onChange={(event) => setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, from: event.target.value } : item))}>
+                <select disabled={!canEditEdges} aria-label="Edge source world" value={edge.from} onFocus={saveHistoryPoint} onChange={(event) => { setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, from: event.target.value } : item)); setResult(null) }}>
                   <option value="">—</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
                 </select>
                 <span className="relation-arrow" aria-hidden="true">→</span>
-                <select disabled={!canEditEdges} aria-label="Edge target world" value={edge.to} onFocus={saveHistoryPoint} onChange={(event) => setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, to: event.target.value } : item))}>
+                <select disabled={!canEditEdges} aria-label="Edge target world" value={edge.to} onFocus={saveHistoryPoint} onChange={(event) => { setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, to: event.target.value } : item)); setResult(null) }}>
                   <option value="">—</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
                 </select>
                 <button type="button" className="remove-button" disabled={!canEditEdges} onClick={() => deleteEdge(edge.key)} aria-label="Delete edge">×</button>
@@ -1912,7 +1927,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           {!isConstructionObjective && frameValuationEstimate && <div className={`valuation-cost ${frameValuationLimitExceeded ? 'limit' : ''}`} role="status"><span>Frame search</span><strong>{frameValuationEstimate.valuations.toLocaleString('en-US')} valuations</strong><small>{usableWorldIds.length} worlds × {frameValuationEstimate.atoms} atoms · limit {DEFAULT_MAXIMUM_VALUATIONS.toLocaleString('en-US')}</small>{frameValuationLimitExceeded && <em>Reduce the number of worlds or distinct atoms before verification.</em>}</div>}
           {showEvaluationControl && <label className="field">
             <span>Evaluation world</span>
-            <select disabled={(!isConstructionObjective && evaluationScope !== 'pointed') || !canEditEvaluation} value={evaluationWorld} onChange={(event) => { setEvaluationWorld(event.target.value); setResult(null) }}>
+            <select disabled={(!isConstructionObjective && evaluationScope !== 'pointed') || !canEditEvaluation} value={evaluationWorld} onChange={(event) => selectEvaluationWorld(event.target.value)}>
               <option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
             </select>
           </label>}
@@ -1933,7 +1948,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                       : <div className="model-choice-grid" role="radiogroup" aria-label="Candidate model answer">{activeLevel.prediction.modelChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><strong>Model {choice.id}</strong><span>Evaluation: {choice.evaluationWorld}</span><div>{choice.worlds.map((world) => <code key={world.id}>{world.id}: {world.atoms.trim() ? `{${world.atoms.split(/[\s,]+/u).filter(Boolean).join(', ')}}` : '∅'}</code>)}</div><small>R = {choice.edges.length ? `{${choice.edges.map(({ from, to }) => `(${from},${to})`).join(', ')}}` : '∅'}</small></button>)}</div>}
             </div>
           )}
-          <button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>{isConstructionObjective ? 'Check task' : 'Verify objective'}</button>
+          {!focusedIntroWorkspace && <button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>Verify objective</button>}
           <div className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
             <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
             {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
@@ -1962,22 +1977,19 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <div className="dialog-backdrop completion-backdrop" role="presentation">
           <section className="completion-dialog" role="dialog" aria-modal="true" aria-labelledby="completion-title">
             <div className="completion-mark" aria-hidden="true">✓</div>
-            <p className="eyebrow">{courseLesson ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'How to Play complete' : gameMode === 'custom' ? customSequenceLabel : gameMode === 'guidedCampaign' ? 'Campaign complete' : 'Practice collection complete'}` : 'Objective verified'}</p>
+            <p className="eyebrow">{courseLesson || isHowToPlay ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'custom' ? customSequenceLabel : gameMode === 'guidedCampaign' ? 'Campaign complete' : 'Practice collection complete'}` : 'Objective verified'}</p>
             <h2 id="completion-title">{courseLesson ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
             <p>{courseLesson ? <><strong>What this shows:</strong> {courseLesson.successExplanation}</> : <><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</>}</p>
             {courseLesson?.commonMistake && <p className="completion-common-mistake"><strong>Common mistake:</strong> {courseLesson.commonMistake}</p>}
             {(gameMode === 'guidedCampaign' || isHowToPlay) && activeLevel.successDebrief && <p className="completion-common-mistake"><strong>What this shows:</strong> {activeLevel.successDebrief}</p>}
             {gameMode === 'guidedCampaign' && referenceSolutionViewed.has(activeLevel.id) && <p className="completion-common-mistake"><strong>Assisted completion:</strong> You viewed a reference construction before completing this mission.</p>}
-            <p className="solution-diversity">Distinct solutions recorded for this mission: <strong>{activeDistinctSolutionCount}</strong>.</p>
-            <div className="completion-metrics" aria-label="Construction metrics"><span><b>{worlds.length}</b> worlds</span><span><b>{new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size}</b> explicit edges</span><span><b>{currentTrueAtomCount}</b> true atoms</span>{currentSemanticChanges !== undefined && <span><b>{currentSemanticChanges}</b> changes from start</span>}</div>
+            {!focusedIntroWorkspace && <><p className="solution-diversity">Distinct solutions recorded for this mission: <strong>{activeDistinctSolutionCount}</strong>.</p><div className="completion-metrics" aria-label="Construction metrics"><span><b>{worlds.length}</b> worlds</span><span><b>{new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size}</b> explicit edges</span><span><b>{currentTrueAtomCount}</b> true atoms</span>{currentSemanticChanges !== undefined && <span><b>{currentSemanticChanges}</b> changes from start</span>}</div></>}
             {result.prediction && <p className={`completion-prediction ${result.prediction.correct ? 'correct' : 'incorrect'}`}><strong>{result.prediction.correct ? 'Prediction correct.' : 'Prediction incorrect.'}</strong> {result.prediction.detail}</p>}
             {result.bonus && <p className={`completion-bonus ${result.bonus.achieved ? 'achieved' : ''}`}>{result.bonus.detail}</p>}
-            <div className="completion-progress"><span>{activeLevels.filter((level) => completedLevelIds.has(level.id)).length}/{activeLevels.length} complete</span><div className="progress-meter"><i style={{ width: `${activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>
+            <div className="completion-progress"><span>{courseLesson && activeLearnChapter ? `${activeLearnChapterCompleted}/${activeLearnChapter.lessons.length} lessons complete` : activeLevels.filter((level) => completedLevelIds.has(level.id)).length + '/' + activeLevels.length + ' complete'}</span><div className="progress-meter"><i style={{ width: `${courseLesson && activeLearnChapter ? activeLearnChapterCompleted / activeLearnChapter.lessons.length * 100 : activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>
             <div className="completion-actions">
-              {campaignLevelIndex < activeLevels.length - 1
-                ? <button type="button" className="primary-action" autoFocus onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex + 1) : loadLevel(campaignLevelIndex + 1)}>{courseLesson ? 'Continue to next lesson' : 'Next mission'}</button>
-                : <button type="button" className="primary-action" autoFocus onClick={courseLesson ? () => setAppView('campaigns') : isHowToPlay ? continueIntroToModalLogic : returnToGuidedBrowser}>{courseLesson ? 'Back to Campaigns' : isHowToPlay ? 'Continue to Intro to Modal Logic' : gameMode === 'custom' ? 'Return to sandbox' : gameMode === 'guidedCampaign' ? 'Back to Campaigns' : 'Back to Practice'}</button>}
-              <button type="button" className="secondary-button" onClick={() => loadLevel(campaignLevelIndex)}>Replay mission</button>
+              {courseLesson ? activeLearnChapterIndex < activeLearnChapter!.lessons.length - 1 ? <button type="button" className="primary-action" autoFocus onClick={() => startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === activeLearnChapter!.lessons[activeLearnChapterIndex + 1].id))}>Next lesson</button> : <button type="button" className="primary-action" autoFocus onClick={() => nextLearnChapter?.lessons[0] ? startLearnLesson(learnLessons.findIndex((lesson) => lesson.id === nextLearnChapter.lessons[0].id)) : setAppView('learn')}>{nextLearnChapter?.lessons[0] ? `Continue to ${nextLearnChapter.title}` : 'Back to Learn'}</button> : campaignLevelIndex < activeLevels.length - 1 ? <button type="button" className="primary-action" autoFocus onClick={() => loadLevel(campaignLevelIndex + 1)}>{isHowToPlay ? 'Next lesson' : 'Next mission'}</button> : <button type="button" className="primary-action" autoFocus onClick={isHowToPlay ? continueLearningPath : returnToGuidedBrowser}>{isHowToPlay ? 'Continue to Truth at a World' : gameMode === 'custom' ? 'Return to sandbox' : gameMode === 'guidedCampaign' ? 'Back to Campaigns' : 'Back to Practice'}</button>}
+              <button type="button" className="secondary-button" onClick={() => loadLevel(campaignLevelIndex)}>{focusedIntroWorkspace ? 'Replay' : 'Replay mission'}</button>
               {courseLesson ? <button type="button" className="text-button" onClick={() => { setCompletionDismissed(true); setLearnConceptOpen(true) }}>Review concept</button> : campaignLevelIndex < activeLevels.length - 1 && <button type="button" className="text-button" onClick={returnToGuidedBrowser}>Back to overview</button>}
             </div>
             <button type="button" className="completion-close" onClick={() => setCompletionDismissed(true)}>Keep exploring this model</button>
@@ -2105,7 +2117,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <article><span>06</span><div><h3>Global and frame validity</h3><p><strong>M ⊨ φ</strong> quantifies over worlds under ν. <strong>F ⊨ φ</strong> additionally quantifies over every valuation ν.</p></div></article>
             </div>}
             {guideTab === 'controls' && <div className="help-grid">
-              <div><h3>Build the model</h3><p>Drag worlds to move them. Drag between handles to create an accessibility edge. Click a world to make it the evaluation world.</p></div>
+              <div><h3>Build the model</h3><p>Drag worlds to move them. Drag between handles to create an accessibility edge. Click a world to inspect it, then select Set as evaluation world.</p></div>
+              <div><h3>Guided tasks</h3><p>Make the requested edit, select Check task, then continue after the task is confirmed.</p></div>
               <div><h3>Editor modes</h3><p>Edit mode unlocks construction tools. Evaluate mode locks the graph against accidental changes and keeps verification close at hand.</p></div>
               <div><h3>Edit and delete</h3><p>Edit names and valuations in the side panel. Double-click an explicit edge, or select it and use the delete button.</p></div>
               <div><h3>Legend</h3><p><span className="legend-swatch petrol" /> Evaluation world<br /><span className="legend-line" /> Explicit edge<br /><span className="legend-line derived" /> Edge derived from frame properties<br /><span className="legend-reflexive">↻</span> Reflexive relation wRw</p></div>

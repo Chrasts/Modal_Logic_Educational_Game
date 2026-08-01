@@ -202,9 +202,9 @@ export const learnCourse: LearnCourse = {
     { id: 'possibility', title: 'Possibility', description: 'Learn existential modal semantics through accessible witnesses.', prerequisiteChapterIds: ['worlds-accessibility'], lessons: possibilityLessons, completionSummary: ['◇φ expresses existential quantification over accessible successors.', 'A witness must satisfy the operand and be accessible from the evaluation world.', 'Edge direction matters; truth elsewhere is insufficient.'], nextPreview: 'Next: Necessity — why one counterexample successor makes □φ false.', },
     { id: 'necessity', title: 'Necessity', description: 'Understand universal truth across accessible successors.', prerequisiteChapterIds: ['possibility'], lessons: [], completionSummary: [], },
     { id: 'nested-modalities', title: 'Box and Diamond', description: 'Combine possibility and necessity in modal formulas.', prerequisiteChapterIds: ['necessity'], lessons: [], completionSummary: [], },
-    { id: 'models-countermodels', title: 'Models and Countermodels', description: 'Construct models and countermodels.', prerequisiteChapterIds: ['nested-modalities'], lessons: [], completionSummary: [], },
-    { id: 'semantic-scopes', title: 'Local, Global, and Frame Validity', description: 'Separate pointed truth, model truth, and frame validity.', prerequisiteChapterIds: ['models-countermodels'], lessons: [], completionSummary: [], },
-    { id: 'frames-axioms', title: 'Frame Properties and Modal Axioms', description: 'Connect relational properties with modal axioms.', prerequisiteChapterIds: ['semantic-scopes'], lessons: [], completionSummary: [], },
+    { id: 'models-countermodels', title: 'Countermodels', description: 'Construct models and countermodels.', prerequisiteChapterIds: ['nested-modalities'], lessons: [], completionSummary: [], },
+    { id: 'semantic-scopes', title: 'Local, Global, and Frame Truth', description: 'Separate pointed truth, model truth, and frame validity.', prerequisiteChapterIds: ['models-countermodels'], lessons: [], completionSummary: [], },
+    { id: 'frames-axioms', title: 'Frame Properties', description: 'Connect relational properties with modal axioms.', prerequisiteChapterIds: ['semantic-scopes'], lessons: [], completionSummary: [], },
   ],
 }
 

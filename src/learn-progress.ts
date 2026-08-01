@@ -11,6 +11,8 @@ export interface LearnProgress {
   readonly hintsUsed: Readonly<Record<string, readonly number[]>>
   readonly transferCompletedLessonIds: readonly string[]
   readonly completedAt: Readonly<Record<string, string>>
+  /** Kept optional in storage so existing v1 progress remains valid. */
+  readonly welcomeViewed?: boolean
 }
 
 export const learnProgressKey = 'logic-game:learn-progress:v1'
