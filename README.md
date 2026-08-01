@@ -8,8 +8,10 @@ modal axioms and relational properties.
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
-The application opens on a home menu with direct routes to Campaigns, Sandbox,
-Create, Modal Logic Guide, Profile, settings, and local data tools. Shared
+The application opens on a home menu with one recommended **Start Learning** /
+**Continue Learning** path, plus Campaigns and Sandbox. Create, Profile,
+settings, local data tools, and GitHub remain available in the secondary More
+menu. Shared
 mission URLs intentionally bypass the menu and launch their validated content.
 
 ## What you can do
@@ -71,21 +73,21 @@ Build and inspect models freely. Choose whether a formula should hold at one
 world, globally under the displayed valuation, or on the underlying frame under
 all valuations.
 
-### How to Play and Campaigns
+### Learn Modal Logic
 
-**How to Play** is a replayable six-step workspace tutorial. It teaches only
-the controls: selecting an evaluation world, editing a valuation, drawing and
-correcting directed edges, adding a world, and combining those actions in a
-small model. It has no modal-semantics lesson or prediction gate. Completion
-continues to **Intro to Modal Logic**, the foundational Campaigns block.
+**Learn Modal Logic** is the single recommended route for new players. It
+starts with a replayable **Welcome to Modal Logic** visual introduction, then
+the replayable six-step **Learn the Controls** workspace tutorial, followed by
+**Truth at a World**, **Worlds and Accessibility**, and **Possibility**.
+Necessity, Box and Diamond, Countermodels, Local, Global, and Frame Truth, and
+Frame Properties are explicitly shown as coming later.
 
-**Intro to Modal Logic** currently contains the guided campaigns **Truth at a
-World**, **Worlds and Accessibility**, and **Possibility**. Necessity, Box and
-Diamond, Countermodels, Local, Global, and Frame Truth, and Frame Properties
-are shown as coming later.
+Guided tasks use the same cycle throughout: read the task, make the requested
+edit, select **Check task**, then continue after confirmation. The Check task
+action remains visible beside the mission task.
 
-Campaigns uses compact **Intro to Modal Logic**, **General Challenges**, and
-**Practice Library** tabs, returning to the relevant tab after a mission.
+Campaigns is a secondary place for **General Challenges** and **Practice
+Library**, with a clear link back to Learn for foundations.
 Purely structural introductory tasks use construction-only objectives: they
 check the required worlds, atoms, edges, and evaluation world without showing
 an artificial tautological formula. Semantic lessons still show their concise,
