@@ -16,16 +16,18 @@ import {
 import '@xyflow/react/dist/style.css'
 import { campaignTracks, legacyTutorialLevelIds, tutorialLevels, type GameLevel } from './campaign'
 import { guidedCampaigns } from './guided-campaigns'
-import { learnCourse, learnLessons, learnLessonByTaskId } from './learn'
+import { learnCourse, learnLessons, learnLessonByTaskId, type ConceptQuestion } from './learn'
 import { emptyLearnProgress, learnProgressKey, loadLearnProgress, type LearnProgress } from './learn-progress'
 import { LearnLessonView } from './LearnLessonView'
 import { ModalLogicWelcome } from './ModalLogicWelcome'
 import { MissionHeader, type MissionHeaderMode } from './components/MissionHeader'
+import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import type { LearnStage } from './learn'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
 import { createShareUrl, readSharedJson } from './share-url'
 import { createEducatorCsv } from './educator-export'
+import { auditMission, type MissionAuditFinding } from './mission-audit'
 import { assertValidReferenceSolution, parseCustomLevelFile, parseCustomLevelPackage, serializeCustomLevel, type ParsedCustomLevelFile, type ReferenceSolution } from './level-format'
 import {
   applyFrameProperties,
@@ -35,6 +37,7 @@ import {
   collectAtoms,
   countConstructionChanges,
   DEFAULT_MAXIMUM_VALUATIONS,
+  FormulaSyntaxError,
   parseFormula,
   verifyObjective,
   verifyConstructionObjective,
@@ -73,36 +76,13 @@ type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
 
-function EvaluationTree({ trace, root = false }: { readonly trace: EvaluationTrace; readonly root?: boolean }) {
-  return (
-    <details className={`evaluation-node ${trace.value ? 'true' : 'false'}`} open={root}>
-      <summary>
-        <code>{trace.worldId} ⊨ {trace.formula}</code>
-        <b>{trace.value ? 'True' : 'False'}</b>
-      </summary>
-      <div className="evaluation-node-body">
-        <span>{trace.summary}</span>
-        {trace.diagnostic && <em>{trace.diagnostic}</em>}
-        {trace.children.length > 0 && <div className="evaluation-children">{trace.children.map((child, index) => <EvaluationTree trace={child} key={`${child.worldId}:${child.formula}:${index}`} />)}</div>}
-      </div>
-    </details>
-  )
-}
-
-function collectEvaluationDiagnostics(traces: readonly EvaluationTrace[]): readonly string[] {
-  const diagnostics = new Set<string>()
-  const visit = (trace: EvaluationTrace): void => {
-    if (trace.diagnostic) diagnostics.add(trace.diagnostic)
-    trace.children.forEach(visit)
-  }
-  traces.forEach(visit)
-  return [...diagnostics].slice(0, 4)
-}
-
-function EvaluationDiagnostics({ traces }: { readonly traces: readonly EvaluationTrace[] }) {
-  const diagnostics = collectEvaluationDiagnostics(traces)
-  if (diagnostics.length === 0) return null
-  return <div className="diagnostic-highlights"><span>Key diagnostics</span><ul>{diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}</ul></div>
+function ChapterRecapQuestions({ questions }: { readonly questions: readonly ConceptQuestion[] }) {
+  const [answers, setAnswers] = useState<Readonly<Record<number, string>>>({})
+  return <div className="concept-recap" aria-label="Concept recap questions"><strong>Concept check</strong>{questions.map((question, index) => {
+    const answer = answers[index]
+    const correct = answer === question.correctChoice
+    return <fieldset key={question.prompt}><legend>{index + 1}. {question.prompt}</legend><div>{question.choices.map((choice) => <button type="button" className={answer === choice ? 'selected' : ''} aria-pressed={answer === choice} key={choice} onClick={() => setAnswers((current) => ({ ...current, [index]: choice }))}>{choice}</button>)}</div>{answer && <p role="status" className={correct ? 'correct' : 'incorrect'}><b>{correct ? 'Correct.' : 'Not quite.'}</b> {question.explanation}</p>}</fieldset>
+  })}</div>
 }
 
 function classifyObjectiveFailure(verdict: ObjectiveVerdict, scope: EvaluationScope, targetTruth: boolean, evaluationWorld: string): AttemptFailureCategory {
@@ -147,9 +127,10 @@ const currentCampaignContentRevision = 2
 const revisedCampaignLevelIds = new Set(['tutorial-v2-valuation'])
 const campaignAssistanceKey = 'logic-game:campaign-assistance:v1'
 const interfaceSettingsKey = 'logic-game:interface-settings:v1'
+const sandboxOrientationKey = 'logic-game:sandbox-orientation:v1'
 type InterfaceDensity = 'comfortable' | 'compact'
-interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean }
-const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false }
+interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean; readonly leftPanelOpen: boolean; readonly rightPanelOpen: boolean }
+const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false, leftPanelOpen: true, rightPanelOpen: true }
 const loadInterfaceSettings = (): InterfaceSettings => {
   try {
     const stored = JSON.parse(localStorage.getItem(interfaceSettingsKey) ?? 'null') as Partial<InterfaceSettings> | null
@@ -158,6 +139,8 @@ const loadInterfaceSettings = (): InterfaceSettings => {
       showMinimap: stored.showMinimap !== false,
       showDerivedEdges: stored.showDerivedEdges !== false,
       reduceMotion: stored.reduceMotion === true,
+      leftPanelOpen: stored.leftPanelOpen !== false,
+      rightPanelOpen: stored.rightPanelOpen !== false,
     } : defaultInterfaceSettings
   } catch { return defaultInterfaceSettings }
 }
@@ -345,6 +328,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false)
   const utilityMenuRef = useRef<HTMLDivElement>(null)
   const utilityMenuButtonRef = useRef<HTMLButtonElement>(null)
+  const formulaInputRef = useRef<HTMLInputElement>(null)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
@@ -381,9 +365,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   })
   const [result, setResult] = useState<VerificationResult>(null)
   const [predictionAnswer, setPredictionAnswer] = useState('')
+  const [traceStepIndex, setTraceStepIndex] = useState(0)
   const [levelTitle, setLevelTitle] = useState('My custom mission')
   const [levelInstruction, setLevelInstruction] = useState('Satisfy the configured objective.')
   const [levelLearningObjective, setLevelLearningObjective] = useState('Explore this modal construction.')
+  const [levelConcept, setLevelConcept] = useState('User-authored modal logic objective')
+  const [levelPrerequisites, setLevelPrerequisites] = useState('propositional connectives')
+  const [levelDifficulty, setLevelDifficulty] = useState<NonNullable<GameLevel['estimatedDifficulty']>>('introductory')
+  const [authorTemplateId, setAuthorTemplateId] = useState(tutorialLevels[0]?.id ?? '')
+  const [authorPreview, setAuthorPreview] = useState<'desktop' | 'mobile'>('desktop')
   const [levelEditable, setLevelEditable] = useState<ReadonlySet<string>>(new Set(['worlds', 'valuations', 'edges', 'constraints', 'evaluation']))
   const [levelBounds, setLevelBounds] = useState({ minimumWorlds: '', maximumWorlds: '', minimumEdges: '', maximumEdges: '', maximumChanges: '' })
   const [levelRequiredProperties, setLevelRequiredProperties] = useState<ReadonlySet<FramePropertyName>>(new Set())
@@ -397,6 +387,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [levelForbiddenAtoms, setLevelForbiddenAtoms] = useState('')
   const [levelStartSnapshot, setLevelStartSnapshot] = useState<AuthorStartSnapshot | null>(null)
   const [levelReferenceSolution, setLevelReferenceSolution] = useState<ReferenceSolution | null>(null)
+  const [missionAuditFindings, setMissionAuditFindings] = useState<readonly MissionAuditFinding[]>([])
 
   useEffect(() => {
     if (evaluationScope !== 'model' && levelPredictionKind === 'counterexample-world') setLevelPredictionKind('none')
@@ -414,12 +405,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [showFrameRules, setShowFrameRules] = useState(false)
   const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
   const [editorMode, setEditorMode] = useState<EditorMode>('edit')
+  const [modelView, setModelView] = useState<'graph' | 'table'>('graph')
+  const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState<'model' | 'formula' | 'result'>('model')
   const [showDerivedEdges, setShowDerivedEdges] = useState(initialInterfaceSettings.showDerivedEdges)
   const [showMinimap, setShowMinimap] = useState(initialInterfaceSettings.showMinimap)
   const [interfaceDensity, setInterfaceDensity] = useState<InterfaceDensity>(initialInterfaceSettings.density)
   const [reduceMotion, setReduceMotion] = useState(initialInterfaceSettings.reduceMotion)
-  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
-  const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [leftPanelOpen, setLeftPanelOpen] = useState(initialInterfaceSettings.leftPanelOpen)
+  const [rightPanelOpen, setRightPanelOpen] = useState(initialInterfaceSettings.rightPanelOpen)
+  const [showSandboxOrientation, setShowSandboxOrientation] = useState(() => initialView === 'workspace' && localStorage.getItem(sandboxOrientationKey) !== 'seen')
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null)
@@ -504,9 +498,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   }, [guestProfile])
 
   useEffect(() => {
-    const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion }
+    if (gameMode !== 'sandbox') return
+    const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, leftPanelOpen, rightPanelOpen }
     try { localStorage.setItem(interfaceSettingsKey, JSON.stringify(settings)) } catch { /* Preferences remain available for this session. */ }
-  }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion])
+  }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, leftPanelOpen, rightPanelOpen, gameMode])
 
   useEffect(() => {
     if (!showHelp && !showFrameRules && !showDataManager) return
@@ -577,6 +572,30 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges],
   )
 
+  const evaluationTraceSteps = result && 'verdict' in result && result.verdict
+    ? flattenEvaluationTraces([result.verdict.formula, result.verdict.relation, result.verdict.correspondence]
+      .filter(Boolean).flatMap((section) => section?.evaluationTraces ?? []))
+    : []
+  const activeTraceEntry = evaluationTraceSteps[Math.min(traceStepIndex, Math.max(0, evaluationTraceSteps.length - 1))]
+  const activeTrace = activeTraceEntry?.trace
+  const traceWitnessWorld = activeTrace?.rule === 'possibility' && activeTrace.value
+    ? activeTrace.children.find(({ value }) => value)?.worldId
+    : undefined
+  const traceCounterexampleWorld = activeTrace?.rule === 'necessity' && !activeTrace.value
+    ? activeTrace.children.find(({ value }) => !value)?.worldId
+    : undefined
+  const traceRelatedWorlds = useMemo(() => new Set([
+    activeTrace?.worldId,
+    activeTraceEntry?.parent?.worldId,
+    ...(activeTrace?.children.map(({ worldId }) => worldId) ?? []),
+  ].filter((id): id is string => Boolean(id))), [activeTrace, activeTraceEntry?.parent])
+  const traceCheckedEdges = useMemo(() => new Set([
+    ...(activeTrace?.children.map(({ worldId }) => `${activeTrace.worldId}\u0000${worldId}`) ?? []),
+    ...(activeTraceEntry?.parent && (activeTraceEntry.parent.rule === 'necessity' || activeTraceEntry.parent.rule === 'possibility')
+      ? [`${activeTraceEntry.parent.worldId}\u0000${activeTrace?.worldId}`]
+      : []),
+  ]), [activeTrace, activeTraceEntry?.parent])
+
   const nodeBlueprints = useMemo<FlowNode[]>(() => worlds.map((world) => ({
     id: String(world.key),
     position: world.position,
@@ -588,15 +607,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           {effectiveEdges.some((edge) => edge.from === world.id.trim() && edge.to === world.id.trim()) && (
             <span className="reflexive-badge" title={`${world.id} R ${world.id}`} aria-label="Reflexive relation">↻</span>
           )}
+          {activeTrace?.rule === 'atom' && activeTrace.worldId === world.id.trim() && <span className="trace-atom-badge">ATOM {activeTrace.formula} {activeTrace.value ? '✓' : '✕'}</span>}
+          {world.id.trim() === traceWitnessWorld && <span className="trace-role-badge witness">WITNESS</span>}
+          {world.id.trim() === traceCounterexampleWorld && <span className="trace-role-badge counterexample">COUNTEREXAMPLE</span>}
         </div>
       ),
     },
     className: [
       world.id.trim() === evaluationWorld ? 'evaluation-node' : '',
       world.key === selectedWorldKey ? 'selected-world-node' : '',
+      world.id.trim() === activeTrace?.worldId ? 'trace-current-node' : '',
+      world.id.trim() === traceWitnessWorld ? 'trace-witness-node' : '',
+      world.id.trim() === traceCounterexampleWorld ? 'trace-counterexample-node' : '',
+      activeTrace && !traceRelatedWorlds.has(world.id.trim()) ? 'trace-irrelevant-node' : '',
     ].filter(Boolean).join(' '),
     ariaLabel: `World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}`,
-  })), [worlds, effectiveEdges, evaluationWorld, selectedWorldKey])
+  })), [worlds, effectiveEdges, evaluationWorld, selectedWorldKey, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds])
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodeBlueprints)
 
@@ -621,11 +647,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       selectable: explicitKey !== undefined,
       focusable: explicitKey !== undefined,
       selected: explicitKey === selectedEdgeKey,
-      className: explicitKey === undefined
-        ? 'model-edge derived-edge'
-        : explicitKey === selectedEdgeKey ? 'model-edge selected-edge' : 'model-edge',
+      className: [
+        'model-edge',
+        explicitKey === undefined ? 'derived-edge' : '',
+        explicitKey === selectedEdgeKey ? 'selected-edge' : '',
+        traceCheckedEdges.has(`${edge.from}\u0000${edge.to}`) ? 'trace-checked-edge' : '',
+        edge.to === traceWitnessWorld && activeTrace?.worldId === edge.from ? 'trace-witness-edge' : '',
+        edge.to === traceCounterexampleWorld && activeTrace?.worldId === edge.from ? 'trace-counterexample-edge' : '',
+        activeTrace && !traceCheckedEdges.has(`${edge.from}\u0000${edge.to}`) ? 'trace-irrelevant-edge' : '',
+      ].filter(Boolean).join(' '),
     }] : []
-  }), [displayedEdges, worldKeyById, explicitEdgeKeyByPair, selectedEdgeKey])
+  }), [displayedEdges, worldKeyById, explicitEdgeKeyByPair, selectedEdgeKey, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace])
 
   const MiniMapWithRelations = useMemo(() => {
     const worldByKey = new Map(worlds.map((world) => [String(world.key), world]))
@@ -673,7 +705,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const selectedTrack = campaignTracks[campaignTrackIndex]
   const playingTrack = campaignTracks[playingTrackIndex ?? campaignTrackIndex]
   const selectedGuidedCampaign = guidedCampaigns[guidedCampaignIndex]
-  const learnTaskLevels = learnLessons.map(({ task }) => ({ ...task, prediction: task.prediction?.mustBeCorrect ? task.prediction : undefined }))
+  const learnTaskLevels = learnLessons.map(({ task }) => task)
   const activeLevels = gameMode === 'tutorial' ? tutorialLevels : gameMode === 'learn' ? learnTaskLevels : gameMode === 'campaign' ? playingTrack.levels : gameMode === 'guidedCampaign' ? selectedGuidedCampaign.levels : gameMode === 'custom' ? customLevels : []
   const activeLevel = gameMode === 'sandbox' ? null : activeLevels[campaignLevelIndex] ?? null
   const customSequenceLabel = customLevels.length > 1 ? 'Custom campaign' : 'Custom mission'
@@ -691,6 +723,23 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const distinctSolutions = Object.values(guestProfile.solutionSignatures).reduce((total, signatures) => total + signatures.length, 0)
   const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
   const currentValuation = Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)]))
+  const scopeComparison = (() => {
+    if (!activeLevel?.showScopeComparison || !formulaSource.trim() || usableWorldIds.length === 0) return null
+    try {
+      const formula = parseFormula(formulaSource)
+      return (['pointed', 'model', 'frame'] as const).map((scope) => ({
+        scope,
+        holds: verifyObjective({ scope, targetTruth: true, evaluationWorld }, {
+          worldIds: usableWorldIds,
+          edges: effectiveEdges,
+          valuation: currentValuation,
+          formula,
+        }).formula.holds,
+      }))
+    } catch {
+      return null
+    }
+  })()
   const currentTrueAtomCount = Object.values(currentValuation).reduce((total, atoms) => total + atoms.length, 0)
   const activeBaseline = activeLevel ? {
     worldIds: activeLevel.worlds.map(({ id }) => id), explicitEdges: activeLevel.edges,
@@ -722,6 +771,44 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return summary
   }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const courseLesson = activeLevel ? learnLessonByTaskId.get(activeLevel.id) : undefined
+  const activeLevelFailureCount = activeLevel ? guestProfile.history.filter((entry) => entry.levelId === activeLevel.id && !entry.success).length : 0
+  const semanticFeedbackLevel = result?.kind === 'failure' && activeLevel ? Math.max(1, Math.min(3, activeLevelFailureCount)) : 3
+  const completionDialogOpen = Boolean(appView === 'workspace' && activeLevel && result?.kind === 'success' && !completionDismissed)
+  const anyDialogOpen = showHelp || showFrameRules || showDataManager || learnConceptOpen || showSandboxOrientation || completionDialogOpen
+  const dialogReturnFocusRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!anyDialogOpen) {
+      dialogReturnFocusRef.current?.focus()
+      dialogReturnFocusRef.current = null
+      return
+    }
+    if (!dialogReturnFocusRef.current && document.activeElement instanceof HTMLElement) dialogReturnFocusRef.current = document.activeElement
+    const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"]')
+    const dialog = dialogs.item(dialogs.length - 1)
+    if (!dialog) return
+    const focusable = () => [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')]
+    focusable()[0]?.focus()
+    const keepFocusInside = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (showSandboxOrientation) { try { localStorage.setItem(sandboxOrientationKey, 'seen') } catch { /* Optional persistence. */ }; setShowSandboxOrientation(false) }
+        else if (learnConceptOpen) setLearnConceptOpen(false)
+        else if (completionDialogOpen) setCompletionDismissed(true)
+        else { setShowHelp(false); setShowFrameRules(false); setShowDataManager(false) }
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (items.length === 0) { event.preventDefault(); dialog.focus(); return }
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    dialog.addEventListener('keydown', keepFocusInside)
+    return () => dialog.removeEventListener('keydown', keepFocusInside)
+  }, [anyDialogOpen, completionDialogOpen, learnConceptOpen, showSandboxOrientation])
   const activeLearnChapter = courseLesson ? learnCourse.chapters.find((chapter) => chapter.id === courseLesson.chapterId) : undefined
   const activeLearnChapterIndex = activeLearnChapter && courseLesson ? activeLearnChapter.lessons.findIndex((lesson) => lesson.id === courseLesson.id) : -1
   const activeLearnChapterCompleted = activeLearnChapter?.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length ?? 0
@@ -757,6 +844,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedEdgeKey !== null && canEditEdges) {
         event.preventDefault()
         deleteEdge(selectedEdgeKey)
+        return
+      }
+      if (event.altKey && evaluationTraceSteps.length > 0 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault()
+        setTraceStepIndex((current) => event.key === 'ArrowLeft' ? Math.max(0, current - 1) : Math.min(evaluationTraceSteps.length - 1, current + 1))
         return
       }
       if (!canUseHistory || !event.ctrlKey) return
@@ -1014,7 +1106,31 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const returnToSandbox = () => {
     if (isGuidedMode) exitCampaign()
+    if (localStorage.getItem(sandboxOrientationKey) !== 'seen') setShowSandboxOrientation(true)
     setAppView('workspace')
+  }
+
+  const dismissSandboxOrientation = () => {
+    try { localStorage.setItem(sandboxOrientationKey, 'seen') } catch { /* Orientation may repeat when storage is unavailable. */ }
+    setShowSandboxOrientation(false)
+  }
+
+  const applySandboxPreset = (preset: 'build' | 'evaluate' | 'frame') => {
+    if (preset === 'build') {
+      setEditorMode('edit')
+      setRightPanelOpen(true)
+      setLeftPanelOpen(false)
+      return
+    }
+    if (preset === 'evaluate') {
+      setEditorMode('evaluate')
+      setLeftPanelOpen(true)
+      setTimeout(() => formulaInputRef.current?.focus(), 0)
+      return
+    }
+    setEditorMode('edit')
+    setLeftPanelOpen(true)
+    setShowFrameRules(true)
   }
 
   const selectCampaignTrack = (index: number) => {
@@ -1026,6 +1142,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const exitCampaign = () => {
     const draft = sandboxBeforeCampaign.current
     setGameMode('sandbox')
+    const settings = loadInterfaceSettings()
+    setLeftPanelOpen(settings.leftPanelOpen)
+    setRightPanelOpen(settings.rightPanelOpen)
     if (!draft) return
     setFormulaSource(draft.formulaSource)
     setComparisonFormulaSource(draft.comparisonFormulaSource ?? '')
@@ -1112,7 +1231,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const verify = () => {
     try {
       setCompletionDismissed(false)
-      if (activeLevel?.prediction && !predictionAnswer) {
+      setTraceStepIndex(0)
+      const missingScopePrediction = activeLevel?.prediction?.kind === 'scope-truth' && predictionAnswer.split(',').filter(Boolean).length !== 3
+      if (activeLevel?.prediction && activeLevelFailureCount === 0 && (!predictionAnswer || missingScopePrediction)) {
         setResult({ kind: 'failure', message: 'Make a prediction first', detail: activeLevel.prediction.prompt })
         recordAttempt(false, undefined, 'missing-answer')
         return
@@ -1187,7 +1308,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       const bonusViolations = verdict.success && activeLevel?.bonusConstraints
         ? checkConstructionConstraints(constraintInput, activeLevel.bonusConstraints)
         : []
-      const prediction = !isConstructionObjective && activeLevel?.prediction
+      const prediction = !isConstructionObjective && activeLevel?.prediction && predictionAnswer
         ? (() => {
             const correct = activeLevel.prediction.kind === 'truth'
               ? predictionAnswer === String(verdict.formula.holds)
@@ -1210,6 +1331,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                       ? `${predictionAnswer} is not the accessible witness required here.`
                       : activeLevel.prediction.kind === 'frame-property'
                       ? `${predictionAnswer} is not the required relational property.`
+                      : activeLevel.prediction.kind === 'scope-truth'
+                        ? 'At least one of your local, global, or frame-valid predictions did not match.'
                       : activeLevel.prediction.kind === 'countervaluation'
                         ? `${predictionAnswer} is not the countervaluation that refutes the formula.`
                         : `${predictionAnswer} is not the required candidate model.`,
@@ -1258,6 +1381,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     } catch (error) {
       setResult({ kind: 'error', message: error instanceof Error ? error.message : 'Verification failed.' })
       recordAttempt(false, undefined, 'syntax-or-model')
+      if (error instanceof FormulaSyntaxError) {
+        setLeftPanelOpen(true)
+        setTimeout(() => {
+          formulaInputRef.current?.focus()
+          formulaInputRef.current?.setSelectionRange(error.position, Math.min(error.position + 1, formulaSource.length))
+        }, 0)
+      }
     }
   }
 
@@ -1296,7 +1426,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     id: `custom-${levelTitle.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '') || 'mission'}`,
     chapter: 'Custom mission',
     title: levelTitle.trim() || 'Custom mission',
-    concept: 'User-authored modal logic objective',
+    concept: levelConcept.trim() || 'User-authored modal logic objective',
+    conceptTags: levelConcept.split(',').map((tag) => tag.trim()).filter(Boolean),
+    prerequisites: levelPrerequisites.split(',').map((item) => item.trim()).filter(Boolean),
+    estimatedDifficulty: levelDifficulty,
     learningObjective: levelLearningObjective.trim() || undefined,
     instruction: levelInstruction.trim() || 'Satisfy the configured objective.',
     formula: start.formulaSource,
@@ -1513,8 +1646,63 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     downloadJson(serializedModel(), 'kripke-model.json')
   }
 
+  const duplicateBuiltInMission = () => {
+    const templates = [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)]
+    const source = templates.find(({ id }) => id === authorTemplateId)
+    if (!source) return
+    const duplicatedWorlds = source.worlds.map((world, key) => ({ ...world, key }))
+    const duplicatedEdges = source.edges.map((edge, key) => ({ ...edge, key }))
+    const duplicatedRules = { ...defaultFrameRules, ...source.frameRules }
+    setFormulaSource(source.formula ?? '')
+    setComparisonFormulaSource(source.comparisonFormula ?? '')
+    setWorlds(duplicatedWorlds)
+    setEdges(duplicatedEdges)
+    setEvaluationWorld(source.evaluationWorld)
+    setEvaluationScope(source.scope ?? 'pointed')
+    setTargetTruth(source.targetTruth ?? true)
+    setFrameRules(duplicatedRules)
+    setLevelTitle(`${source.title} copy`)
+    setLevelInstruction(source.instruction)
+    setLevelLearningObjective(source.learningObjective ?? '')
+    setLevelConcept(source.concept)
+    setLevelPrerequisites(source.prerequisites?.join(', ') ?? '')
+    setLevelDifficulty(source.estimatedDifficulty ?? 'intermediate')
+    setLevelEditable(new Set(source.editable))
+    setLevelBounds({
+      minimumWorlds: source.constraints?.minimumWorlds?.toString() ?? '', maximumWorlds: source.constraints?.maximumWorlds?.toString() ?? '',
+      minimumEdges: source.constraints?.minimumEdges?.toString() ?? '', maximumEdges: source.constraints?.maximumEdges?.toString() ?? '', maximumChanges: source.constraints?.maximumChanges?.toString() ?? '',
+    })
+    setLevelRequiredProperties(new Set(source.constraints?.requiredProperties ?? []))
+    setLevelForbiddenProperties(new Set(source.constraints?.forbiddenProperties ?? []))
+    setLevelRequiredEdges(source.constraints?.requiredEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
+    setLevelForbiddenEdges(source.constraints?.forbiddenEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
+    const atomText = (values?: Readonly<Record<string, readonly string[]>>) => values ? Object.entries(values).map(([world, atoms]) => `${world}: ${atoms.join(' ')}`).join('; ') : ''
+    setLevelRequiredAtoms(atomText(source.constraints?.requiredAtoms))
+    setLevelForbiddenAtoms(atomText(source.constraints?.forbiddenAtoms))
+    setLevelStartSnapshot({ worlds: duplicatedWorlds, edges: duplicatedEdges, evaluationWorld: source.evaluationWorld, frameRules: duplicatedRules, formulaSource: source.formula ?? '', comparisonFormulaSource: source.comparisonFormula ?? '', targetTruth: source.targetTruth ?? true, evaluationScope: source.scope ?? 'pointed', selectedCorrespondence: source.correspondencePreset ?? '' })
+    setLevelReferenceSolution(null)
+    setMissionAuditFindings([])
+    setDataMessage(`Duplicated “${source.title}”. Capture a new reference solution before export.`)
+    setShowDataManager(true)
+  }
+
+  const runMissionAudit = (): boolean => {
+    try {
+      const findings = auditMission(customLevelFromSandbox(), levelReferenceSolution ?? undefined)
+      setMissionAuditFindings(findings)
+      const errors = findings.filter(({ severity }) => severity === 'error')
+      setDataMessage(errors.length ? `Mission audit found ${errors.length} blocking issue(s).` : 'Mission audit passed. Review any warnings before sharing.')
+      return errors.length === 0
+    } catch (error) {
+      setMissionAuditFindings([{ severity: 'error', check: 'Mission configuration', detail: error instanceof Error ? error.message : 'The mission cannot be audited.' }])
+      setDataMessage(error instanceof Error ? error.message : 'The mission cannot be audited.')
+      return false
+    }
+  }
+
   const downloadCustomLevel = () => {
     try {
+      if (!runMissionAudit()) return
       const contents = serializedCustomLevel()
       parseCustomLevelFile(JSON.parse(contents))
       downloadJson(contents, `${customLevelFromSandbox().id}.json`)
@@ -1526,6 +1714,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const addMissionToCustomCampaign = () => {
     try {
+      if (!runMissionAudit()) return
       const mission = parseCustomLevelPackage(JSON.parse(serializedCustomLevel()))
       if (authoredCampaignMissions.some(({ level }) => level.id === mission.level.id)) throw new Error(`The campaign already contains mission id “${mission.level.id}”. Change the mission title before adding another version.`)
       setAuthoredCampaignMissions((current) => [...current, mission])
@@ -1549,6 +1738,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const generateMissionShareLink = () => {
     try {
+      if (!runMissionAudit()) return
       const contents = serializedCustomLevel()
       parseCustomLevelPackage(JSON.parse(contents))
       setShareLink(createShareUrl(contents))
@@ -1677,7 +1867,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             : 'Back to Home'
 
   return (
-    <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''}`}>
+    <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''} ${gameMode === 'custom' && authorPreview === 'mobile' ? 'author-preview-mobile' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
         <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label={backLabel === 'Back' ? 'Go back' : backLabel}>← <span>{backLabel}</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || (appView === 'workspace' && (gameMode === 'learn' || gameMode === 'tutorial')) ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || (appView === 'workspace' && (gameMode === 'guidedCampaign' || gameMode === 'campaign')) ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button></nav></div>
@@ -1716,7 +1906,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'learn' && (
         <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p><button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : playableLearningCompleted === availableLearningTotal ? 'Replay Learning' : 'Continue Learning'}</button></div><div className="collection-progress"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>available tasks complete</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
-          <div className="learn-chapter-list"><article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article><article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><div className="chapter-actions"><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div></article>{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); const expanded = expandedLearnChapterId === chapter.id; return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{chapterComplete && expanded && <div className="chapter-recap"><strong>Section recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>{available ? <div className="chapter-actions"><button type="button" className="primary-action" onClick={() => startLearnLesson(currentIndex < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : currentIndex)}>{chapterComplete ? 'Replay section' : completed > 0 ? 'Continue' : 'Start'}</button>{chapterComplete ? <button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide recap' : 'View recap'}</button> : completed > 0 && <button type="button" className="text-button" onClick={() => restartLearnChapter(chapter.id)}>Restart section</button>}</div> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
+          <div className="learn-chapter-list"><article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article><article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><div className="chapter-actions"><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div></article>{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); const expanded = expandedLearnChapterId === chapter.id; return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{chapterComplete && expanded && <div className="chapter-recap"><strong>Section recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.recapQuestions && <ChapterRecapQuestions questions={chapter.recapQuestions} />}{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>{available ? <div className="chapter-actions"><button type="button" className="primary-action" onClick={() => startLearnLesson(currentIndex < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : currentIndex)}>{chapterComplete ? 'Replay section' : completed > 0 ? 'Continue' : 'Start'}</button>{chapterComplete ? <button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide recap' : 'View recap'}</button> : completed > 0 && <button type="button" className="text-button" onClick={() => restartLearnChapter(chapter.id)}>Restart section</button>}</div> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
         </section>
       )}
       {appView === 'welcome' && <ModalLogicWelcome onBegin={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onSkip={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onBack={() => setAppView('learn')} />}
@@ -1730,6 +1920,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <article><h2>Map display</h2><label><input type="checkbox" checked={showMinimap} onChange={(event) => setShowMinimap(event.target.checked)} /> Show minimap</label><label><input type="checkbox" checked={showDerivedEdges} onChange={(event) => setShowDerivedEdges(event.target.checked)} /> Show edges derived from enforced frame properties</label></article>
             <article><h2>Motion</h2><label><input type="checkbox" checked={reduceMotion} onChange={(event) => setReduceMotion(event.target.checked)} /> Reduce interface animation</label><p>The operating-system reduced-motion preference is respected independently.</p></article>
             <article><h2>Window</h2><p>Fullscreen is available directly from the global toolbar when the browser and embedding policy support it.</p></article>
+            <article><h2>Privacy</h2><p>Models, formulas, settings, and study history stay in this browser. They are not automatically sent anywhere. This build uses no analytics SDK or tracking cookies; explicit exports and share links contain only the data you choose to share.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage local data</button></article>
           </div>
         </section>
       )}
@@ -1756,7 +1947,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'create' && (
         <section className="content-screen create-screen" aria-labelledby="create-screen-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Authoring tools</p><h1 id="create-screen-title">Create</h1><p>Author a custom mission or package missions into a shareable custom campaign. Your content remains separate from Learn, General Challenges, and Practice Library.</p></div></div>
-          <div className="home-actions play-actions"><article className="featured"><span>Custom mission</span><h2>Build a constrained objective</h2><p>Capture a starting model, configure its objective and constraints, then verify a reference solution.</p><button type="button" className="primary-action" onClick={openDataManager}>Open creation studio</button></article><article><span>Custom campaign</span><h2>Package missions</h2><p>Combine authored missions, download a JSON package, or create a browser-shareable link.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage custom campaigns</button></article></div>
+          <div className="home-actions play-actions"><article className="featured"><span>Custom mission</span><h2>Build a constrained objective</h2><p>Capture a starting model, configure its objective and constraints, then verify a reference solution.</p><button type="button" className="primary-action" onClick={openDataManager}>Open creation studio</button></article><article><span>Duplicate a built-in mission</span><h2>Start from a proven structure</h2><p>Copy content into the studio without changing the built-in original. The copy must receive its own reference solution.</p><select aria-label="Built-in mission template" value={authorTemplateId} onChange={(event) => setAuthorTemplateId(event.target.value)}>{[...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)].map((level) => <option value={level.id} key={level.id}>{level.chapter} · {level.title}</option>)}</select><button type="button" className="secondary-button" onClick={duplicateBuiltInMission}>Duplicate into studio</button></article><article><span>Custom campaign</span><h2>Package missions</h2><p>Combine authored missions, download a JSON package, or create a browser-shareable link.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage custom campaigns</button></article></div>
         </section>
       )}
 
@@ -1834,7 +2025,12 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         />
       )}
 
-      {appView === 'workspace' && <section className={`workspace ${isGuidedMode ? 'guided-workspace' : ''} ${showWorldPanel && !showEdgePanel ? 'world-panel-only' : ''} ${showEdgePanel && !showWorldPanel ? 'edge-panel-only' : ''} ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
+      {appView === 'workspace' && <section className={`workspace mobile-tab-${mobileWorkspaceTab} ${isGuidedMode ? 'guided-workspace' : ''} ${evaluationScope === 'frame' ? 'frame-scope' : ''} ${showWorldPanel && !showEdgePanel ? 'world-panel-only' : ''} ${showEdgePanel && !showWorldPanel ? 'edge-panel-only' : ''} ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
+        <nav className="mobile-workspace-tabs" aria-label="Workspace sections">
+          <button type="button" className={mobileWorkspaceTab === 'model' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'model'} onClick={() => setMobileWorkspaceTab('model')}>Model</button>
+          {showFormulaPanel && <button type="button" className={mobileWorkspaceTab === 'formula' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'formula'} onClick={() => setMobileWorkspaceTab('formula')}>Formula</button>}
+          <button type="button" className={mobileWorkspaceTab === 'result' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'result'} onClick={() => setMobileWorkspaceTab('result')}>Result</button>
+        </nav>
         {showFormulaPanel && <div className="panel formula-panel">
           <div className="panel-heading">
             <span className="step">01</span>
@@ -1842,8 +2038,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           </div>
           <label className="field">
             <span>Modal formula</span>
-            <input disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
+            <input ref={formulaInputRef} aria-label="Modal formula" disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
           </label>
+          {!isGuidedMode && !formulaSource.trim() && <div className="empty-card"><strong>No formula yet</strong><span>Enter an atom such as p, or start with □p / ◇p, then Verify.</span><button type="button" onClick={() => { setFormulaSource('p'); setTimeout(() => formulaInputRef.current?.focus(), 0) }}>Use p</button></div>}
           <label className="field comparison-formula">
             <span>Comparison formula <small>optional</small></span>
             <input aria-label="Comparison formula" disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="e.g. box p" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
@@ -1884,9 +2081,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <div className="panel-heading">
             <span className="step">02</span>
             <div><h2>Visual model</h2><p>Drag worlds and connect their handles</p></div>
+            <div className="model-view-switch" role="group" aria-label="Model view"><button type="button" className={modelView === 'graph' ? 'active' : ''} aria-pressed={modelView === 'graph'} onClick={() => setModelView('graph')}>Graph</button><button type="button" className={modelView === 'table' ? 'active' : ''} aria-pressed={modelView === 'table'} onClick={() => setModelView('table')}>Table</button></div>
           </div>
           <div className="graph-canvas">
-            <ReactFlow
+            {modelView === 'graph' ? <ReactFlow
               nodes={flowNodes}
               edges={flowEdges}
               onInit={setFlowInstance}
@@ -1920,19 +2118,18 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               colorMode="light"
             >
               <Panel position="top-left" className="map-toolbar">
-                {!focusedIntroWorkspace && <div className="mode-switch" aria-label="Editor mode">
-                  <button type="button" className={editorMode === 'edit' ? 'active' : ''} aria-pressed={editorMode === 'edit'} onClick={() => setEditorMode('edit')}>Edit</button>
-                  {!focusedIntroWorkspace && <button type="button" className={editorMode === 'evaluate' ? 'active' : ''} aria-pressed={editorMode === 'evaluate'} onClick={() => setEditorMode('evaluate')}>Evaluate</button>}
-                </div>}
+                {!focusedIntroWorkspace && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => applySandboxPreset('build')}>◇ Model · Build</button><button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => applySandboxPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" onClick={() => applySandboxPreset('frame')}>R Frame rules</button></div>}
                 {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" onClick={addWorld} disabled={!canEditWorlds}>+ World</button>}
-                <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Verification panel" aria-pressed={leftPanelOpen} title="Toggle Verification panel">◧</button>
-                {(showWorldPanel || showEdgePanel) && <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle world and accessibility panels" aria-pressed={rightPanelOpen} title="Toggle world and accessibility panels">◨</button>}
+                <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Evaluation panel" aria-pressed={leftPanelOpen} title="Toggle Evaluation panel">◧ Evaluation</button>
+                {(showWorldPanel || showEdgePanel) && <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle Model panel" aria-pressed={rightPanelOpen} title="Toggle Model panel">◨ Model</button>}
                 {canUseHistory && <><button type="button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button><button type="button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button></>}
                 {!focusedIntroWorkspace && <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>}
-                {!focusedIntroWorkspace && <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Constraints{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>}
+                {!focusedIntroWorkspace && <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Frame rules{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>}
                 {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
                 {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
               </Panel>
+              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><span><i className="selected" />SELECTED</span><span><i className="current" />CURRENT WORLD</span><span><i className="witness" />WITNESS</span><span><i className="counterexample" />COUNTEREXAMPLE</span><span><i className="derived" />DERIVED</span><span><i className="checked" />CHECKED EDGE</span><span><i className="irrelevant" />IRRELEVANT</span></Panel>
+              {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
               {worlds.length === 0 && (
                 <Panel position="top-center" className="empty-graph-state">
                   <strong>Start with a world</strong><span>Then connect worlds to define accessibility.</span>
@@ -1945,10 +2142,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                   {canEditWorlds && <label><span>Name</span><input value={selectedWorld.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'id', event.target.value)} /></label>}
                   {showValuations && tutorialAllows('valuations') && <label><span>True atoms</span><input disabled={!canEditValuations} value={selectedWorld.atoms} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'atoms', event.target.value)} /></label>}
                   <div className="inspector-actions">
-                    {showEvaluationControl && tutorialAllows('evaluation') && <button type="button" onClick={() => selectEvaluationWorld(selectedWorld.id.trim())} disabled={!selectedWorld.id.trim() || !canEditEvaluation}>Set as evaluation world</button>}
-                    {canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(selectedWorld.key)}>Delete</button>}
-                  </div>
-                </Panel>
+                  {showEvaluationControl && tutorialAllows('evaluation') && <button type="button" onClick={() => selectEvaluationWorld(selectedWorld.id.trim())} disabled={!selectedWorld.id.trim() || !canEditEvaluation}>Set as evaluation world</button>}
+                  {canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(selectedWorld.key)}>Delete</button>}
+                </div>
+                {canEditEdges && <label className="connect-world"><span>Connect to…</span><select aria-label={`Connect ${selectedWorld.id} to world`} defaultValue="" onChange={(event) => { const target = worlds.find(({ id }) => id.trim() === event.target.value); if (target) connectWorlds({ source: String(selectedWorld.key), target: String(target.key), sourceHandle: null, targetHandle: null }); event.currentTarget.value = '' }}><option value="">Choose a world</option>{worlds.filter(({ id }) => id.trim()).map(({ id }) => <option key={id} value={id.trim()}>{id.trim()}</option>)}</select></label>}
+              </Panel>
               )}
               <Background color="#b9b6aa" gap={24} size={1} />
               {showMinimap && <MiniMap
@@ -1962,7 +2160,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 maskColor="rgba(236, 233, 223, .62)"
                 ariaLabel="Model overview and viewport control"
               />}
-            </ReactFlow>
+            </ReactFlow> : <div className="model-table-wrap"><table className="model-table"><caption>Keyboard-accessible model view. Changes are synchronized with the graph.</caption><thead><tr><th>World</th><th>Atoms</th><th>Successors</th><th>Actions</th></tr></thead><tbody>{worlds.map((world) => <tr key={world.key} className={world.id.trim() === activeTrace?.worldId ? 'current' : ''}><td><input aria-label={`Table world ${world.id || world.key}`} disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></td><td><input aria-label={`Atoms at ${world.id || world.key}`} disabled={!canEditValuations} value={world.atoms} placeholder="none" onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></td><td>{effectiveEdges.filter(({ from }) => from === world.id.trim()).map(({ to }) => to).join(', ') || 'none'}</td><td><button type="button" onClick={() => selectEvaluationWorld(world.id.trim())} disabled={!world.id.trim() || !canEditEvaluation}>Evaluate here</button>{canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(world.key)}>Delete</button>}</td></tr>)}</tbody></table>{worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add the first world to populate both views.</span><button type="button" onClick={addWorld} disabled={!canEditWorlds}>Add first world</button></div>}</div>}
           </div>
         </div>
 
@@ -2023,18 +2221,23 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <small>{evaluationScope === 'pointed' ? 'One world · current valuation' : evaluationScope === 'model' ? 'Every world · current valuation' : evaluationScope === 'frame' ? 'Every world · every valuation' : 'Frame validity ↔ relational property'}</small>
           </div>}
           {!isConstructionObjective && frameValuationEstimate && <div className={`valuation-cost ${frameValuationLimitExceeded ? 'limit' : ''}`} role="status"><span>Frame search</span><strong>{frameValuationEstimate.valuations.toLocaleString('en-US')} valuations</strong><small>{usableWorldIds.length} worlds × {frameValuationEstimate.atoms} atoms · limit {DEFAULT_MAXIMUM_VALUATIONS.toLocaleString('en-US')}</small>{frameValuationLimitExceeded && <em>Reduce the number of worlds or distinct atoms before verification.</em>}</div>}
-          {showEvaluationControl && <label className="field">
+          {!isConstructionObjective && evaluationScope === 'frame' && <p className="frame-valuation-note"><strong>All valuations are checked.</strong> Atoms shown on the graph are one example, not the only valuation used.</p>}
+          {scopeComparison && <div className="scope-comparison" aria-label="Scope comparison results"><span>Side-by-side semantics</span>{scopeComparison.map(({ scope, holds }) => <div key={scope}><strong>{scope === 'pointed' ? 'M,w ⊨ φ' : scope === 'model' ? 'M ⊨ φ' : 'F ⊨ φ'}</strong><b className={holds ? 'true' : 'false'}>{holds ? 'True' : 'False'}</b><small>{scope === 'pointed' ? 'one world · shown valuation' : scope === 'model' ? 'all worlds · shown valuation' : 'all worlds · all valuations'}</small></div>)}</div>}
+          {showEvaluationControl && (isConstructionObjective || evaluationScope === 'pointed') && <label className="field">
             <span>Evaluation world</span>
             <select disabled={(!isConstructionObjective && evaluationScope !== 'pointed') || !canEditEvaluation} value={evaluationWorld} onChange={(event) => selectEvaluationWorld(event.target.value)}>
               <option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
             </select>
           </label>}
+          {evaluationScope === 'pointed' && !usableWorldIds.includes(evaluationWorld) && <div className="empty-card"><strong>Choose an evaluation world</strong><span>Pointed truth needs one existing world. Select it above or from the synchronized model table.</span></div>}
           {activeLevel?.prediction && (
             <div className="prediction-panel">
               <span>{activeLevel.prediction.kind === 'world-choice' ? 'Choose before verification' : 'Predict before verification'}</span>
               <strong>{activeLevel.prediction.prompt}</strong>
               {activeLevel.prediction.kind === 'truth'
                 ? <div className="prediction-choice"><button type="button" className={predictionAnswer === 'true' ? 'active' : ''} aria-pressed={predictionAnswer === 'true'} onClick={() => { setPredictionAnswer('true'); setResult(null) }}>True</button><button type="button" className={predictionAnswer === 'false' ? 'active' : ''} aria-pressed={predictionAnswer === 'false'} onClick={() => { setPredictionAnswer('false'); setResult(null) }}>False</button></div>
+                : activeLevel.prediction.kind === 'scope-truth'
+                  ? <div className="scope-prediction" aria-label="Scope truth prediction">{(['Local', 'Global', 'Frame-valid'] as const).map((label, index) => { const values = predictionAnswer.split(','); return <div key={label}><span>{label}</span><button type="button" className={values[index] === 'true' ? 'active' : ''} aria-pressed={values[index] === 'true'} onClick={() => { const next = [...values]; next[index] = 'true'; setPredictionAnswer([0, 1, 2].map((key) => next[key] ?? '').join(',')); setResult(null) }}>True</button><button type="button" className={values[index] === 'false' ? 'active' : ''} aria-pressed={values[index] === 'false'} onClick={() => { const next = [...values]; next[index] = 'false'; setPredictionAnswer([0, 1, 2].map((key) => next[key] ?? '').join(',')); setResult(null) }}>False</button></div> })}</div>
                 : activeLevel.prediction.kind === 'counterexample-world'
                   ? <select aria-label="Predicted counterexample world" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>
                   : activeLevel.prediction.kind === 'world-choice'
@@ -2053,14 +2256,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Lesson note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => setLearnConceptOpen(true)}>Review concept</button>}</p>}
             {result && 'verdict' in result && result.verdict && (
               <div className="verdict-sections">
+                {semanticFeedbackLevel === 1 && <p className="feedback-disclosure"><strong>Feedback level 1 · Try again.</strong> The objective is not met. Recheck the target scope and the part of the model relevant to the formula.</p>}
+                {semanticFeedbackLevel === 2 && <p className="feedback-disclosure"><strong>Feedback level 2 · Diagnostic hint.</strong> The failing semantic section is identified below. A full world-by-world trace unlocks after another unsuccessful attempt.</p>}
                 {[result.verdict.formula, result.verdict.relation, result.verdict.correspondence].filter(Boolean).map((section) => section && (
                   <div className={`verdict-section ${section.holds ? 'pass' : 'fail'}`} key={section.label}>
                     <div><span>{section.label}</span><b>{section.holds ? 'Pass' : 'Fail'}</b></div>
-                    <strong>{section.summary}</strong>
-                    <small>{section.detail}</small>
-                    {section.witnessValuation && <div className="valuation-diagnostic"><span>Countervaluation</span>{Object.entries(section.witnessValuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</div>}
-                    {section.truthByWorld && <div className="truth-diagnostic"><span>{section.witnessValuation ? 'Truth under countervaluation' : 'Truth by world'}</span><div>{section.truthByWorld.map(({ worldId, value }) => <code className={value ? 'true' : 'false'} key={worldId}>{worldId} <b>{value ? 'T' : 'F'}</b></code>)}</div></div>}
-                    {section.evaluationTraces && <div className="evaluation-diagnostic"><EvaluationDiagnostics traces={section.evaluationTraces} /><span>Evaluation tree</span>{section.evaluationTraces.map((trace, index) => <EvaluationTree trace={trace} root={section.evaluationTraces?.length === 1} key={`${trace.worldId}:${index}`} />)}</div>}
+                    {semanticFeedbackLevel >= 2 && <strong>{section.summary}</strong>}
+                    {semanticFeedbackLevel >= 3 && <small>{section.detail}</small>}
+                    {semanticFeedbackLevel >= 3 && section.witnessValuation && <div className="valuation-diagnostic"><span>Countervaluation</span>{Object.entries(section.witnessValuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</div>}
+                    {semanticFeedbackLevel >= 3 && section.truthByWorld && <div className="truth-diagnostic"><span>{section.witnessValuation ? 'Truth under countervaluation' : 'Truth by world'}</span><div>{section.truthByWorld.map(({ worldId, value }) => <code className={value ? 'true' : 'false'} key={worldId}>{worldId} <b>{value ? 'T' : 'F'}</b></code>)}</div></div>}
+                    {semanticFeedbackLevel >= 3 && section.evaluationTraces && <div className="evaluation-diagnostic"><EvaluationDiagnostics traces={section.evaluationTraces} /><div className="semantic-debugger-heading"><span>Evaluation tree · semantic debugger</span><small>formula → subformula → world → rule → truth</small></div>{evaluationTraceSteps.length > 0 && <div className="trace-stepper"><button type="button" disabled={traceStepIndex <= 0} onClick={() => setTraceStepIndex((step) => Math.max(0, step - 1))}>Previous step</button><span>Step {Math.min(traceStepIndex + 1, evaluationTraceSteps.length)} of {evaluationTraceSteps.length}</span><button type="button" disabled={traceStepIndex >= evaluationTraceSteps.length - 1} onClick={() => setTraceStepIndex((step) => Math.min(evaluationTraceSteps.length - 1, step + 1))}>Next step</button><small>Alt + ← / →</small></div>}{activeTrace && <div className="active-trace-summary"><code>{activeTrace.formula}</code><span>at <b>{activeTrace.worldId}</b></span><span>rule: <b>{activeTrace.rule}</b></span><strong>{activeTrace.value ? 'TRUE' : 'FALSE'}</strong></div>}{section.evaluationTraces.map((trace, index) => <EvaluationTree trace={trace} root={section.evaluationTraces?.length === 1} activeTrace={activeTrace} onSelect={(selected) => { const step = evaluationTraceSteps.findIndex(({ trace: candidate }) => candidate === selected); if (step >= 0) setTraceStepIndex(step) }} key={`${trace.worldId}:${index}`} />)}</div>}
                   </div>
                 ))}
               </div>
@@ -2101,6 +2306,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <div className="dialog-heading"><div><p className="eyebrow">Learn Modal Logic · Lesson {activeLearnChapterIndex + 1}</p><h2 id="lesson-concept-title">{courseLesson.title}</h2></div><button type="button" className="dialog-close" onClick={() => setLearnConceptOpen(false)} aria-label="Close lesson concept">×</button></div>
             <div className="lesson-concept-grid"><article><h3>What to do</h3><p>{activeLevel?.instruction}</p></article><article><h3>How it works</h3><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <code>{courseLesson.concept.formal}</code>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></article></div>
             <button type="button" className="primary-action" autoFocus onClick={() => setLearnConceptOpen(false)}>Start task</button>
+          </section>
+        </div>
+      )}
+
+      {appView === 'workspace' && gameMode === 'sandbox' && showSandboxOrientation && (
+        <div className="dialog-backdrop sandbox-orientation-backdrop" role="presentation">
+          <section className="help-dialog sandbox-orientation" role="dialog" aria-modal="true" aria-labelledby="sandbox-orientation-title">
+            <div className="dialog-heading"><div><p className="eyebrow">First Sandbox visit</p><h2 id="sandbox-orientation-title">Four steps, one workbench</h2></div><button type="button" className="dialog-close" onClick={dismissSandboxOrientation} aria-label="Close Sandbox orientation">×</button></div>
+            <ol><li><b>Build a model.</b><span>Add worlds, valuations, and directed accessibility.</span></li><li><b>Enter a formula.</b><span>Use symbols or text such as box and diamond.</span></li><li><b>Choose the evaluation scope.</b><span>Local, model-global, or finite-frame validity.</span></li><li><b>Verify.</b><span>Read the result and step through its semantic trace.</span></li></ol>
+            <button type="button" className="primary-action" autoFocus onClick={dismissSandboxOrientation}>Start exploring</button>
           </section>
         </div>
       )}
@@ -2158,6 +2373,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <article><h3>JSON import and backup</h3><p>Paste a model, guest-profile backup, or custom mission. Imported missions open immediately in a locked objective workspace.</p><textarea aria-label="Model JSON" value={importSource} onChange={(event) => { setImportSource(event.target.value); setDataMessage('') }} spellCheck={false} /><div><button type="button" className="primary-action" onClick={importModel}>Import JSON</button><button type="button" className="secondary-button" onClick={downloadModel}>Download model</button></div></article>
               <article className="level-author">
                 <h3>Custom mission</h3><p>Create a mission from two separate workspace snapshots. Capture the player&rsquo;s starting state, build a valid solution in the workspace, then capture and verify that solution.</p>
+                <ol className="author-workflow" aria-label="Mission authoring workflow"><li>Learning objective</li><li>Initial model</li><li>Formula &amp; scope</li><li>Editable controls</li><li>Constraints</li><li>Prediction</li><li>Reference solution</li><li>Preview &amp; validation</li><li>Export/share</li></ol>
                 <div className="author-snapshots">
                   <button type="button" className="secondary-button" onClick={captureMissionStart}>1. Capture mission start</button>
                   <span className={levelStartSnapshot ? 'pass' : ''}>{levelStartSnapshot ? 'Start captured' : 'Using current workspace until captured'}</span>
@@ -2167,6 +2383,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
                 <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
                 <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
+                <label><span>Concept tags</span><input aria-label="Custom mission concept tags" value={levelConcept} onChange={(event) => setLevelConcept(event.target.value)} placeholder="necessity, countermodel" /></label>
+                <div className="author-pairs"><label><span>Prerequisites</span><input aria-label="Custom mission prerequisites" value={levelPrerequisites} onChange={(event) => setLevelPrerequisites(event.target.value)} placeholder="possibility, propositional connectives" /></label><label><span>Estimated difficulty</span><select aria-label="Custom mission difficulty" value={levelDifficulty} onChange={(event) => setLevelDifficulty(event.target.value as typeof levelDifficulty)}><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>
                 <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
                 <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms</span><input aria-label="Required custom mission atoms" placeholder="w0: p q; w1: r" value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms</span><input aria-label="Forbidden custom mission atoms" placeholder="w0: r; w1: p" value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
                 <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else { next.add(property); setLevelForbiddenProperties((forbidden) => { const copy = new Set(forbidden); copy.delete(property); return copy }) } return next })} /> {property}</label>)}</fieldset>
@@ -2175,6 +2393,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 {levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}
                 <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
                 <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>
+                <section className="mission-audit" aria-label="Mission audit"><div><h4>8. Preview and validation</h4><button type="button" className="secondary-button" onClick={runMissionAudit}>Run mission audit</button></div><div className="settings-choice" aria-label="Preview viewport"><button type="button" className={authorPreview === 'desktop' ? 'active' : ''} aria-pressed={authorPreview === 'desktop'} onClick={() => setAuthorPreview('desktop')}>Desktop preview</button><button type="button" className={authorPreview === 'mobile' ? 'active' : ''} aria-pressed={authorPreview === 'mobile'} onClick={() => setAuthorPreview('mobile')}>Mobile preview</button></div>{missionAuditFindings.length > 0 && <ul>{missionAuditFindings.map((finding) => <li className={finding.severity} key={`${finding.check}:${finding.detail}`}><b>{finding.severity === 'pass' ? 'PASS' : finding.severity === 'warning' ? 'WARNING' : 'BLOCKED'} · {finding.check}</b><span>{finding.detail}</span></li>)}</ul>}</section>
                 <div className="author-final-actions"><button type="button" className="primary-action" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button><button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink}>Generate mission link</button></div>
                 <div className="campaign-packager">
                   <h4>Campaign package</h4>
@@ -2186,7 +2405,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 </div>
                 {shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}
               </article>
-              <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article>
+              <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser. Models, formulas, settings, and history are not automatically transmitted; this build has no analytics SDK or tracking cookies.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article>
             </div>
             {dataMessage && <p className="data-message" role="status">{dataMessage}</p>}
           </section>

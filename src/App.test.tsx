@@ -15,7 +15,7 @@ describe('sandbox user interface', () => {
     expect(learnButton).toBeVisible()
     expect(learnButton).toHaveTextContent(/^LEARN$/)
     expect((learnButton.textContent ?? '').trim().split(/\s+/u)).toHaveLength(1)
-    expect(learnButton).not.toContainElement(screen.getByText(/0\/21 complete/))
+    expect(learnButton).not.toContainElement(screen.getByText(/0\/\d+ complete/))
     expect(screen.getByRole('button', { name: /Campaigns: longer challenges/ })).toHaveTextContent(/^CAMPAIGNS$/)
     expect(screen.getByRole('button', { name: /Sandbox: build and test/ })).toHaveTextContent(/^SANDBOX$/)
     expect(screen.queryByLabelText('Kripke model editor')).not.toBeInTheDocument()
@@ -77,7 +77,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Evaluate' }))
+    await user.click(screen.getByRole('button', { name: 'φ Formula · Evaluate' }))
     expect(screen.getByRole('button', { name: '+ Add world' })).toBeDisabled()
     for (const input of screen.getAllByLabelText('World')) expect(input).toBeDisabled()
   })
@@ -86,7 +86,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: /^Constraints/ }))
+    await user.click(screen.getByRole('button', { name: /^Frame rules/ }))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reflexive rule mode' }), 'enforce')
     expect(screen.getByRole('combobox', { name: 'Reflexive rule mode' })).toHaveValue('enforce')
     expect(screen.getByText(/2 edges derived from frame properties/)).toBeVisible()
@@ -99,6 +99,38 @@ describe('sandbox user interface', () => {
     await user.clear(screen.getByLabelText('Modal formula'))
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText(/Expected a formula, but the input ended/)).toBeVisible()
+    expect(screen.getByLabelText('Modal formula')).toHaveFocus()
+  })
+
+  it('shows the Sandbox orientation once and remembers its dismissal', async () => {
+    const user = userEvent.setup()
+    const first = render(<App initialView="workspace" />)
+    expect(screen.getByRole('dialog', { name: 'Four steps, one workbench' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Start exploring' }))
+    expect(localStorage.getItem('logic-game:sandbox-orientation:v1')).toBe('seen')
+    first.unmount()
+    render(<App initialView="workspace" />)
+    expect(screen.queryByRole('dialog', { name: 'Four steps, one workbench' })).not.toBeInTheDocument()
+  })
+
+  it('provides a synchronized keyboard-accessible model table', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'Table' }))
+    expect(screen.getByRole('table', { name: /Keyboard-accessible model view/ })).toBeVisible()
+    const tableAtoms = screen.getByLabelText('Atoms at w0')
+    await user.type(tableAtoms, 'q')
+    expect(screen.getAllByLabelText('True atoms')[0]).toHaveValue('q')
+  })
+
+  it('steps through semantic evaluation and highlights its witness in the graph', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Step 1 of 2')).toBeVisible()
+    expect(document.querySelector('.trace-witness-node')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next step' }))
+    expect(screen.getByText('Step 2 of 2')).toBeVisible()
   })
 
   it('checks all valuations and returns a frame counterexample', async () => {
@@ -109,7 +141,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText('Not valid on this frame.')).toBeVisible()
     expect(screen.getByText(/Countervaluation at/)).toBeVisible()
-    expect(screen.getByText('Evaluation tree')).toBeVisible()
+    expect(screen.getByText(/Evaluation tree/)).toBeVisible()
   })
 
   it('loads a modal correspondence preset', async () => {
@@ -675,7 +707,8 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('button', { name: 'Add current mission to package' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Download campaign package' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Generate mission link' }))
-    expect((screen.getByLabelText('Shareable URL') as HTMLInputElement).value).toContain('#share=')
+    expect(screen.getByText(/Mission audit found \d+ blocking issue/)).toBeVisible()
+    expect(screen.queryByLabelText('Shareable URL')).not.toBeInTheDocument()
   })
 
   it('opens a shared mission directly from the URL fragment', () => {

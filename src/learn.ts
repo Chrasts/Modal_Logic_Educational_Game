@@ -1,4 +1,5 @@
 import type { GameLevel } from './campaign'
+import { foundationChapters } from './learn-foundations'
 
 export type LearnStage = 'concept' | 'example' | 'prediction' | 'task' | 'feedback' | 'transfer' | 'completion'
 
@@ -35,6 +36,13 @@ export interface LearnLesson {
   readonly transferTask?: GameLevel
 }
 
+export interface ConceptQuestion {
+  readonly prompt: string
+  readonly choices: readonly string[]
+  readonly correctChoice: string
+  readonly explanation: string
+}
+
 export interface LearnChapter {
   readonly id: string
   readonly title: string
@@ -42,6 +50,7 @@ export interface LearnChapter {
   readonly prerequisiteChapterIds: readonly string[]
   readonly lessons: readonly LearnLesson[]
   readonly completionSummary: readonly string[]
+  readonly recapQuestions?: readonly ConceptQuestion[]
   readonly nextPreview?: string
 }
 
@@ -106,14 +115,12 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
   },
 ]
 
-// Prediction metadata is retained in older authored task data for compatibility,
-// but introductory campaigns now open directly in the shared workspace.
+// Keep authored predictions on conceptually significant tasks. They capture the
+// learner's initial mental model before the first semantic verification.
 const possibilityLessons: readonly LearnLesson[] = possibilityLessonDefinitions.map((lesson) => ({
   ...lesson,
-  stages: lesson.stages.filter((stage) => stage !== 'prediction'),
   task: {
     ...lesson.task,
-    prediction: lesson.task.prediction?.mustBeCorrect ? lesson.task.prediction : undefined,
     workspacePresentation: lesson.task.workspacePresentation ?? {
       worlds: lesson.task.editable.includes('worlds'),
       valuations: lesson.task.editable.includes('valuations'),
@@ -197,14 +204,22 @@ const worldsAndAccessibilityLessons: readonly LearnLesson[] = [
 export const learnCourse: LearnCourse = {
   id: 'learn-modal-logic', title: 'Learn Modal Logic', description: 'Foundational lessons in building and evaluating finite Kripke models.',
   chapters: [
-    { id: 'truth-at-a-world', title: 'Truth at a World', description: 'Evaluate formulas at a designated world.', prerequisiteChapterIds: [], lessons: truthAtAWorldLessons, completionSummary: ['Formulas are evaluated relative to a selected world.', 'Atom truth is determined by valuation.', 'Negation reverses local truth and conjunction requires both conjuncts at one world.'], nextPreview: 'Continue to Worlds and Accessibility.', },
-    { id: 'worlds-accessibility', title: 'Worlds and Accessibility', description: 'Build worlds and directed accessibility relations.', prerequisiteChapterIds: ['truth-at-a-world'], lessons: worldsAndAccessibilityLessons, completionSummary: ['W is the set of worlds.', 'R is a directed binary relation.', 'Accessibility can branch and include self-loops.'], nextPreview: 'Continue to Possibility.', },
-    { id: 'possibility', title: 'Possibility', description: 'Learn existential modal semantics through accessible witnesses.', prerequisiteChapterIds: ['worlds-accessibility'], lessons: possibilityLessons, completionSummary: ['◇φ expresses existential quantification over accessible successors.', 'A witness must satisfy the operand and be accessible from the evaluation world.', 'Edge direction matters; truth elsewhere is insufficient.'], nextPreview: 'Necessity is coming later — one counterexample successor makes □φ false.', },
-    { id: 'necessity', title: 'Necessity', description: 'Understand universal truth across accessible successors.', prerequisiteChapterIds: ['possibility'], lessons: [], completionSummary: [], },
-    { id: 'nested-modalities', title: 'Box and Diamond', description: 'Combine possibility and necessity in modal formulas.', prerequisiteChapterIds: ['necessity'], lessons: [], completionSummary: [], },
-    { id: 'models-countermodels', title: 'Countermodels', description: 'Construct models and countermodels.', prerequisiteChapterIds: ['nested-modalities'], lessons: [], completionSummary: [], },
-    { id: 'semantic-scopes', title: 'Local, Global, and Frame Truth', description: 'Separate pointed truth, model truth, and frame validity.', prerequisiteChapterIds: ['models-countermodels'], lessons: [], completionSummary: [], },
-    { id: 'frames-axioms', title: 'Frame Properties', description: 'Connect relational properties with modal axioms.', prerequisiteChapterIds: ['semantic-scopes'], lessons: [], completionSummary: [], },
+    { id: 'truth-at-a-world', title: 'Truth at a World', description: 'Evaluate formulas at a designated world.', prerequisiteChapterIds: [], lessons: truthAtAWorldLessons, completionSummary: ['Formulas are evaluated relative to a selected world.', 'Atom truth is determined by valuation.', 'Negation reverses local truth and conjunction requires both conjuncts at one world.'], nextPreview: 'Continue to Worlds and Accessibility.', recapQuestions: [
+      { prompt: 'What makes p true at w?', choices: ['p belongs to the valuation at w', 'p holds somewhere in the model'], correctChoice: 'p belongs to the valuation at w', explanation: 'Atomic truth is local to the evaluated world.' },
+      { prompt: 'Can p be true at w0 and false at w1 in one model?', choices: ['Yes', 'No'], correctChoice: 'Yes', explanation: 'Worlds may carry different valuations.' },
+      { prompt: 'What does p ∧ q require?', choices: ['Both at the same world', 'p and q at any two worlds'], correctChoice: 'Both at the same world', explanation: 'Both conjuncts are evaluated at the current world.' },
+    ] },
+    { id: 'worlds-accessibility', title: 'Worlds and Accessibility', description: 'Build worlds and directed accessibility relations.', prerequisiteChapterIds: ['truth-at-a-world'], lessons: worldsAndAccessibilityLessons, completionSummary: ['W is the set of worlds.', 'R is a directed binary relation.', 'Accessibility can branch and include self-loops.'], nextPreview: 'Continue to Possibility.', recapQuestions: [
+      { prompt: 'Does w0→w1 imply w1→w0?', choices: ['Yes', 'No'], correctChoice: 'No', explanation: 'Accessibility is directed unless symmetry is imposed.' },
+      { prompt: 'What is a self-loop at w0?', choices: ['w0→w0', 'w0→w1'], correctChoice: 'w0→w0', explanation: 'A self-loop is the ordered pair (w0,w0).' },
+      { prompt: 'Can one world have two successors?', choices: ['Yes', 'No'], correctChoice: 'Yes', explanation: 'A relation may branch.' },
+    ] },
+    { id: 'possibility', title: 'Possibility', description: 'Learn existential modal semantics through accessible witnesses.', prerequisiteChapterIds: ['worlds-accessibility'], lessons: possibilityLessons, completionSummary: ['◇φ expresses existential quantification over accessible successors.', 'A witness must satisfy the operand and be accessible from the evaluation world.', 'Edge direction matters; truth elsewhere is insufficient.'], nextPreview: 'Continue to Necessity.', recapQuestions: [
+      { prompt: 'If ◇p is false, is □¬p true in standard Kripke semantics?', choices: ['Yes', 'No'], correctChoice: 'Yes', explanation: 'No accessible p-witness means every successor satisfies ¬p.' },
+      { prompt: 'Does a p-world anywhere in the model witness ◇p at w0?', choices: ['Yes', 'Only if accessible from w0'], correctChoice: 'Only if accessible from w0', explanation: 'A witness must satisfy both accessibility and the operand.' },
+      { prompt: 'How many witnesses does ◇p require?', choices: ['At least one', 'Every successor'], correctChoice: 'At least one', explanation: 'Diamond is existential.' },
+    ] },
+    ...foundationChapters,
   ],
 }
 

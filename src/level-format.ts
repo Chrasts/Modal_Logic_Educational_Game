@@ -208,6 +208,9 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
   if (bonusConstraints) assertCompatibleAuthoredConstraints(bonusConstraints)
   const level: GameLevel = {
     id: requiredText('id'), chapter: requiredText('chapter'), title: requiredText('title'), concept: requiredText('concept'),
+    conceptTags: Array.isArray(source.conceptTags) ? source.conceptTags.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim())).map((entry) => entry.trim()) : undefined,
+    prerequisites: Array.isArray(source.prerequisites) ? source.prerequisites.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim())).map((entry) => entry.trim()) : undefined,
+    estimatedDifficulty: ['introductory', 'intermediate', 'advanced'].includes(String(source.estimatedDifficulty)) ? source.estimatedDifficulty as GameLevel['estimatedDifficulty'] : undefined,
     briefing: typeof source.briefing === 'string' ? source.briefing : undefined,
     learningObjective: typeof source.learningObjective === 'string' ? source.learningObjective : undefined,
     instruction: requiredText('instruction'), formula, comparisonFormula, comparisonTarget: comparisonTarget as GameLevel['comparisonTarget'], scope: source.scope as ObjectiveScope,

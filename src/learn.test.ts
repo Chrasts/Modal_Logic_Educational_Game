@@ -6,21 +6,52 @@ import { isConstructionLevel, tutorialLevels, validateLevelObjective } from './c
 import { createLevelFingerprint } from './level-fingerprint'
 
 describe('Learn Modal Logic course data', () => {
+  it('completes the foundational Learn path through frame properties', () => {
+    const chapter = (id: string) => learnCourse.chapters.find((item) => item.id === id)!
+    expect(chapter('necessity').lessons).toHaveLength(5)
+    expect(chapter('nested-modalities').lessons).toHaveLength(10)
+    expect(chapter('models-countermodels').lessons).toHaveLength(7)
+    expect(chapter('semantic-scopes').lessons).toHaveLength(4)
+    expect(chapter('frames-axioms').lessons).toHaveLength(5)
+    for (const item of learnCourse.chapters) {
+      expect(item.lessons.length, item.id).toBeGreaterThan(0)
+      expect(item.recapQuestions?.length, item.id).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('covers box/diamond contrasts, dualities, nested operators, and scope comparison', () => {
+    const tasks = learnLessons.map(({ task }) => task)
+    const formulas = tasks.map(({ formula }) => formula)
+    expect(formulas).toEqual(expect.arrayContaining(['◇◇p', '□◇p', '◇□p', '□□p']))
+    expect(tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ formula: '◇p', comparisonFormula: '¬□¬p' }),
+      expect.objectContaining({ formula: '□p', comparisonFormula: '¬◇¬p' }),
+      expect.objectContaining({ showScopeComparison: true, prediction: expect.objectContaining({ kind: 'scope-truth' }) }),
+    ]))
+  })
+
+  it('teaches the minimum frame-property and correspondence set as finite instances', () => {
+    const frameTasks = learnCourse.chapters.find(({ id }) => id === 'frames-axioms')!.lessons.map(({ task }) => task)
+    expect(frameTasks.map(({ correspondencePreset }) => correspondencePreset)).toEqual(['t', 'd', 'b', '4', '5'])
+    expect(frameTasks.map(({ constraints }) => constraints?.requiredProperties?.[0])).toEqual(['reflexive', 'serial', 'symmetric', 'transitive', 'euclidean'])
+    expect(frameTasks.every(({ scope }) => scope === 'correspondence')).toBe(true)
+  })
+
   it('contains an ordered five-lesson Possibility vertical slice', () => {
     const possibility = learnCourse.chapters.find(({ id }) => id === 'possibility')
     expect(possibility?.lessons).toHaveLength(5)
     expect(possibility?.lessons.map(({ title }) => title)).toEqual(['A possible alternative', 'Finding a witness', 'Accessibility is required', 'Direction of accessibility', 'Building a possibility model'])
   })
 
-  it('keeps semantic lessons free of prediction gates except for the witness-selection interaction', () => {
+  it('uses prediction gates only for conceptually significant semantic decisions', () => {
     const chapter = (id: string) => learnCourse.chapters.find((item) => item.id === id)!
     const truth = chapter('truth-at-a-world')
     const worlds = chapter('worlds-accessibility')
     expect(truth.lessons.map(({ title }) => title)).toEqual(['Atomic truth', 'Truth depends on the selected world', 'Negation', 'Conjunction at one world', 'Same model, different truth'])
     expect(worlds.lessons.map(({ title }) => title)).toEqual(['Add a world', 'Directed accessibility', 'Direction matters', 'Branching', 'Reflexive edge'])
     const interactivePredictions = [...truth.lessons, ...worlds.lessons, ...chapter('possibility').lessons].filter(({ task }) => task.prediction)
-    expect(interactivePredictions.map(({ id }) => id)).toEqual(['learn-possibility-witness'])
-    expect(interactivePredictions[0].task.prediction).toMatchObject({ kind: 'world-choice', expectedChoice: 'w3', mustBeCorrect: true })
+    expect(interactivePredictions.map(({ id }) => id)).toEqual(['learn-possibility-alternative', 'learn-possibility-witness'])
+    expect(interactivePredictions[1].task.prediction).toMatchObject({ kind: 'world-choice', expectedChoice: 'w3', mustBeCorrect: true })
     expect(chapter('possibility').prerequisiteChapterIds).toEqual(['worlds-accessibility'])
   })
 

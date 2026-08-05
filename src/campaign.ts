@@ -18,9 +18,12 @@ export interface GameLevel {
   readonly chapter: string
   readonly title: string
   readonly concept: string
+  readonly conceptTags?: readonly string[]
+  readonly prerequisites?: readonly string[]
+  readonly estimatedDifficulty?: 'introductory' | 'intermediate' | 'advanced'
   readonly learningObjective?: string
   readonly prediction?: {
-    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice'
+    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice' | 'scope-truth'
     readonly prompt: string
     readonly expectedProperty?: FramePropertyName
     readonly propertyChoices?: readonly FramePropertyName[]
@@ -38,6 +41,8 @@ export interface GameLevel {
     }[]
     readonly worldChoices?: readonly string[]
   }
+  /** Shows pointed, model-global, and frame results together for scope lessons. */
+  readonly showScopeComparison?: boolean
   readonly briefing?: string
   /** Progressive strategic guidance for guided campaigns. */
   readonly hints?: readonly [string, string, string]
