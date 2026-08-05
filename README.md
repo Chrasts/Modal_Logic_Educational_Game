@@ -79,9 +79,13 @@ all valuations.
 **Learn Modal Logic** is the single recommended route for new players. It
 starts with a replayable **Welcome to Modal Logic** visual introduction, then
 the replayable six-step **Learn the Controls** workspace tutorial, followed by
-**Truth at a World**, **Worlds and Accessibility**, and **Possibility**.
-Necessity, Box and Diamond, Countermodels, Local, Global, and Frame Truth, and
-Frame Properties are explicitly shown as coming later.
+the complete 10-chapter, 56-lesson course: **Truth at a World**, **Worlds and
+Accessibility**, **Possibility**, **Necessity**, **Box and Diamond**, **Nested
+Modalities**, **Local, Global, and Frame Truth**, **Models and Countermodels**,
+**Frame Properties**, and **Modal Axioms and Correspondence**. Together with
+the six controls lessons, the available Learn path contains 62 tasks. The
+overview and progress totals are calculated from the same `learnCourse` data
+that defines the lessons.
 
 Guided tasks use the same cycle throughout: read the task, make the requested
 edit, select **Check task**, then continue after confirmation. The Check task
