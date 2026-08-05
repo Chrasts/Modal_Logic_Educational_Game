@@ -8,10 +8,11 @@ modal axioms and relational properties.
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
-The application opens on a home menu with one recommended **Start Learning** /
-**Continue Learning** path, plus Campaigns and Sandbox. Create, Profile,
-settings, local data tools, and GitHub remain available in the secondary More
-menu. Shared
+The application opens on a home menu with a one-word **LEARN** button, followed
+by a compact progress/next-lesson status, plus **CAMPAIGNS** and **SANDBOX**.
+Create, Profile, settings, local data tools, and GitHub remain available in the
+secondary More menu. Fullscreen is a direct topbar action rather than a More
+menu item. Shared
 mission URLs intentionally bypass the menu and launch their validated content.
 
 ## What you can do
@@ -84,7 +85,15 @@ Frame Properties are explicitly shown as coming later.
 
 Guided tasks use the same cycle throughout: read the task, make the requested
 edit, select **Check task**, then continue after confirmation. The Check task
-action remains visible beside the mission task.
+action remains visible in one compact mission header. The same header contains
+the section/campaign, local progress, title, and a single objective; longer
+briefings, concept help, analysis, hints, and reference solutions are available
+under **Details & hints** instead of a second persistent strip.
+
+Learn calls each guided unit a **lesson**, Campaigns and Practice call it a
+**mission**, and Sandbox has no guided progress or mission header. Guided
+workspaces render Verification by default and only expose world, valuation, or
+accessibility panels that are useful for the current task.
 
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.
@@ -157,8 +166,9 @@ from all built-in content.
 ### Settings
 
 Browser-local settings control workspace density, minimap visibility, derived
-edge visibility, reduced interface motion, and optional fullscreen. They affect
-presentation only and never change formulas, semantics, or mission constraints.
+edge visibility, and reduced interface motion. Fullscreen is available directly
+in the global toolbar when supported. Settings affect presentation only and
+never change formulas, semantics, or mission constraints.
 
 ## Modal semantics
 

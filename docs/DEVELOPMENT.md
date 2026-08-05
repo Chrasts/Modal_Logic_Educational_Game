@@ -30,6 +30,9 @@ src/
 │   ├── objective.ts     # semantic game objectives and verdicts
 │   └── constraints.ts   # reusable level construction constraints
 ├── campaign.ts          # data-driven tutorial and campaign missions
+├── components/
+│   └── MissionHeader.tsx # shared guided lesson/mission header
+├── level-fingerprint.ts # normalized duplicate-content audit helper
 ├── level-format.ts      # versioned validation for shared custom missions
 ├── test/                # shared UI test setup
 ├── App.tsx              # application shell and model editor
@@ -50,12 +53,24 @@ by `verifyConstructionObjective`, without invoking the formula evaluator.
 disabled or keyboard-focusable. Existing semantic/custom formats remain
 compatible because semantic fields and custom-file parsing are unchanged.
 
-Home and global navigation direct newcomers to Learn. Campaigns keeps its
-selected General Challenges or Practice Library section in component state.
-Guided Learn HUDs keep Check task visible, hide raw technical constraints unless
-authored `workspacePresentation.visibleConstraints` is present, and invalidate
-the current verification result after semantic or structural edits. Historical
-completion is kept separately from the current pending/success/failure attempt.
+Home and global navigation direct newcomers to Learn. The Home Learn button has
+one visible word and a descriptive accessible name; progress and the next lesson
+are siblings rather than button content. Campaigns keeps its selected General
+Challenges or Practice Library section in component state. `MissionHeader`
+keeps one objective and Check task visible for every guided mode, while details,
+analysis, hints, reference solutions, and authored visible constraints live in
+one on-demand popover. Historical completion is kept separately from the current
+pending/success/failure attempt.
+
+Learn overview actions are state-specific: Start when untouched, Continue plus
+Restart section when partial, and Replay section plus recap when complete.
+Restart removes only current completion markers for that section and preserves
+attempt counters; Replay never clears historical progress.
+
+Guided workspaces open Verification by default. Formula controls are omitted,
+and `workspacePresentation` plus edit permissions determine whether Worlds,
+Valuations, Accessibility, and their toggle are rendered at all. Sandbox omits
+`MissionHeader`, retains the full panels, and uses Verify objective.
 
 ## Verification scopes
 
@@ -88,6 +103,12 @@ How to Play uses `logic-game:campaign-progress:v2`. On first load it reads the
 former v1 progress when necessary, preserves recognised practice and campaign
 mission IDs, and intentionally drops only the obsolete semantic tutorial IDs:
 they do not map safely to the six UI-control steps.
+
+Authored-content revisions are tracked separately from storage schema versions.
+`logic-game:campaign-content-revision:v1` reopens only changed tutorial IDs,
+while `LearnProgress.contentRevision` does the same for changed course lessons
+and affected chapter-completion markers. This keeps stable IDs without allowing
+old completion to skip a materially rewritten task.
 
 An anonymous guest profile stores a random local identifier and up to 250 recent
 verification attempts. It does not use IP addresses or browser fingerprinting.
@@ -281,8 +302,20 @@ focus-visible treatment, result changes are exposed as atomic live regions, and
 the existing reduced-motion media query suppresses non-essential transitions.
 
 Fullscreen is an optional progressive enhancement using the browser Fullscreen
-API. The toolbar control is disabled where the API is unavailable or forbidden;
-the game remains fully usable in the normal browser viewport.
+API. It is a direct icon button in the global topbar and is omitted when the API
+is unavailable; it is not duplicated in More. The label and `aria-pressed`
+state follow `fullscreenchange`. The game remains fully usable in the normal
+browser viewport.
+
+Overlay layering is defined once in `:root`: canvas `0`, workspace panels `10`,
+mission header `20`, topbar `40`, popovers `60`, modal backdrop `80`, modal `90`,
+and toast/skip-link `100`. The topbar is a positioned stacking context above the
+mission and workspace layers, and neither it nor the More container clips
+overflow, so the current in-tree More popover does not require a portal. More
+closes on outside pointer input and Escape; Escape restores focus to its trigger.
+If future containment or transforms trap the popover, it should be portalled to
+`document.body` and positioned from the trigger rectangle rather than adding an
+arbitrary larger z-index.
 
 ## Interface hierarchy
 
@@ -293,18 +326,28 @@ navigation uses a compact segmented treatment; destructive and negative states
 reserve the brown accent. Short entrance and result transitions clarify state
 changes and are disabled by the reduced-motion preference.
 
-The initial app view is a concise home menu. The top-level destinations are
-Home, Campaigns, Sandbox, Create, Modal Logic Guide, and Profile. Campaigns
-contains four roles: the short Learn the Controls tutorial entry, the Learn Modal Logic
-(presented by the internal Learn engine), General Challenges, and the non-linear
-Practice Library. Introductory structural missions use ordinary `GameLevel`
+The initial app view is a concise home menu. The global topbar destinations are
+Home, Learn, Campaigns, Sandbox, and Modal Logic Guide, followed by fullscreen
+and More. More contains Create, Profile, Data, Settings, and GitHub. Learn owns
+the Welcome, Learn the Controls, and data-driven semantic chapters; Campaigns
+owns General Challenges and the non-linear Practice Library. Introductory
+structural lessons use ordinary `GameLevel`
 constraints (exact worlds and required/forbidden edges) together with the same
 deterministic evaluator as semantic missions; no second workspace exists. Shared
 URL fragments remain direct navigation instructions and therefore launch the
 validated custom mission or campaign without stopping at Home. Interface
 settings are versioned separately from sandbox and learning data.
 
-Guided workspaces keep the graph tall by rendering only mission identity,
-objective, constraints, and level navigation in the persistent HUD. Briefings
-and learning objectives live in the expandable `Level details` popover. Desktop
-sidebars are deliberately narrower than the graph and can still be collapsed.
+Guided workspaces keep the graph tall with one mode-accented `MissionHeader`.
+There is no second campaign/context strip. Briefings, formulas, target analysis,
+hints, reference solutions, and learning objectives live in **Details & hints**.
+Desktop sidebars are deliberately narrower than the graph and can still be
+collapsed. Learn navigation says lesson, Campaigns/Practice says mission, and
+Sandbox has no unit terminology.
+
+The duplicate-content audit uses `createLevelFingerprint`. It ignores layout
+coordinates and normalizes world names, valuations, edges, objectives and
+required predictions, edit permissions, primary/bonus constraints, frame
+rules, and required evaluation state. Tests compare Controls
+with all Learn tasks and require any exact duplicate to be documented in an
+explicit allowlist.
