@@ -111,6 +111,7 @@ describe('campaign level solvability', () => {
       expect(item.targetTruth, item.id).toBeUndefined()
       expect(item.prediction, item.id).toBeUndefined()
       expect(item.atomVocabulary, item.id).toEqual(item.id === 'tutorial-v2-valuation' ? undefined : ['p'])
+      expect(item.taskSteps, `${item.id}: action checklist`).toHaveLength(3)
       expect(item.structuralObjective, item.id).toBeDefined()
       const valuation = Object.fromEntries(item.worlds.map(({ id, atoms }) => [id, atoms ? atoms.split(' ') : []]))
       const violations = checkConstructionConstraints({ worldIds: item.worlds.map(({ id }) => id), explicitEdges: item.edges, effectiveEdges: item.edges, valuation }, item.constraints ?? {})
@@ -127,7 +128,7 @@ describe('campaign level solvability', () => {
       expect(verifyConstructionObjective(item.structuralObjective!, { evaluationWorld }).success).toBe(true)
     }
     check('tutorial-v2-evaluation-world', ['w0', 'w1'], [], { w0: [], w1: ['p'] }, 'w1')
-    check('tutorial-v2-valuation', ['w0'], [], { w0: ['p'] })
+    check('tutorial-v2-valuation', ['w0'], [], { w0: ['p', 'q'] })
     check('tutorial-v2-draw-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: [] })
     check('tutorial-v2-correct-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: [] })
     check('tutorial-v2-add-world', ['w0', 'w1'], [], { w0: [], w1: ['p'] })
