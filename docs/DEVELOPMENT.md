@@ -351,3 +351,53 @@ required predictions, edit permissions, primary/bonus constraints, frame
 rules, and required evaluation state. Tests compare Controls
 with all Learn tasks and require any exact duplicate to be documented in an
 explicit allowlist.
+
+## Release gates
+
+Pull requests and pushes to `main` run `npm ci`, `npm test`, `npm run build`, and
+a high-severity production-dependency audit in `.github/workflows/ci.yml`.
+The Pages deployment independently repeats install, tests, and build before it
+uploads `dist`; deployment therefore cannot proceed from a failed test job.
+Repository administrators should enable branch protection for `main` and make
+the CI `test-and-build` check required. That setting lives on GitHub and cannot
+be enforced by files in this repository alone.
+
+For a local release run the same three commands from a clean install. Smoke
+coverage must keep the homepage, Learn, Sandbox, a simple formula evaluation,
+and relative asset/base-path behavior exercised. `vite.config.ts` deliberately
+uses `base: './'` so built asset URLs work under the GitHub Pages repository
+path.
+
+## Workspace modules
+
+`App.tsx` still coordinates navigation and shared workspace state while the
+incremental split moves independently testable pieces outward. Welcome,
+lesson-stage rendering, mission headers, content definitions, mission auditing,
+fingerprinting, and evaluation-trace rendering now live in dedicated modules.
+New workspace behavior should be added to a focused module rather than growing
+the coordinator. Persistence, draft, selection, verification, guided mission,
+and dialog state must remain conceptually separate even when orchestrated by the
+same component.
+
+## Learn content architecture
+
+The first three chapters remain in `src/learn.ts`; the remaining lesson data is
+split by chapter under `src/learn/`. Shared constructors live in
+`src/learn/shared.ts`. Keep chapter modules declarative and route all semantic
+checks through the existing evaluator.
+
+`prediction.kind: 'statement-choice'` supplies reusable radio-card answers via
+`statementChoices: { id, label }[]`. Its `expectedChoice` must identify one of
+those cards, and `mustBeCorrect` blocks completion with a generic explanatory
+error when the selected interpretation is wrong. `scopeComparison: {
+evaluationWorld }` requests a post-check comparison of pointed, model-global,
+and frame-valid truth; it must call the normal verifier three times rather than
+introducing another evaluator.
+
+Tests for authored Learn data must prove that every editing task starts
+incomplete, an intended state passes, and a key distractor fails. Identification
+tasks require missing, wrong, and correct-answer checks. Every task also needs a
+parseable formula when semantic, exactly three hints, an existing evaluation
+world, and unique lesson/task IDs. `createLevelFingerprint` is compared across
+Controls and Learn; an exact duplicate is allowed only through an explicit,
+pedagogically justified test allowlist.

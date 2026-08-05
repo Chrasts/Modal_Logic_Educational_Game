@@ -2,7 +2,13 @@
 
 `Learn Modal Logic` remains the internal data-driven lesson engine. In the UI it
 is part of one **Learn Modal Logic** path: Welcome to Modal Logic, Learn the
-Controls, Truth at a World, Worlds and Accessibility, and Possibility.
+Controls, and 10 chapters containing 56 lessons in this order: **Truth at a
+World**, **Worlds and Accessibility**, **Possibility**, **Necessity**, **Box and
+Diamond**, **Nested Modalities**, **Local, Global, and Frame Truth**, **Models
+and Countermodels**, **Frame Properties**, and **Modal Axioms and
+Correspondence**. With the six controls lessons, the complete available path
+contains 62 tasks. The in-app chapter and lesson totals are derived from
+`learnCourse`, rather than maintained as separate counters.
 
 Course data lives in `src/learn.ts`. A chapter declares prerequisites, lessons,
 completion recap text, and a next-chapter preview. A lesson contains concept
@@ -12,11 +18,32 @@ control tutorial lives separately in `src/campaign.ts`. Its optional
 `taskSteps` metadata renders a short ordered action checklist in the shared
 mission header; it is not used by semantic lessons.
 
-Available introductory campaigns are **Truth at a World**, **Worlds and
-Accessibility**, and **Possibility**. Possibility has no How to Play dependency
-and opens directly in the workspace. Necessity, Box and Diamond, Countermodels,
-Local, Global, and Frame Truth, and Frame Properties remain intentional
-coming-later cards rather than empty campaigns.
+All 10 chapters above are available. Their recommended prerequisite chain is
+linear, from Truth at a World through Modal Axioms and Correspondence, but the
+overview does not use prerequisites as hard locks.
+
+## Chapter map
+
+| Chapter | Lessons | Prerequisite | Goal and central misconception |
+| --- | ---: | --- | --- |
+| **Truth at a World** | 5 | — | Evaluate atoms and Boolean formulas locally; truth elsewhere does not settle truth at the selected world. |
+| **Worlds and Accessibility** | 5 | Truth at a World | Build directed finite frames; an arrow does not imply its reverse. |
+| **Possibility** | 5 | Worlds and Accessibility | Find an accessible witness; a matching but inaccessible world is irrelevant. |
+| **Necessity** | 6 | Possibility | Check every successor, including vacuous truth at dead ends; one good branch is not enough. |
+| **Box and Diamond** | 6 | Necessity | Compare possible truth profiles and modal dualities; □ and ◇ are not interchangeable. |
+| **Nested Modalities** | 5 | Box and Diamond | Follow each modal step at its new world; quantifier order matters. |
+| **Local, Global, and Frame Truth** | 5 | Nested Modalities | Separate one world, all worlds under one valuation, and all worlds under every valuation. |
+| **Models and Countermodels** | 7 | Local, Global, and Frame Truth | Locate, complete, construct, and simplify countermodels at the requested scope. |
+| **Frame Properties** | 6 | Models and Countermodels | Repair reflexive, serial, symmetric, transitive, and Euclidean relations independently of valuation. |
+| **Modal Axioms and Correspondence** | 6 | Frame Properties | Check T, D, B, 4, and 5 on finite frames without mistaking an instance check for a general proof. |
+
+Identification lessons keep the model fixed and require an explicit world,
+countervaluation, or statement answer. Construction lessons expose only the
+controls needed to change the model. The final scope lesson uses reusable
+`scopeComparison` metadata: after verification it reports pointed truth,
+model-global truth, and frame validity side by side with a reason for each.
+Frame validity always ranges over every valuation on the displayed finite
+frame.
 
 Progress is stored locally under the versioned `logic-game:learn-progress:v1`
 key. Its independent `contentRevision` allows a targeted migration when an
@@ -73,3 +100,8 @@ is empty.
 User-facing terminology is mode-specific: Learn uses **lesson**, Campaigns and
 Practice use **mission**, and Sandbox uses neither. Individual successful checks
 use **Task complete**.
+
+Frame-validity and correspondence displays are exhaustive checks of the finite
+frame instance currently shown, within the displayed valuation limit. They do
+not prove a general correspondence theorem. Likewise, reduced models and
+reference constructions are not claims of absolute mathematical minimality.
