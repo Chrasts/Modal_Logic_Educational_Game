@@ -32,8 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Production smoke test
+        run: npm run smoke
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
