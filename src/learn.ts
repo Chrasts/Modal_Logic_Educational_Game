@@ -1,5 +1,11 @@
 import type { GameLevel } from './campaign'
-import { foundationChapters } from './learn-foundations'
+import { necessityChapter } from './learn/necessity'
+import { boxDiamondChapter } from './learn/box-diamond'
+import { nestedModalitiesChapter } from './learn/nested-modalities'
+import { semanticScopesChapter } from './learn/semantic-scopes'
+import { countermodelsChapter } from './learn/countermodels'
+import { framePropertiesChapter } from './learn/frame-properties'
+import { modalAxiomsChapter } from './learn/modal-axioms'
 
 export type LearnStage = 'concept' | 'example' | 'prediction' | 'task' | 'feedback' | 'transfer' | 'completion'
 
@@ -34,6 +40,7 @@ export interface LearnLesson {
   readonly commonMistake?: string
   readonly diagnosticFeedback?: Readonly<Record<string, string>>
   readonly transferTask?: GameLevel
+  readonly relatedLessonIds?: readonly string[]
 }
 
 export interface ConceptQuestion {
@@ -201,7 +208,7 @@ const worldsAndAccessibilityLessons: readonly LearnLesson[] = [
   },
 ]
 
-export const learnCourse: LearnCourse = {
+const authoredLearnCourse: LearnCourse = {
   id: 'learn-modal-logic', title: 'Learn Modal Logic', description: 'Foundational lessons in building and evaluating finite Kripke models.',
   chapters: [
     { id: 'truth-at-a-world', title: 'Truth at a World', description: 'Evaluate formulas at a designated world.', prerequisiteChapterIds: [], lessons: truthAtAWorldLessons, completionSummary: ['Formulas are evaluated relative to a selected world.', 'Atom truth is determined by valuation.', 'Negation reverses local truth and conjunction requires both conjuncts at one world.'], nextPreview: 'Continue to Worlds and Accessibility.', recapQuestions: [
@@ -219,9 +226,49 @@ export const learnCourse: LearnCourse = {
       { prompt: 'Does a p-world anywhere in the model witness ◇p at w0?', choices: ['Yes', 'Only if accessible from w0'], correctChoice: 'Only if accessible from w0', explanation: 'A witness must satisfy both accessibility and the operand.' },
       { prompt: 'How many witnesses does ◇p require?', choices: ['At least one', 'Every successor'], correctChoice: 'At least one', explanation: 'Diamond is existential.' },
     ] },
-    ...foundationChapters,
+    necessityChapter,
+    boxDiamondChapter,
+    nestedModalitiesChapter,
+    semanticScopesChapter,
+    countermodelsChapter,
+    framePropertiesChapter,
+    modalAxiomsChapter,
   ],
 }
 
+// Authored remediation links are intentional curricular relationships, not a
+// similarity score. Lessons without a suitable detour simply omit the action.
+export const relatedLessonIdsByLessonId: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'learn-possibility-alternative': ['learn-possibility-accessibility'],
+  'learn-possibility-witness': ['learn-possibility-alternative'],
+  'learn-possibility-accessibility': ['learn-worlds-directed-edge'],
+  'learn-possibility-direction': ['learn-worlds-direction'],
+  'learn-necessity-one-successor': ['learn-possibility-alternative'],
+  'learn-necessity-every-successor': ['learn-necessity-counterexample'],
+  'learn-necessity-vacuous': ['learn-box-diamond-necessary-not-possible'],
+  'learn-box-diamond-possible-not-necessary': ['learn-necessity-every-successor'],
+  'learn-box-diamond-diamond-duality': ['learn-box-diamond-box-duality'],
+  'learn-box-diamond-box-duality': ['learn-box-diamond-diamond-duality'],
+  'learn-nested-double-diamond': ['learn-possibility-witness'],
+  'learn-countermodels-relation': ['learn-necessity-counterexample'],
+  'learn-countermodels-global': ['learn-scopes-local-not-global'],
+  'learn-scopes-model': ['learn-truth-selected-world'],
+  'learn-scopes-frame': ['learn-scopes-model'],
+  'learn-scopes-comparison': ['learn-scopes-pointed'],
+  'learn-frames-transitive': ['learn-nested-double-diamond'],
+})
+
+export const learnCourse: LearnCourse = {
+  ...authoredLearnCourse,
+  chapters: authoredLearnCourse.chapters.map((chapter) => ({
+    ...chapter,
+    lessons: chapter.lessons.map((lesson) => ({ ...lesson, relatedLessonIds: relatedLessonIdsByLessonId[lesson.id] })),
+  })),
+}
+
 export const learnLessons = learnCourse.chapters.flatMap((chapter) => chapter.lessons)
+export const learnCourseStats = Object.freeze({
+  chapterCount: learnCourse.chapters.length,
+  lessonCount: learnLessons.length,
+})
 export const learnLessonByTaskId = new Map(learnLessons.flatMap((lesson) => [[lesson.task.id, lesson], ...(lesson.transferTask ? [[lesson.transferTask.id, lesson] as const] : [])]))

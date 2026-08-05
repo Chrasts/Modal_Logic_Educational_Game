@@ -20,31 +20,21 @@ export interface LearnProgress {
 export const learnProgressKey = 'logic-game:learn-progress:v1'
 export const currentLearnContentRevision = 2
 
-const revisedLessonIds = new Set([
-  'learn-worlds-add',
-  'learn-worlds-directed-edge',
-  'learn-worlds-direction',
-  'learn-possibility-witness',
-  'learn-possibility-accessibility',
-  'learn-possibility-direction',
-  'learn-possibility-build',
-])
-const revisedChapterIds = new Set(['worlds-accessibility', 'possibility'])
-
 export const emptyLearnProgress = (): LearnProgress => ({ version: 1, contentRevision: currentLearnContentRevision, completedLessonIds: [], completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} })
 
 export const migrateLearnProgress = (stored: Partial<LearnProgress>): LearnProgress => {
   const completedLessonIds = Array.isArray(stored.completedLessonIds) ? stored.completedLessonIds.filter((id): id is string => typeof id === 'string') : []
   const completedChapterIds = Array.isArray(stored.completedChapterIds) ? stored.completedChapterIds.filter((id): id is string => typeof id === 'string') : []
   const transferCompletedLessonIds = Array.isArray(stored.transferCompletedLessonIds) ? stored.transferCompletedLessonIds.filter((id): id is string => typeof id === 'string') : []
-  const needsContentMigration = (stored.contentRevision ?? 1) < currentLearnContentRevision
   return {
     ...emptyLearnProgress(),
     ...stored,
     contentRevision: currentLearnContentRevision,
-    completedLessonIds: needsContentMigration ? completedLessonIds.filter((id) => !revisedLessonIds.has(id)) : completedLessonIds,
-    completedChapterIds: needsContentMigration ? completedChapterIds.filter((id) => !revisedChapterIds.has(id)) : completedChapterIds,
-    transferCompletedLessonIds: needsContentMigration ? transferCompletedLessonIds.filter((id) => !revisedLessonIds.has(id)) : transferCompletedLessonIds,
+    // The remaining chapters are purely additive. Preserve every existing
+    // completion even when loading an older content revision.
+    completedLessonIds,
+    completedChapterIds,
+    transferCompletedLessonIds,
   }
 }
 

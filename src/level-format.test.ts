@@ -113,4 +113,23 @@ describe('custom mission format', () => {
     invalid.level.prediction.modelChoices[0].edges[0].to = 'missing'
     expect(() => parseCustomLevelFile(invalid)).toThrow(/unknown world/i)
   })
+
+  it('round-trips statement choices and scope-comparison metadata', () => {
+    const statements: GameLevel = {
+      ...level,
+      scopeComparison: { evaluationWorld: 'w0' },
+      prediction: { kind: 'statement-choice', prompt: 'Which statement?', expectedChoice: 'right', mustBeCorrect: true, statementChoices: [
+        { id: 'wrong', label: 'The wrong interpretation.' }, { id: 'right', label: 'The correct interpretation.' },
+      ] },
+    }
+    const parsed = parseCustomLevelFile(JSON.parse(serializeCustomLevel(statements)))
+    expect(parsed.prediction).toEqual(statements.prediction)
+    expect(parsed.scopeComparison).toEqual({ evaluationWorld: 'w0' })
+    const missingChoice = JSON.parse(serializeCustomLevel(statements))
+    missingChoice.level.prediction.expectedChoice = 'missing'
+    expect(() => parseCustomLevelFile(missingChoice)).toThrow(/expected statement/i)
+    const missingWorld = JSON.parse(serializeCustomLevel(statements))
+    missingWorld.level.scopeComparison.evaluationWorld = 'missing'
+    expect(() => parseCustomLevelFile(missingWorld)).toThrow(/scope-comparison evaluation world/i)
+  })
 })

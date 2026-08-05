@@ -151,8 +151,9 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     countervaluationChoices: predictionSource.countervaluationChoices,
     modelChoices: predictionSource.modelChoices,
     worldChoices: predictionSource.worldChoices,
+    statementChoices: predictionSource.statementChoices,
   } : undefined
-  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation', 'model-choice', 'world-choice'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
+  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation', 'model-choice', 'world-choice', 'scope-truth', 'statement-choice'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
   if (prediction && (typeof prediction.prompt !== 'string' || !prediction.prompt.trim())) throw new Error('A custom mission prediction needs a prompt.')
   if (prediction?.kind === 'counterexample-world' && source.scope !== 'model') throw new Error('Counterexample-world prediction requires model-global scope.')
   if (prediction?.mustBeCorrect !== undefined && typeof prediction.mustBeCorrect !== 'boolean') throw new Error('Invalid prediction correctness requirement.')
@@ -202,6 +203,20 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     if (typeof prediction.expectedChoice !== 'string' || !ids.includes(prediction.expectedChoice)) throw new Error('A world-choice interaction needs an existing expected world.')
     if (!Array.isArray(prediction.worldChoices) || prediction.worldChoices.length < 2 || prediction.worldChoices.some((world) => typeof world !== 'string' || !ids.includes(world)) || !prediction.worldChoices.includes(prediction.expectedChoice)) throw new Error('A world-choice interaction needs valid answer choices containing the expected world.')
   }
+  if (prediction?.kind === 'statement-choice') {
+    if (typeof prediction.expectedChoice !== 'string' || !prediction.expectedChoice.trim()) throw new Error('A statement-choice interaction needs an expected choice.')
+    if (!Array.isArray(prediction.statementChoices) || prediction.statementChoices.length < 2) throw new Error('A statement-choice interaction needs at least two statements.')
+    const choiceIds = new Set<string>()
+    for (const item of prediction.statementChoices) {
+      const choice = object(item, 'Invalid statement choice.')
+      if (typeof choice.id !== 'string' || !choice.id.trim() || choiceIds.has(choice.id) || typeof choice.label !== 'string' || !choice.label.trim()) throw new Error('Statement choices need unique ids and non-empty labels.')
+      choiceIds.add(choice.id)
+    }
+    if (!choiceIds.has(prediction.expectedChoice)) throw new Error('The expected statement must be present among the choices.')
+  }
+  const scopeComparisonSource = source.scopeComparison === undefined ? undefined : object(source.scopeComparison, 'Invalid scope comparison metadata.')
+  const scopeComparison = scopeComparisonSource ? { evaluationWorld: scopeComparisonSource.evaluationWorld } : undefined
+  if (scopeComparison && (typeof scopeComparison.evaluationWorld !== 'string' || !ids.includes(scopeComparison.evaluationWorld))) throw new Error('The scope-comparison evaluation world must exist.')
   const constraints = parseConstraints(source.constraints, 'custom mission constraints')
   const bonusConstraints = parseConstraints(source.bonusConstraints, 'custom mission bonus constraints')
   if (constraints) assertCompatibleAuthoredConstraints(constraints)
@@ -217,7 +232,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     targetTruth: source.targetTruth, evaluationWorld: source.evaluationWorld,
     correspondencePreset, worlds, edges, frameRules,
     constraints, bonusConstraints,
-    prediction: prediction as GameLevel['prediction'], editable: source.editable as LevelEditPermission[],
+    prediction: prediction as GameLevel['prediction'], scopeComparison: scopeComparison as GameLevel['scopeComparison'], editable: source.editable as LevelEditPermission[],
   }
   const referenceSolution = file.referenceSolution === undefined ? undefined : parseReferenceSolution(file.referenceSolution)
   if (referenceSolution) assertValidReferenceSolution(level, referenceSolution)

@@ -23,7 +23,7 @@ export interface GameLevel {
   readonly estimatedDifficulty?: 'introductory' | 'intermediate' | 'advanced'
   readonly learningObjective?: string
   readonly prediction?: {
-    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice' | 'scope-truth'
+    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice' | 'scope-truth' | 'statement-choice'
     readonly prompt: string
     readonly expectedProperty?: FramePropertyName
     readonly propertyChoices?: readonly FramePropertyName[]
@@ -40,9 +40,15 @@ export interface GameLevel {
       readonly evaluationWorld: string
     }[]
     readonly worldChoices?: readonly string[]
+    readonly statementChoices?: readonly {
+      readonly id: string
+      readonly label: string
+    }[]
   }
-  /** Shows pointed, model-global, and frame results together for scope lessons. */
+  /** @deprecated Kept only for imported v1 missions. Prefer scopeComparison. */
   readonly showScopeComparison?: boolean
+  /** Shows a deterministic three-scope semantic comparison after verification. */
+  readonly scopeComparison?: { readonly evaluationWorld: string }
   readonly briefing?: string
   /** Progressive strategic guidance for guided campaigns. */
   readonly hints?: readonly [string, string, string]

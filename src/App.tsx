@@ -22,12 +22,18 @@ import { LearnLessonView } from './LearnLessonView'
 import { ModalLogicWelcome } from './ModalLogicWelcome'
 import { MissionHeader, type MissionHeaderMode } from './components/MissionHeader'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
+import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
 import type { LearnStage } from './learn'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
 import { createShareUrl, readSharedJson } from './share-url'
 import { createEducatorCsv } from './educator-export'
 import { auditMission, type MissionAuditFinding } from './mission-audit'
+import { MissionAuthorStepper } from './authoring/MissionAuthorStepper'
+import { AuthorValidationSummary } from './authoring/AuthorValidationSummary'
+import { useDialogFocus } from './hooks/useDialogFocus'
+import { HomeView } from './app/HomeView'
+import { LearnRecoveryActions } from './components/LearnRecoveryActions'
 import { assertValidReferenceSolution, parseCustomLevelFile, parseCustomLevelPackage, serializeCustomLevel, type ParsedCustomLevelFile, type ReferenceSolution } from './level-format'
 import {
   applyFrameProperties,
@@ -329,6 +335,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const utilityMenuRef = useRef<HTMLDivElement>(null)
   const utilityMenuButtonRef = useRef<HTMLButtonElement>(null)
   const formulaInputRef = useRef<HTMLInputElement>(null)
+  const verificationResultRef = useRef<HTMLDivElement>(null)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
@@ -388,10 +395,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [levelStartSnapshot, setLevelStartSnapshot] = useState<AuthorStartSnapshot | null>(null)
   const [levelReferenceSolution, setLevelReferenceSolution] = useState<ReferenceSolution | null>(null)
   const [missionAuditFindings, setMissionAuditFindings] = useState<readonly MissionAuditFinding[]>([])
+  const [authorStep, setAuthorStep] = useState(1)
+  const [visitedAuthorSteps, setVisitedAuthorSteps] = useState<ReadonlySet<number>>(new Set([1]))
+  const [authorStepErrors, setAuthorStepErrors] = useState<readonly string[]>([])
 
   useEffect(() => {
     if (evaluationScope !== 'model' && levelPredictionKind === 'counterexample-world') setLevelPredictionKind('none')
   }, [evaluationScope, levelPredictionKind])
+  useEffect(() => {
+    if (result && result.kind !== 'error') verificationResultRef.current?.focus()
+  }, [result])
   const [nextWorldKey, setNextWorldKey] = useState(() => Math.max(-1, ...worlds.map(({ key }) => key)) + 1)
   const [nextEdgeKey, setNextEdgeKey] = useState(() => Math.max(-1, ...edges.map(({ key }) => key)) + 1)
   const [selectedEdgeKey, setSelectedEdgeKey] = useState<number | null>(null)
@@ -724,18 +737,27 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
   const currentValuation = Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)]))
   const scopeComparison = (() => {
-    if (!activeLevel?.showScopeComparison || !formulaSource.trim() || usableWorldIds.length === 0) return null
+    const configuredWorld = activeLevel?.scopeComparison?.evaluationWorld ?? (activeLevel?.showScopeComparison ? evaluationWorld : undefined)
+    if (!configuredWorld || !result || !formulaSource.trim() || usableWorldIds.length === 0) return null
     try {
       const formula = parseFormula(formulaSource)
-      return (['pointed', 'model', 'frame'] as const).map((scope) => ({
-        scope,
-        holds: verifyObjective({ scope, targetTruth: true, evaluationWorld }, {
+      return (['pointed', 'model', 'frame'] as const).map((scope) => {
+        const verdict = verifyObjective({ scope, targetTruth: true, evaluationWorld: configuredWorld }, {
           worldIds: usableWorldIds,
           edges: effectiveEdges,
           valuation: currentValuation,
           formula,
-        }).formula.holds,
-      }))
+        }).formula
+        return {
+          scope,
+          holds: verdict.holds,
+          reason: scope === 'pointed'
+            ? `${configuredWorld} ${verdict.holds ? 'satisfies' : 'does not satisfy'} the formula under the shown valuation.`
+            : scope === 'model'
+              ? verdict.holds ? 'Every world satisfies the formula under the shown valuation.' : 'At least one world fails under the shown valuation.'
+              : verdict.holds ? 'Every world satisfies the formula under every valuation.' : 'Frame validity checks every valuation; a world and countervaluation refute it.',
+        }
+      })
     } catch {
       return null
     }
@@ -772,43 +794,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const courseLesson = activeLevel ? learnLessonByTaskId.get(activeLevel.id) : undefined
   const activeLevelFailureCount = activeLevel ? guestProfile.history.filter((entry) => entry.levelId === activeLevel.id && !entry.success).length : 0
+  const relatedLearnLesson = courseLesson?.relatedLessonIds?.map((id) => learnLessons.find((lesson) => lesson.id === id)).find(Boolean)
   const semanticFeedbackLevel = result?.kind === 'failure' && activeLevel ? Math.max(1, Math.min(3, activeLevelFailureCount)) : 3
   const completionDialogOpen = Boolean(appView === 'workspace' && activeLevel && result?.kind === 'success' && !completionDismissed)
   const anyDialogOpen = showHelp || showFrameRules || showDataManager || learnConceptOpen || showSandboxOrientation || completionDialogOpen
-  const dialogReturnFocusRef = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    if (!anyDialogOpen) {
-      dialogReturnFocusRef.current?.focus()
-      dialogReturnFocusRef.current = null
-      return
-    }
-    if (!dialogReturnFocusRef.current && document.activeElement instanceof HTMLElement) dialogReturnFocusRef.current = document.activeElement
-    const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"]')
-    const dialog = dialogs.item(dialogs.length - 1)
-    if (!dialog) return
-    const focusable = () => [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])')]
-    focusable()[0]?.focus()
-    const keepFocusInside = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        if (showSandboxOrientation) { try { localStorage.setItem(sandboxOrientationKey, 'seen') } catch { /* Optional persistence. */ }; setShowSandboxOrientation(false) }
-        else if (learnConceptOpen) setLearnConceptOpen(false)
-        else if (completionDialogOpen) setCompletionDismissed(true)
-        else { setShowHelp(false); setShowFrameRules(false); setShowDataManager(false) }
-        return
-      }
-      if (event.key !== 'Tab') return
-      const items = focusable()
-      if (items.length === 0) { event.preventDefault(); dialog.focus(); return }
-      const first = items[0]
-      const last = items[items.length - 1]
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-    }
-    dialog.addEventListener('keydown', keepFocusInside)
-    return () => dialog.removeEventListener('keydown', keepFocusInside)
-  }, [anyDialogOpen, completionDialogOpen, learnConceptOpen, showSandboxOrientation])
+  useDialogFocus(anyDialogOpen, () => {
+    if (showSandboxOrientation) { try { localStorage.setItem(sandboxOrientationKey, 'seen') } catch { /* Optional persistence. */ }; setShowSandboxOrientation(false) }
+    else if (learnConceptOpen) setLearnConceptOpen(false)
+    else if (completionDialogOpen) setCompletionDismissed(true)
+    else { setShowHelp(false); setShowFrameRules(false); setShowDataManager(false) }
+  })
   const activeLearnChapter = courseLesson ? learnCourse.chapters.find((chapter) => chapter.id === courseLesson.chapterId) : undefined
   const activeLearnChapterIndex = activeLearnChapter && courseLesson ? activeLearnChapter.lessons.findIndex((lesson) => lesson.id === courseLesson.id) : -1
   const activeLearnChapterCompleted = activeLearnChapter?.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length ?? 0
@@ -823,6 +818,18 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const showValuations = !isGuidedMode || Boolean(presentation?.valuations || activeLevel?.editable.includes('valuations'))
   const showEdgePanel = !isGuidedMode || Boolean(presentation?.edges || activeLevel?.editable.includes('edges'))
   const showEvaluationControl = !isGuidedMode || Boolean(presentation?.evaluation || activeLevel?.editable.includes('evaluation') || activeLevel?.scope === 'pointed')
+  const choosePredictionAnswer = (answer: string) => {
+    setPredictionAnswer(answer)
+    setResult(null)
+    if (!courseLesson || !activeLevel?.prediction) return
+    const expected = activeLevel.prediction.kind === 'frame-property' ? activeLevel.prediction.expectedProperty : activeLevel.prediction.expectedChoice
+    const correct = activeLevel.prediction.kind === 'truth' || !expected ? undefined : answer === expected
+    setLearnProgress((current) => ({
+      ...current,
+      predictionAnswers: { ...current.predictionAnswers, [courseLesson.id]: answer },
+      predictionCorrectness: correct === undefined ? current.predictionCorrectness : { ...current.predictionCorrectness, [courseLesson.id]: correct },
+    }))
+  }
   const tutorialAllows = (control: import('./campaign').TutorialControl) => !isHowToPlay || Boolean(activeLevel?.tutorialControls?.includes(control))
   const canEditWorlds = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('worlds'))
   const canEditValuations = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('valuations'))
@@ -1335,6 +1342,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                         ? 'At least one of your local, global, or frame-valid predictions did not match.'
                       : activeLevel.prediction.kind === 'countervaluation'
                         ? `${predictionAnswer} is not the countervaluation that refutes the formula.`
+                        : activeLevel.prediction.kind === 'statement-choice'
+                          ? 'That interpretation is not correct for this model.'
                         : `${predictionAnswer} is not the required candidate model.`,
             }
           })()
@@ -1700,6 +1709,50 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     }
   }
 
+  const validateAuthorStep = (step: number): readonly string[] => {
+    if (step === 1) return [
+      !levelTitle.trim() && 'Enter a mission title.',
+      !levelInstruction.trim() && 'Enter a learner-facing instruction.',
+      !levelLearningObjective.trim() && 'Enter a learning objective.',
+      !levelConcept.trim() && 'Add at least one concept tag.',
+    ].filter((message): message is string => Boolean(message))
+    if (step === 2) return levelStartSnapshot ? [] : ['Capture the initial model before continuing.']
+    if (step === 3) {
+      const errors: string[] = []
+      try { parseFormula(formulaSource) } catch (error) { errors.push(error instanceof Error ? error.message : 'Enter a valid formula.') }
+      const snapshot = levelStartSnapshot ?? currentAuthorSnapshot()
+      if (!snapshot.worlds.some(({ id }) => id.trim() === evaluationWorld)) errors.push('Select an evaluation world that exists in the captured start.')
+      return errors
+    }
+    if (step === 4) return levelEditable.size > 0 ? [] : ['Unlock at least one player control.']
+    if (step === 5) {
+      try { customLevelFromSandbox(); return [] } catch (error) { return [error instanceof Error ? error.message : 'The constraints are invalid.'] }
+    }
+    if (step === 7) return [
+      !levelStartSnapshot && 'Capture the initial model first.',
+      !levelReferenceSolution && 'Capture and verify a reference solution.',
+    ].filter((message): message is string => Boolean(message))
+    return []
+  }
+
+  const goToAuthorStep = (step: number) => {
+    if (!visitedAuthorSteps.has(step) && step !== authorStep) return
+    setAuthorStep(step)
+    setAuthorStepErrors([])
+  }
+
+  const advanceAuthorStep = () => {
+    const errors = validateAuthorStep(authorStep)
+    if (errors.length > 0) { setAuthorStepErrors(errors); return }
+    if (authorStep === 8 && !runMissionAudit()) { setAuthorStepErrors(['Resolve the blocking audit findings before export/share.']); return }
+    const next = Math.min(9, authorStep + 1)
+    setVisitedAuthorSteps((current) => new Set([...current, next]))
+    setAuthorStep(next)
+    setAuthorStepErrors([])
+  }
+
+  const authorCanExport = missionAuditFindings.length > 0 && !missionAuditFindings.some(({ severity }) => severity === 'error')
+
   const downloadCustomLevel = () => {
     try {
       if (!runMissionAudit()) return
@@ -1882,15 +1935,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       <main id="main-content" className="main-content" tabIndex={-1}>
 
       {appView === 'home' && (
-        <section className="content-screen home-screen" aria-labelledby="home-title">
-          <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div></div>
-          <div className="home-actions home-primary-actions" aria-label="Main menu">
-            <div className="learn-home-entry"><button type="button" className="home-menu-tile featured learn-home-tile" aria-label="Start or continue Learn Modal Logic" onClick={continueLearningPath}><strong>LEARN</strong></button><p className="learn-home-status"><strong>{playableLearningCompleted}/{availableLearningTotal} complete</strong><span>Next: {nextLearningTitle}</span></p></div>
-            <button type="button" className="home-menu-tile" aria-label="Campaigns: longer challenges and focused practice" onClick={() => setAppView('campaigns')}><strong>CAMPAIGNS</strong></button>
-            <button type="button" className="home-menu-tile" aria-label="Sandbox: build and test models freely" onClick={returnToSandbox}><strong>SANDBOX</strong></button>
-          </div>
-          <div className="home-secondary"><button type="button" aria-label="Open profile from home" onClick={() => setAppView('profile')}><strong>Profile</strong></button><button type="button" aria-label="Open settings from home" onClick={() => setAppView('settings')}><strong>Settings</strong></button><button type="button" aria-label="Open data manager from home" onClick={openDataManager}><strong>Data</strong></button></div>
-        </section>
+        <HomeView completed={playableLearningCompleted} total={availableLearningTotal} nextTitle={nextLearningTitle} onLearn={continueLearningPath} onCampaigns={() => setAppView('campaigns')} onSandbox={returnToSandbox} onProfile={() => setAppView('profile')} onSettings={() => setAppView('settings')} onData={openDataManager} />
       )}
 
       {appView === 'practice' && (
@@ -2026,11 +2071,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       )}
 
       {appView === 'workspace' && <section className={`workspace mobile-tab-${mobileWorkspaceTab} ${isGuidedMode ? 'guided-workspace' : ''} ${evaluationScope === 'frame' ? 'frame-scope' : ''} ${showWorldPanel && !showEdgePanel ? 'world-panel-only' : ''} ${showEdgePanel && !showWorldPanel ? 'edge-panel-only' : ''} ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
-        <nav className="mobile-workspace-tabs" aria-label="Workspace sections">
-          <button type="button" className={mobileWorkspaceTab === 'model' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'model'} onClick={() => setMobileWorkspaceTab('model')}>Model</button>
-          {showFormulaPanel && <button type="button" className={mobileWorkspaceTab === 'formula' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'formula'} onClick={() => setMobileWorkspaceTab('formula')}>Formula</button>}
-          <button type="button" className={mobileWorkspaceTab === 'result' ? 'active' : ''} aria-pressed={mobileWorkspaceTab === 'result'} onClick={() => setMobileWorkspaceTab('result')}>Result</button>
-        </nav>
+        <MobileWorkspaceTabs activeTab={mobileWorkspaceTab} showFormula={showFormulaPanel} onChange={setMobileWorkspaceTab} />
         {showFormulaPanel && <div className="panel formula-panel">
           <div className="panel-heading">
             <span className="step">01</span>
@@ -2215,14 +2256,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <span className="step">05</span>
             <div><h2>Verification</h2></div>
           </div>
+          {isGuidedMode && comparisonFormulaSource.trim() && <div className="formula-comparison-chips" aria-label="Formula comparison"><span><small>Formula A</small><code>{formulaSource}</code></span><span><small>Formula B</small><code>{comparisonFormulaSource}</code></span></div>}
           {!isConstructionObjective && <div className="objective-summary">
             <span>Active target</span>
             <strong>{evaluationScope === 'pointed' ? 'Pointed model' : evaluationScope === 'model' ? 'Model-global truth' : evaluationScope === 'frame' ? 'Frame validity' : 'Formula–relation correspondence'}</strong>
             <small>{evaluationScope === 'pointed' ? 'One world · current valuation' : evaluationScope === 'model' ? 'Every world · current valuation' : evaluationScope === 'frame' ? 'Every world · every valuation' : 'Frame validity ↔ relational property'}</small>
           </div>}
           {!isConstructionObjective && frameValuationEstimate && <div className={`valuation-cost ${frameValuationLimitExceeded ? 'limit' : ''}`} role="status"><span>Frame search</span><strong>{frameValuationEstimate.valuations.toLocaleString('en-US')} valuations</strong><small>{usableWorldIds.length} worlds × {frameValuationEstimate.atoms} atoms · limit {DEFAULT_MAXIMUM_VALUATIONS.toLocaleString('en-US')}</small>{frameValuationLimitExceeded && <em>Reduce the number of worlds or distinct atoms before verification.</em>}</div>}
-          {!isConstructionObjective && evaluationScope === 'frame' && <p className="frame-valuation-note"><strong>All valuations are checked.</strong> Atoms shown on the graph are one example, not the only valuation used.</p>}
-          {scopeComparison && <div className="scope-comparison" aria-label="Scope comparison results"><span>Side-by-side semantics</span>{scopeComparison.map(({ scope, holds }) => <div key={scope}><strong>{scope === 'pointed' ? 'M,w ⊨ φ' : scope === 'model' ? 'M ⊨ φ' : 'F ⊨ φ'}</strong><b className={holds ? 'true' : 'false'}>{holds ? 'True' : 'False'}</b><small>{scope === 'pointed' ? 'one world · shown valuation' : scope === 'model' ? 'all worlds · shown valuation' : 'all worlds · all valuations'}</small></div>)}</div>}
+          {!isConstructionObjective && evaluationScope === 'frame' && <p className="frame-valuation-note"><strong>Frame validity checks every world under every valuation.</strong> Atoms shown on the graph are one example, not the only valuation used.</p>}
+          {scopeComparison && <div className="scope-comparison" aria-label="Scope comparison results"><span>Side-by-side semantics</span>{scopeComparison.map(({ scope, holds, reason }) => <div key={scope}><strong>{scope === 'pointed' ? 'Pointed truth' : scope === 'model' ? 'Model-global truth' : 'Frame validity'}</strong><b className={holds ? 'true' : 'false'}>{holds ? 'PASS' : 'FAIL'}</b><small>{reason}</small></div>)}</div>}
           {showEvaluationControl && (isConstructionObjective || evaluationScope === 'pointed') && <label className="field">
             <span>Evaluation world</span>
             <select disabled={(!isConstructionObjective && evaluationScope !== 'pointed') || !canEditEvaluation} value={evaluationWorld} onChange={(event) => selectEvaluationWorld(event.target.value)}>
@@ -2246,14 +2288,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                     ? <select aria-label="Relational property answer" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a property</option>{(activeLevel.prediction.propertyChoices ?? levelPropertyNames).map((property) => <option key={property}>{property}</option>)}</select>
                     : activeLevel.prediction.kind === 'countervaluation'
                       ? <div className="countervaluation-choices" role="radiogroup" aria-label="Countervaluation answer">{activeLevel.prediction.countervaluationChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><b>{choice.id}</b>{Object.entries(choice.valuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</button>)}</div>
-                      : <div className="model-choice-grid" role="radiogroup" aria-label="Candidate model answer">{activeLevel.prediction.modelChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><strong>Model {choice.id}</strong><span>Evaluation: {choice.evaluationWorld}</span><div>{choice.worlds.map((world) => <code key={world.id}>{world.id}: {world.atoms.trim() ? `{${world.atoms.split(/[\s,]+/u).filter(Boolean).join(', ')}}` : '∅'}</code>)}</div><small>R = {choice.edges.length ? `{${choice.edges.map(({ from, to }) => `(${from},${to})`).join(', ')}}` : '∅'}</small></button>)}</div>}
+                      : activeLevel.prediction.kind === 'statement-choice'
+                        ? <div className="statement-choice-grid" role="radiogroup" aria-label="Statement answer">{activeLevel.prediction.statementChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => choosePredictionAnswer(choice.id)}>{choice.label}</button>)}</div>
+                        : <div className="model-choice-grid" role="radiogroup" aria-label="Candidate model answer">{activeLevel.prediction.modelChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><strong>Model {choice.id}</strong><span>Evaluation: {choice.evaluationWorld}</span><div>{choice.worlds.map((world) => <code key={world.id}>{world.id}: {world.atoms.trim() ? `{${world.atoms.split(/[\s,]+/u).filter(Boolean).join(', ')}}` : '∅'}</code>)}</div><small>R = {choice.edges.length ? `{${choice.edges.map(({ from, to }) => `(${from},${to})`).join(', ')}}` : '∅'}</small></button>)}</div>}
             </div>
           )}
           {!isGuidedMode && <button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>Verify objective</button>}
-          <div className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
+          <div ref={verificationResultRef} tabIndex={-1} className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
             <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
             {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
             {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Lesson note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => setLearnConceptOpen(true)}>Review concept</button>}</p>}
+            {result?.kind === 'failure' && courseLesson && activeLevelFailureCount >= 3 && <LearnRecoveryActions relatedTitle={relatedLearnLesson?.title} onReview={() => setLearnConceptOpen(true)} onHint={() => setLearnHintLevel(3)} onRelated={relatedLearnLesson ? () => startLearnLesson(learnLessons.findIndex(({ id }) => id === relatedLearnLesson.id)) : undefined} />}
             {result && 'verdict' in result && result.verdict && (
               <div className="verdict-sections">
                 {semanticFeedbackLevel === 1 && <p className="feedback-disclosure"><strong>Feedback level 1 · Try again.</strong> The objective is not met. Recheck the target scope and the part of the model relevant to the formula.</p>}
@@ -2373,37 +2418,42 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <article><h3>JSON import and backup</h3><p>Paste a model, guest-profile backup, or custom mission. Imported missions open immediately in a locked objective workspace.</p><textarea aria-label="Model JSON" value={importSource} onChange={(event) => { setImportSource(event.target.value); setDataMessage('') }} spellCheck={false} /><div><button type="button" className="primary-action" onClick={importModel}>Import JSON</button><button type="button" className="secondary-button" onClick={downloadModel}>Download model</button></div></article>
               <article className="level-author">
                 <h3>Custom mission</h3><p>Create a mission from two separate workspace snapshots. Capture the player&rsquo;s starting state, build a valid solution in the workspace, then capture and verify that solution.</p>
-                <ol className="author-workflow" aria-label="Mission authoring workflow"><li>Learning objective</li><li>Initial model</li><li>Formula &amp; scope</li><li>Editable controls</li><li>Constraints</li><li>Prediction</li><li>Reference solution</li><li>Preview &amp; validation</li><li>Export/share</li></ol>
-                <div className="author-snapshots">
-                  <button type="button" className="secondary-button" onClick={captureMissionStart}>1. Capture mission start</button>
-                  <span className={levelStartSnapshot ? 'pass' : ''}>{levelStartSnapshot ? 'Start captured' : 'Using current workspace until captured'}</span>
-                  <button type="button" className="secondary-button" onClick={captureReferenceSolution} disabled={!levelStartSnapshot}>2. Capture valid solution</button>
-                  <span className={levelReferenceSolution ? 'pass' : ''}>{levelReferenceSolution ? 'Solution verified' : 'No reference solution'}</span>
-                </div>
-                <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
-                <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
-                <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
-                <label><span>Concept tags</span><input aria-label="Custom mission concept tags" value={levelConcept} onChange={(event) => setLevelConcept(event.target.value)} placeholder="necessity, countermodel" /></label>
-                <div className="author-pairs"><label><span>Prerequisites</span><input aria-label="Custom mission prerequisites" value={levelPrerequisites} onChange={(event) => setLevelPrerequisites(event.target.value)} placeholder="possibility, propositional connectives" /></label><label><span>Estimated difficulty</span><select aria-label="Custom mission difficulty" value={levelDifficulty} onChange={(event) => setLevelDifficulty(event.target.value as typeof levelDifficulty)}><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>
-                <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-                <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms</span><input aria-label="Required custom mission atoms" placeholder="w0: p q; w1: r" value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms</span><input aria-label="Forbidden custom mission atoms" placeholder="w0: r; w1: p" value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
-                <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else { next.add(property); setLevelForbiddenProperties((forbidden) => { const copy = new Set(forbidden); copy.delete(property); return copy }) } return next })} /> {property}</label>)}</fieldset>
-                <fieldset><legend>Forbidden frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelForbiddenProperties.has(property)} onChange={() => setLevelForbiddenProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else { next.add(property); setLevelRequiredProperties((required) => { const copy = new Set(required); copy.delete(property); return copy }) } return next })} /> {property}</label>)}</fieldset>
-                <label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}<option value="frame-property">Identify relational property</option></select></label>
-                {levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}
-                <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
-                <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>
-                <section className="mission-audit" aria-label="Mission audit"><div><h4>8. Preview and validation</h4><button type="button" className="secondary-button" onClick={runMissionAudit}>Run mission audit</button></div><div className="settings-choice" aria-label="Preview viewport"><button type="button" className={authorPreview === 'desktop' ? 'active' : ''} aria-pressed={authorPreview === 'desktop'} onClick={() => setAuthorPreview('desktop')}>Desktop preview</button><button type="button" className={authorPreview === 'mobile' ? 'active' : ''} aria-pressed={authorPreview === 'mobile'} onClick={() => setAuthorPreview('mobile')}>Mobile preview</button></div>{missionAuditFindings.length > 0 && <ul>{missionAuditFindings.map((finding) => <li className={finding.severity} key={`${finding.check}:${finding.detail}`}><b>{finding.severity === 'pass' ? 'PASS' : finding.severity === 'warning' ? 'WARNING' : 'BLOCKED'} · {finding.check}</b><span>{finding.detail}</span></li>)}</ul>}</section>
-                <div className="author-final-actions"><button type="button" className="primary-action" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button><button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink}>Generate mission link</button></div>
+                <MissionAuthorStepper currentStep={authorStep} visitedSteps={visitedAuthorSteps} errors={authorStepErrors} onSelectStep={goToAuthorStep} onBack={() => { setAuthorStep((step) => Math.max(1, step - 1)); setAuthorStepErrors([]) }} onNext={advanceAuthorStep}>
+                {authorStep === 1 && <div className="author-step-fields">
+                  <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
+                  <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
+                  <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
+                  <label><span>Concept tags</span><input aria-label="Custom mission concept tags" value={levelConcept} onChange={(event) => setLevelConcept(event.target.value)} placeholder="necessity, countermodel" /></label>
+                  <div className="author-pairs"><label><span>Prerequisites</span><input aria-label="Custom mission prerequisites" value={levelPrerequisites} onChange={(event) => setLevelPrerequisites(event.target.value)} placeholder="possibility, propositional connectives" /></label><label><span>Estimated difficulty</span><select aria-label="Custom mission difficulty" value={levelDifficulty} onChange={(event) => setLevelDifficulty(event.target.value as typeof levelDifficulty)}><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>
+                </div>}
+                {authorStep === 2 && <div className="author-snapshots"><p>Arrange the player&rsquo;s starting model in the workspace, then capture it here.</p><button type="button" className="primary-action" onClick={captureMissionStart}>Capture mission start</button><span className={levelStartSnapshot ? 'pass' : ''}>{levelStartSnapshot ? `Start captured: ${levelStartSnapshot.worlds.length} world(s), ${levelStartSnapshot.edges.length} edge(s)` : 'No captured start'}</span></div>}
+                {authorStep === 3 && <div className="author-step-fields">
+                  <label><span>Formula</span><input aria-label="Authored mission formula" value={formulaSource} onChange={(event) => { const value = event.target.value; setFormulaSource(value); setLevelStartSnapshot((start) => start ? { ...start, formulaSource: value } : start) }} /></label>
+                  <label><span>Comparison formula (optional)</span><input aria-label="Authored comparison formula" value={comparisonFormulaSource} onChange={(event) => { const value = event.target.value; setComparisonFormulaSource(value); setLevelStartSnapshot((start) => start ? { ...start, comparisonFormulaSource: value } : start) }} /></label>
+                  <div className="author-pairs"><label><span>Scope</span><select aria-label="Authored mission scope" value={evaluationScope} onChange={(event) => { const value = event.target.value as EvaluationScope; setEvaluationScope(value); setLevelStartSnapshot((start) => start ? { ...start, evaluationScope: value } : start) }}><option value="pointed">At one world</option><option value="model">Throughout this model</option><option value="frame">On this finite frame</option></select></label><label><span>Target</span><select aria-label="Authored mission target truth" value={targetTruth ? 'true' : 'false'} onChange={(event) => { const value = event.target.value === 'true'; setTargetTruth(value); setLevelStartSnapshot((start) => start ? { ...start, targetTruth: value } : start) }}><option value="true">True</option><option value="false">False</option></select></label></div>
+                  <label><span>Evaluation world</span><select aria-label="Authored mission evaluation world" value={evaluationWorld} onChange={(event) => { const value = event.target.value; setEvaluationWorld(value); setLevelStartSnapshot((start) => start ? { ...start, evaluationWorld: value } : start) }}>{(levelStartSnapshot?.worlds ?? worlds).map((world) => <option key={world.id} value={world.id}>{world.id}</option>)}</select></label>
+                </div>}
+                {authorStep === 4 && <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>}
+                {authorStep === 5 && <div className="author-step-fields">
+                  <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+                  <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms</span><input aria-label="Required custom mission atoms" placeholder="w0: p q; w1: r" value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms</span><input aria-label="Forbidden custom mission atoms" placeholder="w0: r; w1: p" value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
+                  <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
+                  <fieldset><legend>Forbidden frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelForbiddenProperties.has(property)} onChange={() => setLevelForbiddenProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
+                  <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
+                </div>}
+                {authorStep === 6 && <div className="author-step-fields"><label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}<option value="frame-property">Identify relational property</option></select></label>{levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}<p>Predictions are optional and do not penalize the learner.</p></div>}
+                {authorStep === 7 && <div className="author-snapshots"><p>Build a passing state in the workspace, then capture it as the verified reference.</p><button type="button" className="primary-action" onClick={captureReferenceSolution} disabled={!levelStartSnapshot}>Capture valid solution</button><span className={levelReferenceSolution ? 'pass' : ''}>{levelReferenceSolution ? 'Solution verified' : 'No reference solution'}</span><button type="button" className="secondary-button" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button></div>}
+                {authorStep === 8 && <section className="mission-audit" aria-label="Mission audit"><div><button type="button" className="primary-action" onClick={runMissionAudit}>Run mission audit</button></div><div className="settings-choice" aria-label="Preview viewport"><button type="button" className={authorPreview === 'desktop' ? 'active' : ''} aria-pressed={authorPreview === 'desktop'} onClick={() => setAuthorPreview('desktop')}>Desktop preview</button><button type="button" className={authorPreview === 'mobile' ? 'active' : ''} aria-pressed={authorPreview === 'mobile'} onClick={() => setAuthorPreview('mobile')}>Mobile preview</button></div><AuthorValidationSummary findings={missionAuditFindings} onGoToStep={(step) => { setVisitedAuthorSteps((current) => new Set([...current, step])); setAuthorStep(step); setAuthorStepErrors([]) }} /></section>}
+                {authorStep === 9 && <div className="author-export-step"><p className={authorCanExport ? 'pass' : 'fail'}>{authorCanExport ? 'Audit passed: this draft can be exported or shared.' : 'Run validation and resolve every blocking error before export/share.'}</p><div className="author-final-actions"><button type="button" className="secondary-button" onClick={downloadCustomLevel} disabled={!authorCanExport}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink} disabled={!authorCanExport}>Generate mission link</button></div>
                 <div className="campaign-packager">
                   <h4>Campaign package</h4>
                   <label><span>Campaign title</span><input aria-label="Custom campaign title" value={customCampaignTitle} onChange={(event) => setCustomCampaignTitle(event.target.value)} /></label>
                   <label><span>Description</span><input aria-label="Custom campaign description" value={customCampaignDescription} onChange={(event) => setCustomCampaignDescription(event.target.value)} /></label>
-                  <button type="button" className="secondary-button" onClick={addMissionToCustomCampaign}>Add current mission to package</button>
+                  <button type="button" className="secondary-button" onClick={addMissionToCustomCampaign} disabled={!authorCanExport}>Add current mission to package</button>
                   {authoredCampaignMissions.length > 0 && <ol>{authoredCampaignMissions.map(({ level }, index) => <li key={level.id}><span>{index + 1}. {level.title}</span><button type="button" aria-label={`Remove ${level.title} from package`} onClick={() => setAuthoredCampaignMissions((current) => current.filter(({ level: candidate }) => candidate.id !== level.id))}>Remove</button></li>)}</ol>}
                   <div><button type="button" className="primary-action" disabled={authoredCampaignMissions.length === 0} onClick={downloadCustomCampaign}>Download campaign package</button><button type="button" className="secondary-button" disabled={authoredCampaignMissions.length === 0} onClick={generateCampaignShareLink}>Generate campaign link</button></div>
-                </div>
-                {shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}
+                </div>{shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}</div>}
+                </MissionAuthorStepper>
               </article>
               <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser. Models, formulas, settings, and history are not automatically transmitted; this build has no analytics SDK or tracking cookies.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article>
             </div>

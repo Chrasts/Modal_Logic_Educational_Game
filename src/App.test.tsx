@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { learnLessons } from './learn'
 import { createShareUrl } from './share-url'
 
 describe('sandbox user interface', () => {
@@ -100,6 +101,44 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText(/Expected a formula, but the input ended/)).toBeVisible()
     expect(screen.getByLabelText('Modal formula')).toHaveFocus()
+  })
+
+  it('focuses a verification result and communicates its status with text', async () => {
+    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    const result = screen.getByText('Objective met').closest('.result')
+    expect(result).toHaveFocus()
+    expect(result).toHaveAttribute('role', 'status')
+    expect(result).toHaveTextContent(/Objective met|Pass/)
+  })
+
+  it('gives every rendered icon-only button an accessible name', async () => {
+    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    const user = userEvent.setup()
+    const { container } = render(<App initialView="workspace" />)
+    const assertNames = () => {
+      for (const button of container.querySelectorAll('button')) if (!(button.textContent ?? '').trim()) {
+        expect(button.getAttribute('aria-label') || button.getAttribute('title')).toBeTruthy()
+      }
+    }
+    assertNames()
+    await user.click(screen.getByRole('button', { name: /^Frame rules/ }))
+    assertNames()
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    assertNames()
+  })
+
+  it('keeps the narrow result route and verification action available', () => {
+    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
+    render(<App initialView="workspace" />)
+    expect(screen.getByRole('tab', { name: 'result' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Verify objective' })).toHaveClass('verify-button')
+    expect(screen.getByLabelText('Kripke model editor')).toHaveClass('mobile-tab-model')
   })
 
   it('shows the Sandbox orientation once and remembers its dismissal', async () => {
@@ -339,6 +378,113 @@ describe('sandbox user interface', () => {
     await user.selectOptions(screen.getByLabelText('Witness world answer'), 'w3')
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByRole('dialog', { name: 'Task complete' })).toBeVisible()
+  })
+
+  it('shows all ten available chapters and derives the complete 62-task path total', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Learn' }))
+    expect(screen.getByText('0/62')).toBeVisible()
+    expect(screen.queryByText('Coming later')).not.toBeInTheDocument()
+    for (const title of ['Necessity', 'Box and Diamond', 'Nested Modalities', 'Local, Global, and Frame Truth', 'Models and Countermodels', 'Frame Properties', 'Modal Axioms and Correspondence']) {
+      expect(screen.getByRole('heading', { name: title })).toBeVisible()
+    }
+  })
+
+  it('continues from the completed Possibility chapter into Necessity', async () => {
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    const completed = learnLessons.slice(0, 15).map(({ id }) => id)
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 2, welcomeViewed: true, completedLessonIds: completed, completedChapterIds: ['truth-at-a-world', 'worlds-accessibility', 'possibility'], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    expect(screen.getByRole('dialog', { name: 'One successor' })).toBeVisible()
+  })
+
+  it('offers the next chapter CTA after the last Necessity lesson', async () => {
+    const targetIndex = learnLessons.findIndex(({ id }) => id === 'learn-necessity-repair')
+    const completed = learnLessons.slice(0, targetIndex).map(({ id }) => id)
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 2, welcomeViewed: true, completedLessonIds: completed, completedChapterIds: ['truth-at-a-world', 'worlds-accessibility', 'possibility'], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    fireEvent.change(screen.getAllByLabelText('True atoms')[1], { target: { value: 'p' } })
+    await user.click(screen.getByRole('button', { name: 'Check task' }))
+    expect(within(screen.getByRole('dialog', { name: 'Task complete' })).getByRole('button', { name: 'Continue to Box and Diamond' })).toBeVisible()
+  })
+
+  it('shows Formula A and Formula B chips in Box and Diamond and Nested Modalities', async () => {
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    const seed = (lessonId: string) => {
+      const targetIndex = learnLessons.findIndex(({ id }) => id === lessonId)
+      localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+      localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+      localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 2, welcomeViewed: true, completedLessonIds: learnLessons.slice(0, targetIndex).map(({ id }) => id), completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    }
+    const user = userEvent.setup()
+    seed('learn-box-diamond-possible-not-necessary')
+    const first = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    expect(within(screen.getByLabelText('Formula comparison')).getByText('◇p')).toBeVisible()
+    expect(within(screen.getByLabelText('Formula comparison')).getByText('□p')).toBeVisible()
+    first.unmount()
+    localStorage.clear()
+    seed('learn-nested-order')
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    expect(within(screen.getByLabelText('Formula comparison')).getByText('□◇p')).toBeVisible()
+    expect(within(screen.getByLabelText('Formula comparison')).getByText('◇□p')).toBeVisible()
+  })
+
+  it('renders statement choices, blocks a wrong scope profile, and reports all three scopes after checking', async () => {
+    const targetIndex = learnLessons.findIndex(({ id }) => id === 'learn-scopes-comparison')
+    const completed = learnLessons.slice(0, targetIndex).map(({ id }) => id)
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 2, welcomeViewed: true, completedLessonIds: completed, completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    const wrong = screen.getByRole('radio', { name: 'Pointed: true · Model-global: true · Frame-valid: true' })
+    await user.click(wrong)
+    expect(wrong).toHaveAttribute('aria-checked', 'true')
+    expect(JSON.parse(localStorage.getItem('logic-game:learn-progress:v1') ?? '{}').predictionAnswers).toMatchObject({ 'learn-scopes-comparison': 'all-true' })
+    await user.click(screen.getByRole('button', { name: 'Check task' }))
+    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    expect(screen.getByText('That interpretation is not correct for this model.')).toBeVisible()
+    const comparison = screen.getByLabelText('Scope comparison results')
+    expect(within(comparison).getByText('Pointed truth')).toBeVisible()
+    expect(within(comparison).getByText('Model-global truth')).toBeVisible()
+    expect(within(comparison).getByText('Frame validity')).toBeVisible()
+    expect(within(comparison).getAllByText(/PASS|FAIL/)).toHaveLength(3)
+    expect(comparison).toHaveTextContent('every valuation')
+    await user.click(screen.getByRole('radio', { name: 'Pointed: true · Model-global: false · Frame-valid: false' }))
+    await user.click(screen.getByRole('button', { name: 'Check task' }))
+    expect(screen.getByRole('dialog', { name: 'Task complete' })).toBeVisible()
+  })
+
+  it('states the all-valuations quantification in the frame-validity lesson', async () => {
+    const targetIndex = learnLessons.findIndex(({ id }) => id === 'learn-scopes-frame')
+    const completed = learnLessons.slice(0, targetIndex).map(({ id }) => id)
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 2, welcomeViewed: true, completedLessonIds: completed, completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    expect(screen.getByText(/Frame validity checks every world under every valuation\./)).toBeVisible()
   })
 
   it('shows one Learn CTA and keeps Campaigns focused on challenges and practice', async () => {
@@ -692,23 +838,23 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Data' }))
 
+    expect(screen.getByRole('navigation', { name: 'Mission authoring steps' })).toBeVisible()
+    expect(screen.getAllByRole('listitem', { hidden: true }).filter((item) => item.closest('.author-step-navigation'))).toHaveLength(9)
+    expect(screen.queryByLabelText('Min worlds')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    for (let step = 2; step < 5; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('heading', { name: 'Constraints' })).toBeVisible()
     expect(screen.getByLabelText('Min worlds')).toBeVisible()
     expect(screen.getByLabelText('Max edges')).toBeVisible()
     expect(screen.getByLabelText('Max changes')).toBeVisible()
-    expect(screen.getByLabelText('Custom mission prediction')).toHaveValue('none')
     expect(screen.getByLabelText('Bonus maximum edges')).toBeVisible()
     expect(screen.getByLabelText('Required custom mission edges')).toBeVisible()
     expect(screen.getByLabelText('Forbidden custom mission atoms')).toBeVisible()
     expect(screen.getByRole('group', { name: 'Required frame properties' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '1. Capture mission start' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '2. Capture valid solution' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Download custom mission' })).toBeVisible()
-    expect(screen.getByLabelText('Custom campaign title')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Add current mission to package' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Download campaign package' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Generate mission link' }))
-    expect(screen.getByText(/Mission audit found \d+ blocking issue/)).toBeVisible()
-    expect(screen.queryByLabelText('Shareable URL')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByLabelText('Custom mission prediction')).toHaveValue('none')
+    expect(screen.getByRole('button', { name: /9Export\/share/ })).toBeDisabled()
   })
 
   it('opens a shared mission directly from the URL fragment', () => {
@@ -747,9 +893,11 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Data' }))
-    await user.click(screen.getByRole('button', { name: '1. Capture mission start' }))
-    expect(screen.getByText('Start captured')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: '2. Capture valid solution' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    expect(screen.getByText(/Start captured/)).toBeVisible()
+    for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Capture valid solution' }))
     expect(screen.getByText('Solution verified')).toBeVisible()
     expect(screen.getByText(/Valid reference solution captured/)).toBeVisible()
   })
@@ -759,7 +907,9 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Data' }))
-    await user.click(screen.getByRole('button', { name: '1. Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
 
     expect(screen.getByText('My custom mission')).toBeVisible()
@@ -776,7 +926,9 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Data' }))
-    await user.click(screen.getByRole('button', { name: '1. Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Close data manager' }))
     await user.clear(screen.getByLabelText('Modal formula'))
     await user.type(screen.getByLabelText('Modal formula'), 'p')

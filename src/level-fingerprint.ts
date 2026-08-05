@@ -50,6 +50,7 @@ export function createLevelFingerprint(level: GameLevel): string {
       mustBeCorrect: level.prediction.mustBeCorrect ?? false,
       propertyChoices: [...(level.prediction.propertyChoices ?? [])].sort(),
       worldChoices: [...(level.prediction.worldChoices ?? [])].map(worldName).sort(),
+      statementChoices: [...(level.prediction.statementChoices ?? [])].map(({ id, label }) => ({ id, label })).sort((left, right) => left.id.localeCompare(right.id)),
       countervaluationChoices: [...(level.prediction.countervaluationChoices ?? [])].map((choice) => ({
         id: choice.id,
         valuation: normalizedAtomRequirements(choice.valuation),
@@ -73,6 +74,7 @@ export function createLevelFingerprint(level: GameLevel): string {
     frameRules: sortedRecord(level.frameRules),
     requiredFrameRules: sortedRecord(level.requiredFrameRules),
     correspondencePreset: level.correspondencePreset ?? null,
+    scopeComparisonEvaluationWorld: level.scopeComparison ? worldName(level.scopeComparison.evaluationWorld) : null,
     requiredEvaluationWorld: level.structuralObjective?.requiredEvaluationWorld
       ? worldName(level.structuralObjective.requiredEvaluationWorld)
       : null,

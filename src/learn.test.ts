@@ -6,16 +6,25 @@ import { isConstructionLevel, tutorialLevels, validateLevelObjective } from './c
 import { createLevelFingerprint } from './level-fingerprint'
 
 describe('Learn Modal Logic course data', () => {
-  it('completes the foundational Learn path through frame properties', () => {
+  it('defines the complete ordered 10-chapter, 56-lesson semantic path', () => {
     const chapter = (id: string) => learnCourse.chapters.find((item) => item.id === id)!
-    expect(chapter('necessity').lessons).toHaveLength(5)
-    expect(chapter('nested-modalities').lessons).toHaveLength(10)
-    expect(chapter('models-countermodels').lessons).toHaveLength(7)
-    expect(chapter('semantic-scopes').lessons).toHaveLength(4)
-    expect(chapter('frames-axioms').lessons).toHaveLength(5)
+    expect(learnCourse.chapters.map(({ id }) => id)).toEqual(['truth-at-a-world', 'worlds-accessibility', 'possibility', 'necessity', 'box-diamond', 'nested-modalities', 'semantic-scopes', 'models-countermodels', 'frame-properties', 'modal-axioms'])
+    expect(learnCourse.chapters.map(({ lessons }) => lessons.length)).toEqual([5, 5, 5, 6, 6, 5, 5, 7, 6, 6])
+    expect(learnLessons).toHaveLength(56)
     for (const item of learnCourse.chapters) {
       expect(item.lessons.length, item.id).toBeGreaterThan(0)
-      expect(item.recapQuestions?.length, item.id).toBeGreaterThanOrEqual(3)
+    }
+    expect(chapter('necessity').prerequisiteChapterIds).toEqual(['possibility'])
+    expect(chapter('modal-axioms').prerequisiteChapterIds).toEqual(['frame-properties'])
+  })
+
+  it('uses only explicit, valid related-lesson metadata', () => {
+    const ids = new Set(learnLessons.map(({ id }) => id))
+    const linked = learnLessons.filter(({ relatedLessonIds }) => relatedLessonIds?.length)
+    expect(linked.length).toBeGreaterThan(0)
+    for (const lesson of linked) for (const relatedId of lesson.relatedLessonIds!) {
+      expect(ids.has(relatedId), `${lesson.id} links to ${relatedId}`).toBe(true)
+      expect(relatedId).not.toBe(lesson.id)
     }
   })
 
@@ -24,17 +33,19 @@ describe('Learn Modal Logic course data', () => {
     const formulas = tasks.map(({ formula }) => formula)
     expect(formulas).toEqual(expect.arrayContaining(['◇◇p', '□◇p', '◇□p', '□□p']))
     expect(tasks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ formula: '◇p', comparisonFormula: '¬□¬p' }),
-      expect.objectContaining({ formula: '□p', comparisonFormula: '¬◇¬p' }),
-      expect.objectContaining({ showScopeComparison: true, prediction: expect.objectContaining({ kind: 'scope-truth' }) }),
+      expect.objectContaining({ formula: '(◇p → ¬□¬p) ∧ (¬□¬p → ◇p)', scope: 'frame' }),
+      expect.objectContaining({ formula: '(□p → ¬◇¬p) ∧ (¬◇¬p → □p)', scope: 'frame' }),
+      expect.objectContaining({ scopeComparison: { evaluationWorld: 'w0' }, prediction: expect.objectContaining({ kind: 'statement-choice', expectedChoice: 'pointed-true-model-false-frame-false' }) }),
     ]))
   })
 
   it('teaches the minimum frame-property and correspondence set as finite instances', () => {
-    const frameTasks = learnCourse.chapters.find(({ id }) => id === 'frames-axioms')!.lessons.map(({ task }) => task)
-    expect(frameTasks.map(({ correspondencePreset }) => correspondencePreset)).toEqual(['t', 'd', 'b', '4', '5'])
-    expect(frameTasks.map(({ constraints }) => constraints?.requiredProperties?.[0])).toEqual(['reflexive', 'serial', 'symmetric', 'transitive', 'euclidean'])
-    expect(frameTasks.every(({ scope }) => scope === 'correspondence')).toBe(true)
+    const propertyTasks = learnCourse.chapters.find(({ id }) => id === 'frame-properties')!.lessons.map(({ task }) => task)
+    expect(propertyTasks.every(isConstructionLevel)).toBe(true)
+    expect(propertyTasks.map(({ constraints }) => constraints?.requiredProperties?.[0])).toEqual(['reflexive', 'serial', 'symmetric', 'transitive', 'euclidean', 'reflexive'])
+    const axiomTasks = learnCourse.chapters.find(({ id }) => id === 'modal-axioms')!.lessons.map(({ task }) => task)
+    expect(axiomTasks.slice(0, 5).map(({ correspondencePreset }) => correspondencePreset)).toEqual(['t', 'd', 'b', '4', '5'])
+    expect(axiomTasks.every(({ scope }) => scope === 'correspondence')).toBe(true)
   })
 
   it('contains an ordered five-lesson Possibility vertical slice', () => {
@@ -169,9 +180,9 @@ describe('Learn Modal Logic course data', () => {
       transferCompletedLessonIds: ['learn-truth-atomic', 'learn-possibility-build'],
     })
     expect(migrated.contentRevision).toBe(currentLearnContentRevision)
-    expect(migrated.completedLessonIds).toEqual(['learn-truth-atomic'])
-    expect(migrated.completedChapterIds).toEqual(['truth-at-a-world'])
-    expect(migrated.transferCompletedLessonIds).toEqual(['learn-truth-atomic'])
+    expect(migrated.completedLessonIds).toEqual(['learn-truth-atomic', 'learn-worlds-add', 'learn-possibility-witness'])
+    expect(migrated.completedChapterIds).toEqual(['truth-at-a-world', 'worlds-accessibility', 'possibility'])
+    expect(migrated.transferCompletedLessonIds).toEqual(['learn-truth-atomic', 'learn-possibility-build'])
   })
 
   it('initializes isolated versioned course progress', () => {
