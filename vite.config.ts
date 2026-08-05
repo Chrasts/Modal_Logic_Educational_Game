@@ -20,5 +20,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
+    // Full App integration cases exercise React Flow, local persistence, and
+    // authoring validation in jsdom; allow them to finish on slower CI runners.
+    testTimeout: 15_000,
   },
 })

@@ -1,8 +1,8 @@
 # Logic Model Builder
 
-Logic Model Builder is an interactive game for constructing finite Kripke
-models and frames, testing modal formulas, and exploring the connection between
-modal axioms and relational properties.
+Logic Model Builder is an interactive modal-logic laboratory and puzzle game
+for constructing finite Kripke models, testing formulas, and exploring the
+connection between modal axioms and relational properties.
 
 ## [Play online](https://chrasts.github.io/Modal_Logic_Educational_Game/)
 
@@ -184,6 +184,8 @@ notation `M,w ⊨ φ`.
 Frame validity is computed exhaustively for the finite frame currently shown.
 A correspondence result verifies agreement on that particular frame; it is not
 by itself a general mathematical proof of a characteristic-class theorem.
+The supported language is basic unimodal propositional logic. The application
+does not solve infinite frames or claim absolute minimality for reduced models.
 
 ## Run locally
 
@@ -204,6 +206,10 @@ Vite will print the local address. If Windows PowerShell blocks `npm.ps1`, use
 - [Mathematical conventions](docs/MATHEMATICAL_NOTES.md) — semantics, notation, correspondences, and scope
 - [Development guide](docs/DEVELOPMENT.md) — architecture, tests, and technical scope
 - [Learn course architecture](docs/LEARN_COURSE.md) — data-driven guided-course structure and local progress
+- [For educators](docs/FOR_EDUCATORS.md) — learning goals, misconceptions, suggested use, and limits
+- [Pilot protocol](docs/PILOT_PROTOCOL.md) — cohorts, pre/post testing, observation, and retention
+- [Privacy and analytics](docs/PRIVACY.md) — local storage, exports, hosting, cookies, and analytics policy
+- [Accessibility audit](docs/ACCESSIBILITY_AUDIT.md) — implemented access paths and the manual release checklist
 - [Countermodel Hunter](docs/COUNTERMODEL_HUNTER.md) — first guided campaign and its semantic strategies
 - [Frame Architect](docs/FRAME_ARCHITECT.md) — guided campaign on relational frame properties
 - [Formula Laboratory](docs/FORMULA_LABORATORY.md) — guided campaign on semantic formula comparison
