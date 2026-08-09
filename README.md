@@ -101,9 +101,19 @@ workspaces render Verification by default and only expose world, valuation, or
 accessibility panels that are useful for the current task.
 
 The first workspace visit offers a versioned four-step tour that can be reopened
-from **More**. On the model map, two-finger scrolling pans freely and pinch
-gestures zoom; explicit self-loops and reverse edge pairs remain visible and
-selectable.
+from **More** or the Guide without resetting the current mission. On the model
+map, a mouse wheel zooms under the pointer, two-finger touchpad scrolling pans
+freely in both axes, pinch zooms, and dragging empty space pans. Compact toolbar
+controls provide Zoom in/out and Fit model. **Tidy model** deterministically
+repositions worlds as one undoable presentation step; Fit changes only the
+viewport. New worlds appear near the selected world or viewport centre, avoid
+immediate spawn collisions, and can also be created by double-clicking empty
+desktop map space.
+
+Reverse directed pairs are normally presented as one bidirectional relation.
+Clicking it temporarily expands the two directions for inspection or deletion.
+Explicit and rule-derived directions keep distinct filled/open arrowheads, while
+the table view always lists the underlying directed successors.
 
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.
@@ -158,10 +168,11 @@ debriefs, and learning objectives. The current built-in campaigns are:
 
 ### Modal Logic Guide
 
-The in-game guide separates a notation-free introduction for newcomers from
-formal Kripke semantics. Its sections then cover box and diamond, semantic
-scopes, relations and modal axioms, objectives, controls, and a notation
-glossary.
+The in-game guide is a reference manual for formal Kripke semantics, box and
+diamond, semantic scopes, relations and modal axioms, objectives, controls, and
+the glossary. The dedicated Welcome and Learn the Controls experiences remain
+replayable from its overview; the Guide does not duplicate them as a second
+course.
 
 Create keeps authored custom missions and custom campaign packages separate
 from all built-in content.
@@ -169,6 +180,8 @@ from all built-in content.
 ### Workspace shortcuts
 
 - Select an explicit edge, then press `Delete` or `Backspace` to remove it.
+- Click a collapsed two-way relation to inspect its directions; press `Escape`
+  or click empty space to collapse it again.
 - Press `Escape` to clear the current world or edge selection.
 - Use `Ctrl+Z` to undo and `Ctrl+Y` or `Ctrl+Shift+Z` to redo model edits.
   The short tutorial enables undo and redo only in its final combined step.
@@ -176,7 +189,9 @@ from all built-in content.
 ### Settings
 
 Browser-local settings control workspace density, minimap visibility, derived
-edge visibility, and reduced interface motion. Fullscreen is available directly
+edge visibility, reduced interface motion, and optional sound effects. Sound is
+off by default, uses only short local Web Audio cues, and never includes music.
+Fullscreen is available directly
 in the global toolbar when supported. Settings affect presentation only and
 never change formulas, semantics, or mission constraints.
 
