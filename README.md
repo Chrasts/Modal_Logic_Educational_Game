@@ -79,17 +79,18 @@ all valuations.
 **Learn Modal Logic** is the single recommended route for new players. It
 starts with a replayable **Welcome to Modal Logic** visual introduction, then
 the replayable six-step **Learn the Controls** workspace tutorial, followed by
-the complete 10-chapter, 56-lesson course: **Truth at a World**, **Worlds and
+the complete 9-chapter, 50-lesson course: **Truth at a World**, **Worlds and
 Accessibility**, **Possibility**, **Necessity**, **Box and Diamond**, **Nested
 Modalities**, **Local, Global, and Frame Truth**, **Models and Countermodels**,
-**Frame Properties**, and **Modal Axioms and Correspondence**. Together with
-the six controls lessons, the available Learn path contains 62 tasks. The
+and **Frame Properties**. Together with the six controls lessons, the available
+Learn path contains 56 tasks. The
 overview and progress totals are calculated from the same `learnCourse` data
 that defines the lessons.
 
-Guided tasks use the same cycle throughout: read the task, make the requested
-edit, select **Check task**, then continue after confirmation. The Check task
-action remains visible in one compact mission header. The same header contains
+Learn construction tasks use **Check task** after editing the model. Read-only
+question tasks keep the question in the mission panel and use **Confirm answer**;
+world answers are selected directly on the map. Successful Learn tasks finish
+inside that panel without covering or resetting the map. The same header contains
 the section/campaign, local progress, title, and a single objective; longer
 briefings, concept help, analysis, hints, and reference solutions are available
 under **Details & hints** instead of a second persistent strip.
@@ -98,6 +99,11 @@ Learn calls each guided unit a **lesson**, Campaigns and Practice call it a
 **mission**, and Sandbox has no guided progress or mission header. Guided
 workspaces render Verification by default and only expose world, valuation, or
 accessibility panels that are useful for the current task.
+
+The first workspace visit offers a versioned four-step tour that can be reopened
+from **More**. On the model map, two-finger scrolling pans freely and pinch
+gestures zoom; explicit self-loops and reverse edge pairs remain visible and
+selectable.
 
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.
