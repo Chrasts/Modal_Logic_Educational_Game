@@ -353,15 +353,42 @@ only on the map. Learn completion also stays in the mission panel so React Flow
 remains mounted and its viewport/model state is preserved.
 
 The workspace tour is stored under `logic-game:workspace-tour:v1` and can be
-reopened from More. React Flow uses free `panOnScroll`, disables wheel zoom, and
-keeps pinch zoom enabled. The custom modal edge router handles horizontal,
-near-vertical, reverse-pair, and self-loop paths; explicit edges use a 22px
-interaction width and retain keyboard deletion when edge editing is allowed.
+reopened from More or Guide without deleting the persistence key or changing the
+active mission. `workspace/map-interactions.ts` classifies browser wheel events:
+Ctrl-wheel is treated as pinch, fine pixel/2D deltas as touchpad pan, and coarse
+or line/page deltas as mouse-wheel zoom. This is necessarily a heuristic because
+browsers do not expose a reliable hardware source. Both trackpad axes are always
+applied; wheel and pinch zoom are anchored under the pointer and clamped to the
+shared min/max. Native React Flow drag-pan and touch pinch remain enabled.
+
+`world-placement.ts` provides deterministic collision-aware spawn positions.
+Toolbar creation prefers the selected world, otherwise the viewport centre;
+desktop pane double-click supplies an exact preferred flow coordinate. Manual
+drag overlap is allowed and only receives transient visual feedback.
+
+`relation-presentation.ts` groups displayed directed reverse pairs without
+changing stored relation data. A pair is collapsed into one two-arrow edge until
+clicked; expanded directions reuse reverse-pair routing. Filled markers mean
+explicit and open brown markers mean derived. Hiding derived edges happens before
+grouping. The custom modal edge router still handles horizontal, near-vertical,
+reverse-pair, and self-loop paths with a 22px interaction width.
+
+`model-layout.ts` implements deterministic breadth-first Tidy layout with stable
+component ordering. Tidy saves one history snapshot and preserves verification;
+Fit changes only the React Flow viewport. Position-only history entries preserve
+the current result through undo/redo.
 
 Manual map QA before release:
 
 - Chrome and Edge on a real trackpad: two-finger scrolling pans in both axes,
-  pinch zooms, and scrolling outside the map moves the page normally.
+  mouse wheel zooms under the pointer, pinch zooms faster, and scrolling outside
+  the map moves the page normally.
+- Double-click empty desktop map space creates one world at the expected flow
+  coordinate, while nodes, edges, touch input, and locked missions do not.
+- Reverse pairs collapse to one relation, expand on click, preserve direction
+  marker provenance, and collapse through Escape or a pane click.
+- Tidy is one undo/redo step, does not change semantics or verification, and Fit
+  does not create a history entry.
 - A self-loop is visibly outside its world, can be selected through its wide
   hit area, and Backspace/Delete removes only the edge when editing is allowed.
 - Near-vertical arrows, reverse pairs, and arrowheads remain separated while

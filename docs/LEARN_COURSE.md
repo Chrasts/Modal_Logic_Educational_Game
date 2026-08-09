@@ -70,7 +70,11 @@ completion stays in the mission panel while the map remains mounted and
 unchanged. A fresh section shows Start, a partial section shows Continue and
 Restart section, and every chapter card can expand to show its completed,
 current, and unfinished lessons. Restart reopens current completion while keeping attempt history; Replay
-does not clear progress. When authoring a further chapter, add fully specified
+does not clear progress. Start and Continue are primary actions, Replay is
+secondary, and View/Hide lessons is tertiary. Once every available task is
+complete, the overview shows a completion status instead of a no-op global
+Replay Learning button; replay remains granular by introduction, Controls,
+section, or lesson. When authoring a further chapter, add fully specified
 `LearnLesson` objects and tests for formulas, initial models, constraints, and
 expected semantic outcomes before exposing the chapter in the browser.
 
