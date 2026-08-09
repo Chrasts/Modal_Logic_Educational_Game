@@ -53,6 +53,7 @@ describe('sandbox user interface', () => {
 
   beforeEach(() => {
     localStorage.clear()
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
     window.history.replaceState(null, '', '/')
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
@@ -103,8 +104,21 @@ describe('sandbox user interface', () => {
     expect(screen.getByLabelText('Modal formula')).toHaveFocus()
   })
 
+  it('creates and deletes an explicit self-loop without deleting its world', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: '+ Add edge' }))
+    const sources = screen.getAllByLabelText('Edge source world')
+    const targets = screen.getAllByLabelText('Edge target world')
+    expect(sources.at(-1)).toHaveValue('w0')
+    expect(targets.at(-1)).toHaveValue('w0')
+    await user.click(screen.getAllByRole('button', { name: 'Delete edge' }).at(-1)!)
+    expect(screen.getAllByLabelText('Edge source world')).toHaveLength(1)
+    expect(screen.getAllByLabelText('World')).toHaveLength(2)
+  })
+
   it('focuses a verification result and communicates its status with text', async () => {
-    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
@@ -115,7 +129,7 @@ describe('sandbox user interface', () => {
   })
 
   it('gives every rendered icon-only button an accessible name', async () => {
-    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
     const user = userEvent.setup()
     const { container } = render(<App initialView="workspace" />)
     const assertNames = () => {
@@ -133,7 +147,7 @@ describe('sandbox user interface', () => {
   })
 
   it('keeps the narrow result route and verification action available', () => {
-    localStorage.setItem('logic-game:sandbox-orientation:v1', 'seen')
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
     render(<App initialView="workspace" />)
     expect(screen.getByRole('tab', { name: 'result' })).toBeVisible()
@@ -141,15 +155,30 @@ describe('sandbox user interface', () => {
     expect(screen.getByLabelText('Kripke model editor')).toHaveClass('mobile-tab-model')
   })
 
-  it('shows the Sandbox orientation once and remembers its dismissal', async () => {
+  it('runs the four-step workspace tour once, supports keyboard skip, and can reopen it', async () => {
+    localStorage.removeItem('logic-game:workspace-tour:v1')
     const user = userEvent.setup()
     const first = render(<App initialView="workspace" />)
-    expect(screen.getByRole('dialog', { name: 'Four steps, one workbench' })).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Start exploring' }))
-    expect(localStorage.getItem('logic-game:sandbox-orientation:v1')).toBe('seen')
+    expect(screen.getByRole('dialog', { name: 'Model map' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('dialog', { name: 'Task and editing panel' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('dialog', { name: 'Evaluation and results' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByRole('dialog', { name: 'Navigating the map' })).toBeVisible()
+    await user.keyboard('{Escape}')
+    expect(localStorage.getItem('logic-game:workspace-tour:v1')).toBe('seen')
     first.unmount()
     render(<App initialView="workspace" />)
-    expect(screen.queryByRole('dialog', { name: 'Four steps, one workbench' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Model map' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Workspace tour' }))
+    expect(screen.getByRole('dialog', { name: 'Model map' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(document.querySelector('.workspace-tour-mobile-copy')).toHaveTextContent(/Model, Formula, and Result tabs/)
+    expect(document.querySelector('.workspace-tour-mobile-copy')).not.toHaveTextContent(/side panels/i)
   })
 
   it('provides a synchronized keyboard-accessible model table', async () => {
@@ -372,23 +401,76 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
     expect(screen.getByRole('dialog', { name: 'Finding a witness' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Start task' }))
-    await user.selectOptions(screen.getByLabelText('Witness world answer'), 'w1')
-    await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByText('Required answer incorrect')).toBeVisible()
-    await user.selectOptions(screen.getByLabelText('Witness world answer'), 'w3')
-    await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByRole('dialog', { name: 'Task complete' })).toBeVisible()
+    expect(screen.getByText('? Question')).toBeVisible()
+    expect(screen.queryByLabelText('Witness world answer')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Check task' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm answer' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '+ Add edge' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('True atoms')).not.toBeInTheDocument()
+    expect(screen.queryByText('Evaluation world')).not.toBeInTheDocument()
+    const evaluationWorld = screen.getByLabelText(/Answer option, World w0/)
+    expect(evaluationWorld).toHaveClass('evaluation-node')
+    const wrongWorld = screen.getByLabelText(/Answer option, World w1/)
+    wrongWorld.focus()
+    fireEvent.keyDown(wrongWorld, { key: 'Enter' })
+    expect(screen.getByText('Selected world: w1')).toBeVisible()
+    expect(wrongWorld).toHaveClass('question-answer-node')
+    expect(evaluationWorld).toHaveClass('evaluation-node')
+    expect(wrongWorld).not.toHaveClass('evaluation-node')
+    await user.click(screen.getByRole('button', { name: 'Confirm answer' }))
+    expect(screen.getByText('Not quite.')).toBeVisible()
+    expect(screen.queryByText('Required answer incorrect')).not.toBeInTheDocument()
+    expect(screen.getAllByText(/w1 is not the accessible witness required here/)).toHaveLength(1)
+    fireEvent.click(screen.getByLabelText(/Answer option, World w3/))
+    await user.click(screen.getByRole('button', { name: 'Confirm answer' }))
+    expect(screen.getByRole('region', { name: 'Current lesson' })).toHaveTextContent('Task complete')
+    expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Answer option, World w3/)).toBeInTheDocument()
   })
 
-  it('shows all ten available chapters and derives the complete 62-task path total', async () => {
+  it('shows all nine available chapters and derives the complete 56-task path total', async () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(screen.getByRole('button', { name: 'Learn' }))
-    expect(screen.getByText('0/62')).toBeVisible()
+    expect(screen.getByText('0/56')).toBeVisible()
     expect(screen.queryByText('Coming later')).not.toBeInTheDocument()
-    for (const title of ['Necessity', 'Box and Diamond', 'Nested Modalities', 'Local, Global, and Frame Truth', 'Models and Countermodels', 'Frame Properties', 'Modal Axioms and Correspondence']) {
+    for (const title of ['Necessity', 'Box and Diamond', 'Nested Modalities', 'Local, Global, and Frame Truth', 'Models and Countermodels', 'Frame Properties']) {
       expect(screen.getByRole('heading', { name: title })).toBeVisible()
     }
+  })
+
+  it('finishes the course inside the mission panel and offers the three next destinations', async () => {
+    const tutorial = ['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']
+    const finalIndex = learnLessons.findIndex(({ id }) => id === 'learn-frames-combination')
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorial))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 3, welcomeViewed: true, completedLessonIds: learnLessons.slice(0, finalIndex).map(({ id }) => id), completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' }))
+    expect(screen.getByRole('dialog', { name: 'Combine and separate properties' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Start task' }))
+    await user.click(screen.getByRole('button', { name: '+ Add edge' }))
+    await user.selectOptions(screen.getAllByLabelText('Edge source world').at(-1)!, 'w2')
+    await user.selectOptions(screen.getAllByLabelText('Edge target world').at(-1)!, 'w1')
+    await user.click(screen.getByRole('button', { name: 'Check task' }))
+    const header = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(header).getByText(/Course complete/)).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Campaigns' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Sandbox' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Guide' })).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
+  })
+
+  it('expands every chapter into directly accessible lesson states', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Learn' }))
+    const truthChapter = screen.getByRole('heading', { name: 'Truth at a World' }).closest('article')!
+    await user.click(within(truthChapter).getByRole('button', { name: 'View lessons' }))
+    expect(within(truthChapter).getByText('Atomic truth')).toBeVisible()
+    expect(within(truthChapter).getAllByText(/Current|Unfinished|Completed/).length).toBeGreaterThanOrEqual(5)
+    expect(within(truthChapter).getAllByRole('button', { name: 'Open' })).toHaveLength(5)
   })
 
   it('continues from the completed Possibility chapter into Necessity', async () => {
@@ -416,7 +498,16 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Start task' }))
     fireEvent.change(screen.getAllByLabelText('True atoms')[1], { target: { value: 'p' } })
     await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(within(screen.getByRole('dialog', { name: 'Task complete' })).getByRole('button', { name: 'Continue to Box and Diamond' })).toBeVisible()
+    const header = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(header).getByText('Task complete')).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Next lesson' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Back to Learn overview' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Replay lesson' })).toBeVisible()
+    expect(screen.getByLabelText(/World w0/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
+    await user.click(within(header).getByRole('button', { name: 'Back to Learn overview' }))
+    const necessity = screen.getByRole('heading', { name: 'Necessity' }).closest('article')!
+    expect(within(necessity).getByText('6/6 lessons')).toBeVisible()
   })
 
   it('shows Formula A and Formula B chips in Box and Diamond and Nested Modalities', async () => {
@@ -459,9 +550,10 @@ describe('sandbox user interface', () => {
     await user.click(wrong)
     expect(wrong).toHaveAttribute('aria-checked', 'true')
     expect(JSON.parse(localStorage.getItem('logic-game:learn-progress:v1') ?? '{}').predictionAnswers).toMatchObject({ 'learn-scopes-comparison': 'all-true' })
-    await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByText('Required answer incorrect')).toBeVisible()
-    expect(screen.getByText('That interpretation is not correct for this model.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Confirm answer' }))
+    expect(screen.getByText('Not quite.')).toBeVisible()
+    expect(screen.getAllByText(/That interpretation is not correct for this model/)).toHaveLength(1)
+    expect(screen.getByText(/The formula is not true throughout the model because w1 has no successor/)).toBeVisible()
     const comparison = screen.getByLabelText('Scope comparison results')
     expect(within(comparison).getByText('Pointed truth')).toBeVisible()
     expect(within(comparison).getByText('Model-global truth')).toBeVisible()
@@ -469,8 +561,9 @@ describe('sandbox user interface', () => {
     expect(within(comparison).getAllByText(/PASS|FAIL/)).toHaveLength(3)
     expect(comparison).toHaveTextContent('every valuation')
     await user.click(screen.getByRole('radio', { name: 'Pointed: true · Model-global: false · Frame-valid: false' }))
-    await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByRole('dialog', { name: 'Task complete' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Confirm answer' }))
+    expect(screen.getByRole('region', { name: 'Current lesson' })).toHaveTextContent('Task complete')
+    expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
   })
 
   it('states the all-valuations quantification in the frame-validity lesson', async () => {

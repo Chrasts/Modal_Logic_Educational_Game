@@ -6,7 +6,7 @@ import learnDocumentation from '../docs/LEARN_COURSE.md?raw'
 describe('Learn documentation', () => {
   it('keeps the documented chapter order and totals aligned with course data', () => {
     const documentation = `${readme}\n${learnDocumentation}`
-    const documentedCourse = readme.slice(readme.indexOf('the complete 10-chapter'), readme.indexOf('The overview and progress totals')).replace(/\s+/gu, ' ')
+    const documentedCourse = readme.slice(readme.indexOf(`the complete ${learnCourseStats.chapterCount}-chapter`), readme.indexOf('overview and progress totals')).replace(/\s+/gu, ' ')
     let previousIndex = -1
     for (const chapter of learnCourse.chapters) {
       const index = documentedCourse.indexOf(`**${chapter.title}**`, previousIndex + 1)

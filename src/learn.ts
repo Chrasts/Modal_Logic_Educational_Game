@@ -5,7 +5,6 @@ import { nestedModalitiesChapter } from './learn/nested-modalities'
 import { semanticScopesChapter } from './learn/semantic-scopes'
 import { countermodelsChapter } from './learn/countermodels'
 import { framePropertiesChapter } from './learn/frame-properties'
-import { modalAxiomsChapter } from './learn/modal-axioms'
 
 export type LearnStage = 'concept' | 'example' | 'prediction' | 'task' | 'feedback' | 'transfer' | 'completion'
 
@@ -74,7 +73,7 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
   {
     id: 'learn-possibility-alternative', chapterId: 'possibility', title: 'A possible alternative',
     learningObjective: 'Understand that ◇p is true when at least one accessible alternative satisfies p.',
-    stages: ['concept', 'example', 'prediction', 'task', 'feedback'],
+    stages: ['concept', 'example', 'task', 'feedback'],
     concept: {
       heading: 'Possibility needs one accessible witness',
       intuitive: 'A claim is possible at the current world when at least one relevant alternative makes it true.',
@@ -83,15 +82,15 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
       warning: 'A p-world somewhere else in the model is not enough.',
     },
     workedExample: { formula: '◇p', evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', 'p', 390, 70), w('w2', '', 390, 210)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], steps: ['Start at the evaluation world w0.', 'Its accessible successors are w1 and w2.', 'p is true at w1.', 'Therefore w1 witnesses ◇p at w0.'] },
-    task: { id: 'learn-possibility-alternative-task', chapter: 'Possibility', title: 'A possible alternative', concept: 'Accessible witness', learningObjective: 'Make one accessible successor satisfy p.', briefing: 'Change only valuations. The arrows already identify the relevant alternatives.', instruction: 'Make ◇p true at w0 by changing only the valuation.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'truth', prompt: 'Will ◇p be true at w0 after you add p to an accessible successor?' }, worlds: [w('w0', '', 90, 130), w('w1', '', 380, 65), w('w2', '', 380, 205)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['valuations'] },
+    task: { id: 'learn-possibility-alternative-task', chapter: 'Possibility', title: 'A possible alternative', concept: 'Accessible witness', learningObjective: 'Make one accessible successor satisfy p.', briefing: 'Change only valuations. The arrows already identify the relevant alternatives.', instruction: 'Make ◇p true at w0 by changing only the valuation.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 90, 130), w('w1', '', 380, 65), w('w2', '', 380, 205)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['valuations'] },
     hints: ['◇p needs at least one accessible successor where p is true.', 'Inspect the worlds reached by arrows leaving w0.', 'Add p to w1 or w2.'],
     successExplanation: '◇p is true at w0 because an accessible successor now satisfies p. That successor is a witness for the possibility claim.',
   },
   {
     id: 'learn-possibility-witness', chapterId: 'possibility', title: 'Finding a witness',
-    learningObjective: 'Identify the accessible world that witnesses a possibility formula.', stages: ['concept', 'prediction', 'feedback'],
+    learningObjective: 'Identify the accessible world that witnesses a possibility formula.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'A witness satisfies the whole operand', intuitive: 'For ◇(p ∧ q), one accessible world must make both p and q true.', formal: 'The same successor must satisfy every part of p ∧ q.', formula: '◇(p ∧ q)', keyPoints: ['Only one witness is needed.', 'A world satisfying only p or only q is not enough.'] },
-    task: { id: 'learn-possibility-witness-task', chapter: 'Possibility', title: 'Finding a witness', concept: 'Witness identification', learningObjective: 'Select the accessible witness for ◇(p ∧ q).', instruction: 'Select the world that witnesses ◇(p ∧ q) at w0.', formula: '◇(p ∧ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'world-choice', prompt: 'Which accessible world witnesses ◇(p ∧ q) at w0?', expectedChoice: 'w3', worldChoices: ['w1', 'w2', 'w3'], mustBeCorrect: true }, worlds: [w('w0', '', 60, 130), w('w1', 'p', 270, 45), w('w2', 'q', 270, 130), w('w3', 'p q', 270, 215)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], constraints: { minimumWorlds: 4, maximumWorlds: 4, minimumEdges: 3, maximumEdges: 3 }, editable: [] },
+    task: { id: 'learn-possibility-witness-task', chapter: 'Possibility', title: 'Finding a witness', concept: 'Witness identification', learningObjective: 'Select the accessible witness for ◇(p ∧ q).', interactionMode: 'question', instruction: 'Select the world that witnesses ◇(p ∧ q) at w0.', formula: '◇(p ∧ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'world-choice', prompt: 'Which accessible world witnesses ◇(p ∧ q) at w0?', expectedChoice: 'w3', worldChoices: ['w1', 'w2', 'w3'], mustBeCorrect: true }, worlds: [w('w0', '', 60, 130), w('w1', 'p', 270, 45), w('w2', 'q', 270, 130), w('w3', 'p q', 270, 215)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], constraints: { minimumWorlds: 4, maximumWorlds: 4, minimumEdges: 3, maximumEdges: 3 }, editable: [] },
     hints: ['A witness for a conjunction must satisfy both conjuncts.', 'Compare the valuations of w1, w2, and w3.', 'Select w3: it is the accessible world where both p and q hold.'],
     successExplanation: 'w3 is an accessible witness because it satisfies both p and q. The other successors each satisfy only one conjunct.', commonMistake: 'Selecting a world that satisfies only one conjunct.',
   },
@@ -107,23 +106,23 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
     id: 'learn-possibility-direction', chapterId: 'possibility', title: 'Direction of accessibility',
     learningObjective: 'Understand that a witness edge must point from the evaluation world to the witness world.', stages: ['concept', 'prediction', 'task', 'feedback'],
     concept: { heading: 'Accessibility is directional', intuitive: 'An arrow pointing into the current world does not make its source available from that world.', formal: 'For w1 to witness ◇p at w0, the relation must contain w0Rw1.', formula: '◇p', keyPoints: ['Arrow direction matters.', 'The witness must be reachable from the evaluation world.'] },
-    task: { id: 'learn-possibility-direction-task', chapter: 'Possibility', title: 'Direction of accessibility', concept: 'Directional relation', learningObjective: 'Repair one orientation while preserving a second outgoing edge.', instruction: 'Reverse w1 → w0 so w1 witnesses ◇p, and keep w0 → w2.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 70, 130), w('w1', 'p', 390, 65), w('w2', '', 390, 205)], edges: [{ from: 'w1', to: 'w0' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] }, editable: ['edges'] },
+    task: { id: 'learn-possibility-direction-task', chapter: 'Possibility', title: 'Direction of accessibility', concept: 'Directional relation', learningObjective: 'Repair one orientation while preserving a second outgoing edge.', instruction: 'Reverse w1 → w0 so w1 witnesses ◇p at w0, and keep w0 → w2.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 70, 130), w('w1', 'p', 390, 65), w('w2', '', 390, 205)], edges: [{ from: 'w1', to: 'w0' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] }, editable: ['edges'] },
     hints: ['Read ◇p from w0 outward.', 'Keep the edge from w0 to w2 unchanged.', 'Replace w1 → w0 with w0 → w1 while retaining exactly two edges.'],
     successExplanation: 'The repaired orientation makes w1 reachable from w0, while the second branch shows that unrelated edges can remain.', diagnosticFeedback: { 'missing-diamond-witness': 'The p-world still is not reachable from the evaluation world. Reverse only the edge between w0 and w1.' },
   },
   {
     id: 'learn-possibility-build', chapterId: 'possibility', title: 'Building a possibility model',
-    learningObjective: 'Construct a model whose accessible witness satisfies a conjunction.', stages: ['concept', 'prediction', 'task', 'feedback', 'transfer'],
+    learningObjective: 'Construct a model whose accessible witness satisfies a conjunction.', stages: ['concept', 'task', 'feedback', 'transfer'],
     concept: { heading: 'Build one complete witness', intuitive: 'For a possible conjunction, one accessible world must contain both facts; splitting them across alternatives is not enough.', formal: 'Choose v with w0Rv and M,v ⊨ p ∧ q.', formula: '◇(p ∧ q)', keyPoints: ['The distractor w1 has only p.', 'The same accessible world must satisfy p and q.'] },
-    task: { id: 'learn-possibility-build-task', chapter: 'Possibility', title: 'Building a possibility model', concept: 'Possibility construction', learningObjective: 'Complete a three-world model with one conjunctive witness and exactly two edges.', instruction: 'Make ◇(p ∧ q) true at w0 using exactly the two outgoing edges shown by the target.', formula: '◇(p ∧ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 70, 130), w('w1', 'p', 390, 65), w('w2', 'q', 390, 205)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredAtoms: { w1: ['p'], w2: ['p', 'q'] }, forbiddenAtoms: { w1: ['q'] }, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }] }, editable: ['valuations', 'edges'] },
-    hints: ['w1 is an accessible distractor with only p.', 'w2 already has q and can become the complete witness.', 'Add p to w2 and draw w0 → w2, keeping w0 → w1.'],
-    successExplanation: 'w2 is accessible and satisfies both conjuncts. w1 demonstrates why an accessible partial match is not enough.',
-    transferTask: { id: 'learn-possibility-build-transfer', chapter: 'Possibility', title: 'Optional transfer: remove possibility', concept: 'Relation-only change', instruction: 'Keep the worlds and valuation, but make ◇p false by changing only the relation.', formula: '◇p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', 'p', 390, 130)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 1 }, editable: ['edges'] },
+    task: { id: 'learn-possibility-build-task', chapter: 'Possibility', title: 'Building a possibility model', concept: 'Possibility construction', learningObjective: 'Complete a three-world model with one conjunctive witness and exactly two edges.', instruction: 'Make ◇(p ∧ q) true at w0 and keep both w1 and w2 accessible from w0.', formula: '◇(p ∧ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 70, 130), w('w1', 'p', 390, 65), w('w2', 'q', 390, 205)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }] }, editable: ['valuations', 'edges'] },
+    hints: ['One accessible world must satisfy both p and q.', 'You may complete either w1 or w2; the two atoms do not have to stay split.', 'Keep both outgoing edges from w0 and add the missing atom to at least one successor.'],
+    successExplanation: 'At least one world accessible from w0 satisfies both p and q, so it witnesses ◇(p ∧ q).',
+    transferTask: { id: 'learn-possibility-build-transfer', chapter: 'Possibility', title: 'Optional transfer: remove possibility', concept: 'Relation-only change', instruction: 'Keep the worlds and valuation, but make ◇p false at w0 by changing only the relation.', formula: '◇p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 100, 130), w('w1', 'p', 390, 130)], edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 1 }, editable: ['edges'] },
   },
 ]
 
-// Keep authored predictions on conceptually significant tasks. They capture the
-// learner's initial mental model before the first semantic verification.
+// Construction lessons avoid redundant predictions. Read-only identification
+// tasks keep their answer metadata and are rendered as question interactions.
 const possibilityLessons: readonly LearnLesson[] = possibilityLessonDefinitions.map((lesson) => ({
   ...lesson,
   task: {
@@ -153,8 +152,8 @@ const truthAtAWorldLessons: readonly LearnLesson[] = [
     learningObjective: 'Distinguish truth at one world from truth elsewhere in the same model.',
     stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'The evaluation world matters', intuitive: 'The same formula can have different truth values at different worlds in one model.', formal: 'M,w ⊨ p depends on the chosen w.', formula: 'p', keyPoints: ['w0 has p.', 'w1 does not have p.'] },
-    task: { id: 'learn-truth-selected-world-task', chapter: 'Truth at a World', title: 'Truth depends on the selected world', concept: 'World-relative truth', learningObjective: 'Make p false by selecting w1 as the evaluation world.', briefing: 'Do not change the model; change only the selected evaluation world.', instruction: 'Make p false at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', 'p', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], workspacePresentation: { evaluation: true } },
-    hints: ['p is true at w0.', 'Find the world where p is absent.', 'Set w1 as the evaluation world.'],
+    task: { id: 'learn-truth-selected-world-task', chapter: 'Truth at a World', title: 'Truth depends on the selected world', concept: 'World-relative truth', learningObjective: 'Select the world where p is false.', interactionMode: 'question', briefing: 'Do not change the model; answer by selecting a world on the map.', instruction: 'Select the world where p is false.', formula: 'p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w1', prediction: { kind: 'world-choice', prompt: 'At which world is p false?', expectedChoice: 'w1', worldChoices: ['w0', 'w1'], mustBeCorrect: true }, worlds: [w('w0', 'p', 100, 130), w('w1', '', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: [] },
+    hints: ['p is true at w0.', 'Find the world where p is absent.', 'Select w1 on the map.'],
     successExplanation: 'The same formula can be true at one world and false at another.',
   },
   {
@@ -175,8 +174,8 @@ const truthAtAWorldLessons: readonly LearnLesson[] = [
     id: 'learn-truth-same-model', chapterId: 'truth-at-a-world', title: 'Same model, different truth',
     learningObjective: 'Apply atomic truth, negation, and world-relative evaluation together.', stages: ['concept', 'task', 'feedback'],
     concept: { heading: 'Choose the world that fits the formula', intuitive: 'The model can contain different facts at different worlds; choose the one where both parts of the formula fit.', formula: 'p ∧ ¬q', keyPoints: ['w0 has p and not q.', 'w1 has q.'] },
-    task: { id: 'learn-truth-same-model-task', chapter: 'Truth at a World', title: 'Same model, different truth', concept: 'World-relative evaluation', learningObjective: 'Choose the world where p ∧ ¬q is true.', briefing: 'Only the evaluation world is editable.', instruction: 'Make p ∧ ¬q true at the evaluation world.', formula: 'p ∧ ¬q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w1', worlds: [w('w0', 'p', 100, 130), w('w1', 'q', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: ['evaluation'], workspacePresentation: { evaluation: true } },
-    hints: ['Find a world with p.', 'At that same world, q must be absent.', 'Set w0 as the evaluation world.'], successExplanation: 'At w0, p holds and q does not.',
+    task: { id: 'learn-truth-same-model-task', chapter: 'Truth at a World', title: 'Same model, different truth', concept: 'World-relative evaluation', learningObjective: 'Choose the world where p ∧ ¬q is true.', interactionMode: 'question', briefing: 'Do not change the model; answer by selecting a world on the map.', instruction: 'Select the world where p ∧ ¬q is true.', formula: 'p ∧ ¬q', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'world-choice', prompt: 'At which world is p ∧ ¬q true?', expectedChoice: 'w0', worldChoices: ['w0', 'w1'], mustBeCorrect: true }, worlds: [w('w0', 'p', 100, 130), w('w1', 'q', 390, 130)], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 0 }, editable: [] },
+    hints: ['Find a world with p.', 'At that same world, q must be absent.', 'Select w0 on the map.'], successExplanation: 'At w0, p holds and q does not.',
   },
 ]
 
@@ -232,7 +231,6 @@ const authoredLearnCourse: LearnCourse = {
     semanticScopesChapter,
     countermodelsChapter,
     framePropertiesChapter,
-    modalAxiomsChapter,
   ],
 }
 
@@ -262,7 +260,12 @@ export const learnCourse: LearnCourse = {
   ...authoredLearnCourse,
   chapters: authoredLearnCourse.chapters.map((chapter) => ({
     ...chapter,
-    lessons: chapter.lessons.map((lesson) => ({ ...lesson, relatedLessonIds: relatedLessonIdsByLessonId[lesson.id] })),
+    lessons: chapter.lessons.map((lesson) => ({
+      ...lesson,
+      relatedLessonIds: relatedLessonIdsByLessonId[lesson.id],
+      task: { ...lesson.task, interactionMode: lesson.task.interactionMode ?? 'construction' },
+      transferTask: lesson.transferTask ? { ...lesson.transferTask, interactionMode: lesson.transferTask.interactionMode ?? 'construction' } : undefined,
+    })),
   })),
 }
 

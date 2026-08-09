@@ -228,6 +228,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     estimatedDifficulty: ['introductory', 'intermediate', 'advanced'].includes(String(source.estimatedDifficulty)) ? source.estimatedDifficulty as GameLevel['estimatedDifficulty'] : undefined,
     briefing: typeof source.briefing === 'string' ? source.briefing : undefined,
     learningObjective: typeof source.learningObjective === 'string' ? source.learningObjective : undefined,
+    interactionMode: source.interactionMode === 'construction' || source.interactionMode === 'question' ? source.interactionMode : undefined,
     instruction: requiredText('instruction'), formula, comparisonFormula, comparisonTarget: comparisonTarget as GameLevel['comparisonTarget'], scope: source.scope as ObjectiveScope,
     targetTruth: source.targetTruth, evaluationWorld: source.evaluationWorld,
     correspondencePreset, worlds, edges, frameRules,

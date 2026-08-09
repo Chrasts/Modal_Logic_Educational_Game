@@ -42,7 +42,6 @@ const solutions: Record<string, Override> = {
   'learn-nested-box-diamond': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w3' }, { from: 'w2', to: 'w3' }] },
   'learn-nested-double-box': { valuation: { w0: [], w1: [], w2: [], w3: ['p'], w4: ['p'] } },
   'learn-nested-order': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w1', to: 'w3' }] },
-  'learn-scopes-pointed': { evaluationWorld: 'w0' },
   'learn-scopes-model': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }] },
   'learn-scopes-frame': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }] },
   'learn-countermodels-valuation': { valuation: { w0: [], w1: ['p'], w2: [] } },
@@ -55,11 +54,6 @@ const solutions: Record<string, Override> = {
   'learn-frames-transitive': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w2' }] },
   'learn-frames-euclidean': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }] },
   'learn-frames-combination': { edges: [{ from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }] },
-  'learn-axioms-t': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }, { from: 'w0', to: 'w0' }] },
-  'learn-axioms-d': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }] },
-  'learn-axioms-b': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }] },
-  'learn-axioms-4': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w2' }] },
-  'learn-axioms-5': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }] },
 }
 
 const distractors: Record<string, Override> = {
@@ -75,7 +69,6 @@ const distractors: Record<string, Override> = {
   'learn-nested-box-diamond': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w3' }, { from: 'w2', to: 'w2' }] },
   'learn-nested-double-box': { valuation: { w0: [], w1: [], w2: ['p'], w3: ['p'], w4: [] } },
   'learn-nested-order': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w3' }] },
-  'learn-scopes-pointed': { evaluationWorld: 'w1' },
   'learn-scopes-model': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] },
   'learn-scopes-frame': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] },
   'learn-countermodels-valuation': { valuation: { w0: ['p'], w1: [], w2: [] } },
@@ -88,17 +81,12 @@ const distractors: Record<string, Override> = {
   'learn-frames-transitive': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w0' }] },
   'learn-frames-euclidean': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w0' }] },
   'learn-frames-combination': { edges: [{ from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w2' }] },
-  'learn-axioms-t': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }] },
-  'learn-axioms-d': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] },
-  'learn-axioms-b': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w0' }] },
-  'learn-axioms-4': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w0' }] },
-  'learn-axioms-5': { edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w0' }] },
 }
 
 describe('remaining Learn chapters', () => {
   it('validates every new lesson and keeps all authored identities unique', () => {
     const newLessons = learnCourse.chapters.slice(3).flatMap(({ lessons }) => lessons)
-    expect(newLessons).toHaveLength(41)
+    expect(newLessons).toHaveLength(35)
     expect(newLessons.map(({ id }) => id)).toEqual([
       'learn-necessity-one-successor', 'learn-necessity-every-successor', 'learn-necessity-counterexample', 'learn-necessity-inaccessible', 'learn-necessity-vacuous', 'learn-necessity-repair',
       'learn-box-diamond-possible-not-necessary', 'learn-box-diamond-neither', 'learn-box-diamond-both', 'learn-box-diamond-necessary-not-possible', 'learn-box-diamond-diamond-duality', 'learn-box-diamond-box-duality',
@@ -106,10 +94,9 @@ describe('remaining Learn chapters', () => {
       'learn-scopes-pointed', 'learn-scopes-model', 'learn-scopes-local-not-global', 'learn-scopes-frame', 'learn-scopes-comparison',
       'learn-countermodels-locate', 'learn-countermodels-valuation', 'learn-countermodels-relation', 'learn-countermodels-build', 'learn-countermodels-global', 'learn-countermodels-countervaluation', 'learn-countermodels-smaller',
       'learn-frames-reflexive', 'learn-frames-serial', 'learn-frames-symmetric', 'learn-frames-transitive', 'learn-frames-euclidean', 'learn-frames-combination',
-      'learn-axioms-t', 'learn-axioms-d', 'learn-axioms-b', 'learn-axioms-4', 'learn-axioms-5', 'learn-axioms-method',
     ])
-    expect(new Set(newLessons.map(({ id }) => id)).size).toBe(41)
-    expect(new Set(newLessons.map(({ task }) => task.id)).size).toBe(41)
+    expect(new Set(newLessons.map(({ id }) => id)).size).toBe(35)
+    expect(new Set(newLessons.map(({ task }) => task.id)).size).toBe(35)
     for (const lesson of newLessons) {
       expect(() => validateLevelObjective(lesson.task), lesson.id).not.toThrow()
       if (lesson.task.formula) expect(() => parseFormula(lesson.task.formula!), lesson.id).not.toThrow()
@@ -139,7 +126,6 @@ describe('remaining Learn chapters', () => {
       'learn-countermodels-global': 'w2',
       'learn-countermodels-countervaluation': 'p-false-at-w0-true-at-w1',
       'learn-scopes-comparison': 'pointed-true-model-false-frame-false',
-      'learn-axioms-method': 'finite-instance-not-general-proof',
     }
     for (const [id, answer] of Object.entries(expected)) {
       const prediction = task(id).prediction!
@@ -150,12 +136,15 @@ describe('remaining Learn chapters', () => {
     }
   })
 
-  it('checks both dualities and all five finite correspondence repairs', () => {
-    expect(passes(task('learn-box-diamond-diamond-duality'), initial(task('learn-box-diamond-diamond-duality')))).toBe(true)
-    expect(passes(task('learn-box-diamond-box-duality'), initial(task('learn-box-diamond-box-duality')))).toBe(true)
-    for (const id of ['learn-axioms-t', 'learn-axioms-d', 'learn-axioms-b', 'learn-axioms-4', 'learn-axioms-5']) {
-      expect(passes(task(id), state(task(id), solutions[id])), id).toBe(true)
-    }
+  it('checks both dualities as read-only frame questions', () => {
+    const diamond = task('learn-box-diamond-diamond-duality')
+    const box = task('learn-box-diamond-box-duality')
+    expect(passes(diamond, initial(diamond))).toBe(true)
+    expect(passes(box, initial(box))).toBe(true)
+    expect(diamond).toMatchObject({ interactionMode: 'question', editable: [], formula: '(◇p → ¬□¬p) ∧ (¬□¬p → ◇p)' })
+    expect(box).toMatchObject({ interactionMode: 'question', editable: [], formula: '(□p → ¬◇¬p) ∧ (¬◇¬p → □p)' })
+    expect(diamond.briefing).toMatch(/every world under every valuation on this fixed relation/i)
+    expect(box.briefing).toMatch(/every world under every valuation on this fixed relation/i)
   })
 
   it('keeps the vacuous-necessity transfer task initially incomplete and accepts its one required edge', () => {

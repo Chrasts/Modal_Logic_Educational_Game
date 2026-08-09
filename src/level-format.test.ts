@@ -117,6 +117,8 @@ describe('custom mission format', () => {
   it('round-trips statement choices and scope-comparison metadata', () => {
     const statements: GameLevel = {
       ...level,
+      interactionMode: 'question',
+      editable: [],
       scopeComparison: { evaluationWorld: 'w0' },
       prediction: { kind: 'statement-choice', prompt: 'Which statement?', expectedChoice: 'right', mustBeCorrect: true, statementChoices: [
         { id: 'wrong', label: 'The wrong interpretation.' }, { id: 'right', label: 'The correct interpretation.' },
@@ -125,6 +127,7 @@ describe('custom mission format', () => {
     const parsed = parseCustomLevelFile(JSON.parse(serializeCustomLevel(statements)))
     expect(parsed.prediction).toEqual(statements.prediction)
     expect(parsed.scopeComparison).toEqual({ evaluationWorld: 'w0' })
+    expect(parsed.interactionMode).toBe('question')
     const missingChoice = JSON.parse(serializeCustomLevel(statements))
     missingChoice.level.prediction.expectedChoice = 'missing'
     expect(() => parseCustomLevelFile(missingChoice)).toThrow(/expected statement/i)

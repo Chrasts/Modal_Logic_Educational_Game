@@ -3,6 +3,7 @@ import type { ConstructionConstraints, FramePropertyName, ObjectiveScope } from 
 export type LevelEditPermission = 'worlds' | 'valuations' | 'edges' | 'constraints' | 'evaluation'
 export type TutorialControl = 'worlds' | 'valuations' | 'edges' | 'evaluation' | 'history'
 export type ObjectiveKind = 'semantic' | 'construction'
+export type InteractionMode = 'construction' | 'question'
 
 export interface WorkspacePresentation {
   readonly worlds?: boolean
@@ -22,6 +23,8 @@ export interface GameLevel {
   readonly prerequisites?: readonly string[]
   readonly estimatedDifficulty?: 'introductory' | 'intermediate' | 'advanced'
   readonly learningObjective?: string
+  /** Explicitly distinguishes model-building tasks from read-only answer tasks. */
+  readonly interactionMode?: InteractionMode
   readonly prediction?: {
     readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice' | 'world-choice' | 'scope-truth' | 'statement-choice'
     readonly prompt: string
@@ -112,6 +115,10 @@ export const isConstructionLevel = (level: GameLevel): boolean => level.objectiv
  * configurations at the boundary where authored level data is tested/loaded.
  */
 export function validateLevelObjective(level: GameLevel): void {
+  if (level.interactionMode === 'question') {
+    if (!level.prediction) throw new Error(`Question task "${level.id}" must define an answer.`)
+    if (level.editable.length > 0) throw new Error(`Question task "${level.id}" must keep model controls read-only.`)
+  }
   if (isConstructionLevel(level)) {
     if (level.formula !== undefined || level.scope !== undefined || level.targetTruth !== undefined) {
       throw new Error(`Construction objective "${level.id}" must not define semantic formula, scope, or truth target.`)

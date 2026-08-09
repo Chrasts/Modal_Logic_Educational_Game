@@ -6,16 +6,16 @@ import { isConstructionLevel, tutorialLevels, validateLevelObjective } from './c
 import { createLevelFingerprint } from './level-fingerprint'
 
 describe('Learn Modal Logic course data', () => {
-  it('defines the complete ordered 10-chapter, 56-lesson semantic path', () => {
+  it('defines the complete ordered 9-chapter, 50-lesson semantic path', () => {
     const chapter = (id: string) => learnCourse.chapters.find((item) => item.id === id)!
-    expect(learnCourse.chapters.map(({ id }) => id)).toEqual(['truth-at-a-world', 'worlds-accessibility', 'possibility', 'necessity', 'box-diamond', 'nested-modalities', 'semantic-scopes', 'models-countermodels', 'frame-properties', 'modal-axioms'])
-    expect(learnCourse.chapters.map(({ lessons }) => lessons.length)).toEqual([5, 5, 5, 6, 6, 5, 5, 7, 6, 6])
-    expect(learnLessons).toHaveLength(56)
+    expect(learnCourse.chapters.map(({ id }) => id)).toEqual(['truth-at-a-world', 'worlds-accessibility', 'possibility', 'necessity', 'box-diamond', 'nested-modalities', 'semantic-scopes', 'models-countermodels', 'frame-properties'])
+    expect(learnCourse.chapters.map(({ lessons }) => lessons.length)).toEqual([5, 5, 5, 6, 6, 5, 5, 7, 6])
+    expect(learnLessons).toHaveLength(50)
     for (const item of learnCourse.chapters) {
       expect(item.lessons.length, item.id).toBeGreaterThan(0)
     }
     expect(chapter('necessity').prerequisiteChapterIds).toEqual(['possibility'])
-    expect(chapter('modal-axioms').prerequisiteChapterIds).toEqual(['frame-properties'])
+    expect(chapter('frame-properties').prerequisiteChapterIds).toEqual(['models-countermodels'])
   })
 
   it('uses only explicit, valid related-lesson metadata', () => {
@@ -39,13 +39,11 @@ describe('Learn Modal Logic course data', () => {
     ]))
   })
 
-  it('teaches the minimum frame-property and correspondence set as finite instances', () => {
+  it('teaches the frame-property set and preserves the finite-instance warning', () => {
     const propertyTasks = learnCourse.chapters.find(({ id }) => id === 'frame-properties')!.lessons.map(({ task }) => task)
     expect(propertyTasks.every(isConstructionLevel)).toBe(true)
     expect(propertyTasks.map(({ constraints }) => constraints?.requiredProperties?.[0])).toEqual(['reflexive', 'serial', 'symmetric', 'transitive', 'euclidean', 'reflexive'])
-    const axiomTasks = learnCourse.chapters.find(({ id }) => id === 'modal-axioms')!.lessons.map(({ task }) => task)
-    expect(axiomTasks.slice(0, 5).map(({ correspondencePreset }) => correspondencePreset)).toEqual(['t', 'd', 'b', '4', '5'])
-    expect(axiomTasks.every(({ scope }) => scope === 'correspondence')).toBe(true)
+    expect(learnCourse.chapters.find(({ id }) => id === 'frame-properties')!.completionSummary.at(-1)).toMatch(/finite instance check.*not a general correspondence proof/i)
   })
 
   it('contains an ordered five-lesson Possibility vertical slice', () => {
@@ -61,16 +59,42 @@ describe('Learn Modal Logic course data', () => {
     expect(truth.lessons.map(({ title }) => title)).toEqual(['Atomic truth', 'Truth depends on the selected world', 'Negation', 'Conjunction at one world', 'Same model, different truth'])
     expect(worlds.lessons.map(({ title }) => title)).toEqual(['Add a world', 'Directed accessibility', 'Direction matters', 'Branching', 'Reflexive edge'])
     const interactivePredictions = [...truth.lessons, ...worlds.lessons, ...chapter('possibility').lessons].filter(({ task }) => task.prediction)
-    expect(interactivePredictions.map(({ id }) => id)).toEqual(['learn-possibility-alternative', 'learn-possibility-witness'])
-    expect(interactivePredictions[1].task.prediction).toMatchObject({ kind: 'world-choice', expectedChoice: 'w3', mustBeCorrect: true })
+    expect(interactivePredictions.map(({ id }) => id)).toEqual(['learn-truth-selected-world', 'learn-truth-same-model', 'learn-possibility-witness'])
+    expect(interactivePredictions[2].task.prediction).toMatchObject({ kind: 'world-choice', expectedChoice: 'w3', mustBeCorrect: true })
+    expect(interactivePredictions.every(({ task }) => task.interactionMode === 'question')).toBe(true)
     expect(chapter('possibility').prerequisiteChapterIds).toEqual(['worlds-accessibility'])
+  })
+
+  it('uses explicit question metadata and keeps construction predictions non-redundant', () => {
+    const questions = learnLessons.filter(({ task }) => task.interactionMode === 'question')
+    expect(questions.length).toBeGreaterThan(0)
+    expect(questions.every(({ task }) => task.editable.length === 0 && Boolean(task.prediction))).toBe(true)
+    expect(questions.every(({ stages }) => !stages.includes('prediction'))).toBe(true)
+    expect(learnLessons.filter(({ task }) => task.interactionMode === 'construction' && task.prediction)).toEqual([])
+  })
+
+  it('names the evaluation world in every pointed construction instruction', () => {
+    const tasks = learnLessons.flatMap(({ task, transferTask }) => transferTask ? [task, transferTask] : [task])
+    const missingWorld = tasks.filter((task) => task.scope === 'pointed' && task.interactionMode !== 'question' && !task.instruction.includes(task.evaluationWorld))
+    expect(missingWorld.map(({ id }) => id)).toEqual([])
+  })
+
+  it('uses identification wording and map-selection hints for every world question', () => {
+    const worldQuestions = learnLessons.filter(({ task }) => task.prediction?.kind === 'world-choice' || task.prediction?.kind === 'counterexample-world')
+    expect(worldQuestions.every(({ task }) => /^(Select|Choose)\b/u.test(task.instruction))).toBe(true)
+    expect(worldQuestions.flatMap(({ hints }) => hints).some((hint) => /set .*evaluation world/iu.test(hint))).toBe(false)
   })
 
   it('uses locked controls and incomplete starting states for introductory tasks', () => {
     const chapters = learnCourse.chapters.filter(({ id }) => id === 'truth-at-a-world' || id === 'worlds-accessibility')
     for (const lesson of chapters.flatMap(({ lessons }) => lessons)) {
-      expect(lesson.task.editable.length, lesson.id).toBe(1)
-      expect(lesson.task.prediction, lesson.id).toBeUndefined()
+      if (lesson.task.interactionMode === 'question') {
+        expect(lesson.task.editable, lesson.id).toEqual([])
+        expect(lesson.task.prediction, lesson.id).toBeDefined()
+      } else {
+        expect(lesson.task.editable.length, lesson.id).toBe(1)
+        expect(lesson.task.prediction, lesson.id).toBeUndefined()
+      }
     }
     const branching = chapters.flatMap(({ lessons }) => lessons).find(({ id }) => id === 'learn-worlds-branching')!.task
     expect(branching.constraints?.requiredEdges).toEqual([{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
@@ -149,6 +173,14 @@ describe('Learn Modal Logic course data', () => {
     expect(check('learn-possibility-direction', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: [] })).toBe(true)
     expect(initialPasses('learn-possibility-build')).toBe(false)
     expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: ['p', 'q'] })).toBe(true)
+    expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p', 'q'], w2: ['q'] })).toBe(true)
+    expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p', 'q'], w2: ['p', 'q'] })).toBe(true)
+    expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p', 'q', 'r'], w2: ['q'] })).toBe(true)
+    expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: ['q'] })).toBe(false)
+    expect(check('learn-possibility-build', [{ from: 'w0', to: 'w1' }], { w0: [], w1: ['p', 'q'], w2: ['q'] })).toBe(false)
+    const buildLesson = learnLessons.find(({ id }) => id === 'learn-possibility-build')!
+    expect(buildLesson.hints.join(' ')).toMatch(/either w1 or w2/i)
+    expect(buildLesson.successExplanation).toMatch(/at least one world accessible from w0/i)
   })
 
   it('has no identical Controls/Learn task fingerprints without an explicit allowlist', () => {
@@ -175,8 +207,8 @@ describe('Learn Modal Logic course data', () => {
   it('migrates only progress whose authored lesson meaning changed', () => {
     const migrated = migrateLearnProgress({
       version: 1,
-      completedLessonIds: ['learn-truth-atomic', 'learn-worlds-add', 'learn-possibility-witness'],
-      completedChapterIds: ['truth-at-a-world', 'worlds-accessibility', 'possibility'],
+      completedLessonIds: ['learn-truth-atomic', 'learn-worlds-add', 'learn-possibility-witness', 'learn-axioms-t', 'unknown'],
+      completedChapterIds: ['truth-at-a-world', 'worlds-accessibility', 'possibility', 'modal-axioms', 'unknown'],
       transferCompletedLessonIds: ['learn-truth-atomic', 'learn-possibility-build'],
     })
     expect(migrated.contentRevision).toBe(currentLearnContentRevision)

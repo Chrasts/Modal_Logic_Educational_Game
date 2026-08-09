@@ -40,6 +40,7 @@ export function createLevelFingerprint(level: GameLevel): string {
 
   return JSON.stringify({
     objectiveKind: level.objectiveKind ?? 'semantic',
+    interactionMode: level.interactionMode ?? 'construction',
     formula: level.formula?.replace(/\s+/gu, ' ').trim() ?? null,
     comparisonFormula: level.comparisonFormula?.replace(/\s+/gu, ' ').trim() ?? null,
     comparisonTarget: level.comparisonTarget ?? null,
