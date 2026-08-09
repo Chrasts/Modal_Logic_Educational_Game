@@ -8,6 +8,8 @@ interface MissionHeaderProps {
   readonly itemTitle: string
   readonly progressLabel: string
   readonly objective: string
+  readonly content?: ReactNode
+  readonly state?: 'active' | 'question' | 'completed'
   readonly previouslyCompleted?: boolean
   readonly taskSteps?: readonly string[]
   readonly details?: ReactNode
@@ -20,6 +22,8 @@ export function MissionHeader({
   itemTitle,
   progressLabel,
   objective,
+  content,
+  state = 'active',
   previouslyCompleted = false,
   taskSteps,
   details,
@@ -27,15 +31,15 @@ export function MissionHeader({
 }: MissionHeaderProps) {
   const unit = mode === 'learn' ? 'lesson' : 'mission'
   return (
-    <section className={`mission-header mission-header-${mode}`} aria-label={`Current ${unit}`}>
+    <section className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
       <div className="mission-header-context">
         <span>{sectionTitle} · {progressLabel}</span>
         <strong>{itemTitle}</strong>
         {previouslyCompleted && <b>Previously completed</b>}
       </div>
       <div className="mission-header-objective">
-        <span>Objective</span>
-        <p>{objective}</p>
+        <span>{state === 'completed' ? 'Task complete' : state === 'question' ? '? Question' : 'Objective'}</span>
+        {content ?? <p>{objective}</p>}
         {taskSteps && taskSteps.length > 0 && <ol aria-label="Action checklist">{taskSteps.map((step) => <li key={step}>{step}</li>)}</ol>}
       </div>
       <div className="mission-header-actions">{actions}</div>
@@ -43,4 +47,3 @@ export function MissionHeader({
     </section>
   )
 }
-
