@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { learnLessons } from './learn'
+import { tutorialLevels } from './campaign'
 import { createShareUrl } from './share-url'
 
 describe('sandbox user interface', () => {
@@ -21,8 +22,10 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('button', { name: /Sandbox: build and test/ })).toHaveTextContent(/^SANDBOX$/)
     expect(screen.queryByLabelText('Kripke model editor')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Open settings from home' }))
+    expect(screen.getByRole('checkbox', { name: 'Sound effects' })).not.toBeChecked()
+    await user.click(screen.getByRole('checkbox', { name: 'Sound effects' }))
     await user.click(screen.getByRole('checkbox', { name: 'Show minimap' }))
-    expect(JSON.parse(localStorage.getItem('logic-game:interface-settings:v1') ?? '{}')).toMatchObject({ showMinimap: false })
+    expect(JSON.parse(localStorage.getItem('logic-game:interface-settings:v1') ?? '{}')).toMatchObject({ showMinimap: false, soundEffects: true })
     await user.click(screen.getByRole('button', { name: 'Home' }))
     await user.click(screen.getByRole('button', { name: 'Sandbox' }))
     expect(screen.getByLabelText('Kripke model editor')).toBeVisible()
@@ -102,6 +105,21 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText(/Expected a formula, but the input ended/)).toBeVisible()
     expect(screen.getByLabelText('Modal formula')).toHaveFocus()
+  })
+
+  it('keeps Fit out of history and makes Tidy one undoable presentation step without clearing a result', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Fit model' }))
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Objective met')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Tidy model' }))
+    expect(screen.getByText('Objective met')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(screen.getByText('Objective met')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
   })
 
   it('creates and deletes an explicit self-loop without deleting its world', async () => {
@@ -1052,16 +1070,47 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('heading', { name: 'Satisfaction' })).toBeVisible()
   })
 
-  it('reveals intuitive introduction topics progressively', async () => {
+  it('shows completion without a no-op Replay Learning CTA and keeps replay granular', async () => {
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorialLevels.map(({ id }) => id)))
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({
+      version: 1,
+      contentRevision: 3,
+      welcomeViewed: true,
+      completedLessonIds: learnLessons.map(({ id }) => id),
+      completedChapterIds: [],
+      highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {},
+    }))
+    const user = userEvent.setup()
+    render(<App initialView="learn" />)
+    expect(screen.getByText('Available learning complete.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Replay Learning' })).not.toBeInTheDocument()
+    const replays = screen.getAllByRole('button', { name: 'Replay section' })
+    expect(replays.length).toBeGreaterThan(0)
+    expect(replays[0]).toHaveClass('secondary-button')
+    await user.click(replays[0])
+    expect(JSON.parse(localStorage.getItem('logic-game:learn-progress:v1') ?? '{}').completedLessonIds).toEqual(expect.arrayContaining(learnLessons.map(({ id }) => id)))
+  })
+
+  it('replays the workspace tour from Guide without losing the active mission', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="learn" />)
+    await user.click(screen.getAllByRole('button', { name: 'Start' })[0])
+    expect(screen.getByText('Choose the evaluation world')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByRole('button', { name: 'Replay workspace tour' }))
+    expect(screen.getByText('Workspace tour · 1 of 4')).toBeVisible()
+    expect(screen.getByText('Choose the evaluation world')).toBeVisible()
+  })
+
+  it('keeps the guide as a reference and replays the dedicated welcome instead of duplicating it', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
     await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
-    await user.click(screen.getByRole('button', { name: /Modal Logic: Intuitive Introduction/ }))
-    const explanation = screen.getByText(/Ordinary logic asks whether a statement is true or false/)
-    expect(explanation).not.toBeVisible()
-    await user.click(screen.getByText('Reasoning about alternatives'))
-    expect(explanation).toBeVisible()
+    expect(screen.queryByRole('button', { name: /Modal Logic: Intuitive Introduction/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Replay Welcome to Modal Logic' }))
+    expect(screen.getByRole('heading', { name: 'Welcome to Modal Logic' })).toBeVisible()
   })
 
   it('documents objective and constraint types in the guide', async () => {
@@ -1069,7 +1118,7 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
 
     await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
-    await user.click(screen.getByText('Open game guide →'))
+    await user.click(screen.getByText('Open controls reference →'))
     await user.click(screen.getByRole('tab', { name: 'Objectives & constraints' }))
     expect(screen.getByText('Objective scopes')).toBeVisible()
     expect(screen.getByText('Construction constraints')).toBeVisible()

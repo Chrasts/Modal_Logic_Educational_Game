@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from 'react'
 import {
   Background,
   MarkerType,
@@ -25,8 +25,12 @@ import { QuestionTaskPanel } from './components/QuestionTaskPanel'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
 import { modalEdgeTypes, resolveModalEdgeEndpoints } from './workspace/ModalEdge'
-import { modelMapInteractionProps } from './workspace/map-interactions'
+import { applyMapWheelGesture, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps } from './workspace/map-interactions'
+import { buildRelationPresentations, describeRelationPresentation, type RelationDirectionPresentation, type RelationPresentation } from './workspace/relation-presentation'
+import { findFreeWorldPosition, findOverlappingWorldKeys, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, type WorldPosition } from './workspace/world-placement'
+import { createTidyModelLayout } from './workspace/model-layout'
 import { isTextEntryTarget, shouldDeleteSelectedEdge } from './workspace/edge-keyboard'
+import { playSound } from './audio/sound-effects'
 import type { LearnStage } from './learn'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
@@ -79,7 +83,7 @@ type VerificationResult =
 
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom'
-type GuideTab = 'overview' | 'start' | 'theory' | 'operators' | 'scopes' | 'relations' | 'objectives' | 'controls' | 'glossary'
+type GuideTab = 'overview' | 'theory' | 'operators' | 'scopes' | 'relations' | 'objectives' | 'controls' | 'glossary'
 type AppView = 'home' | 'practice' | 'workspace' | 'learn' | 'welcome' | 'learnLesson' | 'tutorial' | 'campaigns' | 'create' | 'guide' | 'profile' | 'settings'
 type CampaignSection = 'challenges' | 'practice'
 type EvaluationScope = ObjectiveScope
@@ -93,6 +97,17 @@ function ChapterRecapQuestions({ questions }: { readonly questions: readonly Con
     const correct = answer === question.correctChoice
     return <fieldset key={question.prompt}><legend>{index + 1}. {question.prompt}</legend><div>{question.choices.map((choice) => <button type="button" className={answer === choice ? 'selected' : ''} aria-pressed={answer === choice} key={choice} onClick={() => setAnswers((current) => ({ ...current, [index]: choice }))}>{choice}</button>)}</div>{answer && <p role="status" className={correct ? 'correct' : 'incorrect'}><b>{correct ? 'Correct.' : 'Not quite.'}</b> {question.explanation}</p>}</fieldset>
   })}</div>
+}
+
+function MapControlsReference({ onReplayTour }: { readonly onReplayTour: () => void }) {
+  return <>
+    <article><h2>Select and edit worlds</h2><p>Click a world to select it and focus its incoming and outgoing relations. Use the model panel to rename it, change its true atoms, or make it the evaluation world when the task permits.</p></article>
+    <article><h2>Add and position worlds</h2><p>Use + World for a collision-aware position near the selected world or viewport centre. On desktop, double-click empty map space to create a world there. Dragging may intentionally overlap worlds; Tidy model is the explicit recovery action.</p></article>
+    <article><h2>Relations</h2><p>Drag between handles or use Accessibility. A two-way relation is collapsed into one ↔ line; click it to expose each direction. Only explicit directions can be selected and deleted.</p></article>
+    <article><h2>Move around the map</h2><p>Drag empty space to pan. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans freely in X and Y; pinch zooms. Zoom in, Zoom out, and Fit model are available in the map toolbar.</p></article>
+    <article><h2>Tidy and Fit</h2><p>Tidy model changes world positions as one undoable step. Fit model changes only the viewport and never enters model history.</p></article>
+    <article className="guide-action-card"><h2>Workspace tour</h2><p>Replay the short overlay without resetting the current mission, model, or progress.</p><button type="button" className="secondary-button" onClick={onReplayTour}>Replay workspace tour</button></article>
+  </>
 }
 
 function classifyObjectiveFailure(verdict: ObjectiveVerdict, scope: EvaluationScope, targetTruth: boolean, evaluationWorld: string): AttemptFailureCategory {
@@ -123,6 +138,11 @@ interface ModelSnapshot {
   readonly frameRules: FrameRules
 }
 
+interface ModelHistoryEntry {
+  readonly snapshot: ModelSnapshot
+  readonly preserveResult: boolean
+}
+
 const initialWorlds: EditableWorld[] = [
   { key: 0, id: 'w0', atoms: '', position: { x: 90, y: 110 } },
   { key: 1, id: 'w1', atoms: 'p', position: { x: 390, y: 110 } },
@@ -142,11 +162,11 @@ const workspaceTourSteps = [
   { title: 'Model map', body: 'The map shows worlds, their true atoms, and directed accessibility. This is where you inspect or build the Kripke model.' },
   { title: 'Task and editing panel', body: 'The task stays above the workspace. Available editing panels expose only the controls needed for the current task.' },
   { title: 'Evaluation and results', body: 'Evaluation explains whether the target is met and can reveal world-by-world semantic evidence.' },
-  { title: 'Navigating the map', body: 'Drag empty map space or use a two-finger scroll to pan, and pinch to zoom. Desktop panels can collapse and reopen.', mobileBody: 'Drag empty map space or use a two-finger gesture to pan, and pinch to zoom. On mobile, switch between the Model, Formula, and Result tabs.' },
+  { title: 'Navigating the map', body: 'Drag empty map space to pan. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans in both directions; pinch zooms. Use Zoom, Fit model, or Tidy model in the compact toolbar when useful. Desktop panels can collapse and reopen.', mobileBody: 'Drag empty map space or use a two-finger gesture to pan, and pinch to zoom. Zoom and Fit model remain available in the map toolbar. On mobile, switch between the Model, Formula, and Result tabs.' },
 ] as const
 type InterfaceDensity = 'comfortable' | 'compact'
-interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean; readonly leftPanelOpen: boolean; readonly rightPanelOpen: boolean }
-const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false, leftPanelOpen: true, rightPanelOpen: true }
+interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean; readonly soundEffects: boolean; readonly leftPanelOpen: boolean; readonly rightPanelOpen: boolean }
+const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false, soundEffects: false, leftPanelOpen: true, rightPanelOpen: true }
 const loadInterfaceSettings = (): InterfaceSettings => {
   try {
     const stored = JSON.parse(localStorage.getItem(interfaceSettingsKey) ?? 'null') as Partial<InterfaceSettings> | null
@@ -155,6 +175,7 @@ const loadInterfaceSettings = (): InterfaceSettings => {
       showMinimap: stored.showMinimap !== false,
       showDerivedEdges: stored.showDerivedEdges !== false,
       reduceMotion: stored.reduceMotion === true,
+      soundEffects: stored.soundEffects === true,
       leftPanelOpen: stored.leftPanelOpen !== false,
       rightPanelOpen: stored.rightPanelOpen !== false,
     } : defaultInterfaceSettings
@@ -437,15 +458,20 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [showMinimap, setShowMinimap] = useState(initialInterfaceSettings.showMinimap)
   const [interfaceDensity, setInterfaceDensity] = useState<InterfaceDensity>(initialInterfaceSettings.density)
   const [reduceMotion, setReduceMotion] = useState(initialInterfaceSettings.reduceMotion)
+  const [soundEffects, setSoundEffects] = useState(initialInterfaceSettings.soundEffects)
   const [leftPanelOpen, setLeftPanelOpen] = useState(initialInterfaceSettings.leftPanelOpen)
   const [rightPanelOpen, setRightPanelOpen] = useState(initialInterfaceSettings.rightPanelOpen)
   const [showWorkspaceTour, setShowWorkspaceTour] = useState(() => initialView === 'workspace' && localStorage.getItem(workspaceTourKey) !== 'seen')
   const [workspaceTourStep, setWorkspaceTourStep] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
+  const [hoveredWorldKey, setHoveredWorldKey] = useState<number | null>(null)
+  const [collidingWorldKeys, setCollidingWorldKeys] = useState<ReadonlySet<number>>(new Set())
+  const [expandedRelationPairKey, setExpandedRelationPairKey] = useState<string | null>(null)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null)
-  const historyPast = useRef<ModelSnapshot[]>([])
-  const historyFuture = useRef<ModelSnapshot[]>([])
+  const graphCanvasRef = useRef<HTMLDivElement>(null)
+  const historyPast = useRef<ModelHistoryEntry[]>([])
+  const historyFuture = useRef<ModelHistoryEntry[]>([])
   const sandboxBeforeCampaign = useRef<SandboxDraft | null>(null)
   const [historyVersion, setHistoryVersion] = useState(0)
 
@@ -456,35 +482,36 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     frameRules: { ...frameRules },
   })
 
-  const saveHistoryPoint = () => {
-    historyPast.current.push(currentSnapshot())
+  const saveHistoryPoint = (preserveResultOrEvent?: unknown) => {
+    const preserveResult = preserveResultOrEvent === true
+    historyPast.current.push({ snapshot: currentSnapshot(), preserveResult })
     if (historyPast.current.length > 50) historyPast.current.shift()
     historyFuture.current = []
     setHistoryVersion((version) => version + 1)
   }
 
-  const restoreSnapshot = (snapshot: ModelSnapshot) => {
+  const restoreSnapshot = (snapshot: ModelSnapshot, preserveResult = false) => {
     setWorlds(structuredClone(snapshot.worlds))
     setEdges(structuredClone(snapshot.edges))
     setEvaluationWorld(snapshot.evaluationWorld)
     setFrameRules({ ...snapshot.frameRules })
     setSelectedWorldKey(null)
-    setResult(null)
+    if (!preserveResult) setResult(null)
   }
 
   const undo = () => {
     const previous = historyPast.current.pop()
     if (!previous) return
-    historyFuture.current.push(currentSnapshot())
-    restoreSnapshot(previous)
+    historyFuture.current.push({ snapshot: currentSnapshot(), preserveResult: previous.preserveResult })
+    restoreSnapshot(previous.snapshot, previous.preserveResult)
     setHistoryVersion((version) => version + 1)
   }
 
   const redo = () => {
     const next = historyFuture.current.pop()
     if (!next) return
-    historyPast.current.push(currentSnapshot())
-    restoreSnapshot(next)
+    historyPast.current.push({ snapshot: currentSnapshot(), preserveResult: next.preserveResult })
+    restoreSnapshot(next.snapshot, next.preserveResult)
     setHistoryVersion((version) => version + 1)
   }
 
@@ -526,9 +553,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   useEffect(() => {
     if (gameMode !== 'sandbox') return
-    const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, leftPanelOpen, rightPanelOpen }
+    const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, soundEffects, leftPanelOpen, rightPanelOpen }
     try { localStorage.setItem(interfaceSettingsKey, JSON.stringify(settings)) } catch { /* Preferences remain available for this session. */ }
-  }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, leftPanelOpen, rightPanelOpen, gameMode])
+  }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, soundEffects, leftPanelOpen, rightPanelOpen, gameMode])
 
   useEffect(() => {
     if (!showHelp && !showFrameRules && !showDataManager) return
@@ -629,6 +656,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         : gameMode === 'guidedCampaign' ? guidedCampaigns[guidedCampaignIndex]?.levels[campaignLevelIndex]
           : gameMode === 'custom' ? customLevels[campaignLevelIndex] : undefined
   const mapQuestionMode = activeMapLevel?.interactionMode === 'question'
+  const focusedWorldKey = hoveredWorldKey ?? selectedWorldKey
+  const focusedWorldId = worlds.find((world) => world.key === focusedWorldKey)?.id.trim()
 
   const nodeBlueprints = useMemo<FlowNode[]>(() => worlds.map((world) => ({
     id: String(world.key),
@@ -650,6 +679,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     className: [
       world.id.trim() === evaluationWorld ? 'evaluation-node' : '',
       world.key === selectedWorldKey ? 'selected-world-node' : '',
+      collidingWorldKeys.has(world.key) ? 'colliding-world-node' : '',
       mapQuestionMode && predictionAnswer === world.id.trim() ? 'question-answer-node' : '',
       world.id.trim() === activeTrace?.worldId ? 'trace-current-node' : '',
       world.id.trim() === traceWitnessWorld ? 'trace-witness-node' : '',
@@ -658,7 +688,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     ].filter(Boolean).join(' '),
     ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}`,
     domAttributes: mapQuestionMode ? { 'aria-pressed': predictionAnswer === world.id.trim() } : undefined,
-  })), [worlds, effectiveEdges, evaluationWorld, selectedWorldKey, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer])
+  })), [worlds, effectiveEdges, evaluationWorld, selectedWorldKey, collidingWorldKeys, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer])
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodeBlueprints)
 
@@ -671,35 +701,96 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     [worlds],
   )
 
-  const flowEdges = useMemo<FlowEdge[]>(() => displayedEdges.flatMap((edge) => {
-    const source = worldKeyById.get(edge.from)
-    const target = worldKeyById.get(edge.to)
-    const endpoints = resolveModalEdgeEndpoints(source, target)
-    const explicitKey = explicitEdgeKeyByPair.get(`${edge.from}\u0000${edge.to}`)
-    const reversePair = edge.from !== edge.to && displayedEdges.some((candidate) => candidate.from === edge.to && candidate.to === edge.from)
-    const edgeEditableOnMap = explicitKey !== undefined && !mapQuestionMode && (!activeMapLevel || activeMapLevel.editable.includes('edges'))
-    return endpoints ? [{
-      id: explicitKey === undefined ? `derived:${edge.from}:${edge.to}` : `explicit:${explicitKey}`,
-      source: endpoints.source,
-      target: endpoints.target,
-      type: 'modal',
-      data: { selfLoop: edge.from === edge.to, reversePair, routeSign: reversePair ? 1 : edge.from <= edge.to ? 1 : -1 },
-      interactionWidth: 22,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      selectable: edgeEditableOnMap,
-      focusable: edgeEditableOnMap,
-      selected: explicitKey === selectedEdgeKey,
-      className: [
-        'model-edge',
-        explicitKey === undefined ? 'derived-edge' : '',
-        explicitKey === selectedEdgeKey ? 'selected-edge' : '',
-        traceCheckedEdges.has(`${edge.from}\u0000${edge.to}`) ? 'trace-checked-edge' : '',
-        edge.to === traceWitnessWorld && activeTrace?.worldId === edge.from ? 'trace-witness-edge' : '',
-        edge.to === traceCounterexampleWorld && activeTrace?.worldId === edge.from ? 'trace-counterexample-edge' : '',
-        activeTrace && !traceCheckedEdges.has(`${edge.from}\u0000${edge.to}`) ? 'trace-irrelevant-edge' : '',
-      ].filter(Boolean).join(' '),
-    }] : []
-  }), [displayedEdges, worldKeyById, explicitEdgeKeyByPair, selectedEdgeKey, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace, mapQuestionMode, activeMapLevel])
+  const relationPresentations = useMemo(
+    () => buildRelationPresentations(displayedEdges, explicitEdgeKeyByPair),
+    [displayedEdges, explicitEdgeKeyByPair],
+  )
+
+  useEffect(() => {
+    if (expandedRelationPairKey && !relationPresentations.some(({ pairKey, kind }) => kind === 'bidirectional' && pairKey === expandedRelationPairKey)) {
+      setExpandedRelationPairKey(null)
+    }
+  }, [expandedRelationPairKey, relationPresentations])
+
+  const flowEdges = useMemo<FlowEdge[]>(() => {
+    const marker = (derived: boolean) => ({ type: derived ? MarkerType.Arrow : MarkerType.ArrowClosed, color: derived ? '#7a4d26' : '#285f67' })
+    const focusClasses = (presentation: RelationPresentation, selected: boolean) => {
+      const incident = Boolean(focusedWorldId && (presentation.source === focusedWorldId || presentation.target === focusedWorldId))
+      return [
+        incident ? 'relation-focus' : '',
+        focusedWorldId && !incident && !selected ? 'relation-dimmed' : '',
+        selected ? 'relation-selected' : '',
+      ]
+    }
+    const directionEdge = (presentation: RelationPresentation, direction: RelationDirectionPresentation, reversePair: boolean): FlowEdge | null => {
+      const endpoints = resolveModalEdgeEndpoints(worldKeyById.get(direction.from), worldKeyById.get(direction.to))
+      if (!endpoints) return null
+      const editable = direction.explicitKey !== undefined && !mapQuestionMode && (!activeMapLevel || activeMapLevel.editable.includes('edges'))
+      const selected = direction.explicitKey === selectedEdgeKey
+      const directionPair = `${direction.from}\u0000${direction.to}`
+      return {
+        id: direction.explicitKey === undefined ? `derived:${direction.from}:${direction.to}` : `explicit:${direction.explicitKey}`,
+        source: endpoints.source,
+        target: endpoints.target,
+        type: 'modal',
+        data: {
+          selfLoop: direction.from === direction.to,
+          reversePair,
+          routeSign: reversePair ? 1 : direction.from <= direction.to ? 1 : -1,
+          pairKey: presentation.pairKey,
+          description: direction.derived ? `Accessibility from ${direction.from} to ${direction.to}, derived by an enforced frame rule` : `Accessibility from ${direction.from} to ${direction.to}, explicit`,
+        },
+        interactionWidth: 22,
+        markerEnd: marker(direction.derived),
+        selectable: editable,
+        focusable: true,
+        selected,
+        ariaLabel: direction.derived ? `${direction.from} to ${direction.to}, derived by an enforced frame rule` : `${direction.from} to ${direction.to}, explicit`,
+        className: [
+          'model-edge', reversePair ? 'expanded-relation' : '', direction.derived ? 'derived-edge' : '', selected ? 'selected-edge' : '',
+          ...focusClasses(presentation, selected),
+          traceCheckedEdges.has(directionPair) ? 'trace-checked-edge' : '',
+          direction.to === traceWitnessWorld && activeTrace?.worldId === direction.from ? 'trace-witness-edge' : '',
+          direction.to === traceCounterexampleWorld && activeTrace?.worldId === direction.from ? 'trace-counterexample-edge' : '',
+          activeTrace && !traceCheckedEdges.has(directionPair) ? 'trace-irrelevant-edge' : '',
+        ].filter(Boolean).join(' '),
+      }
+    }
+
+    return relationPresentations.flatMap<FlowEdge>((presentation) => {
+      if (presentation.kind === 'bidirectional' && expandedRelationPairKey !== presentation.pairKey) {
+        const endpoints = resolveModalEdgeEndpoints(worldKeyById.get(presentation.source), worldKeyById.get(presentation.target))
+        if (!endpoints || !presentation.reverse) return []
+        const selected = presentation.forward.explicitKey === selectedEdgeKey || presentation.reverse.explicitKey === selectedEdgeKey
+        const bothDerived = presentation.forward.derived && presentation.reverse.derived
+        const checked = traceCheckedEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`)
+          || traceCheckedEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)
+        return [{
+          id: `pair:${presentation.source}:${presentation.target}`,
+          source: endpoints.source,
+          target: endpoints.target,
+          type: 'modal',
+          data: { pairKey: presentation.pairKey, description: describeRelationPresentation(presentation) },
+          interactionWidth: 24,
+          markerEnd: marker(presentation.forward.derived),
+          markerStart: marker(presentation.reverse.derived),
+          selectable: true,
+          focusable: true,
+          ariaLabel: describeRelationPresentation(presentation),
+          className: [
+            'model-edge', 'bidirectional-edge', bothDerived ? 'derived-edge' : '',
+            presentation.forward.derived !== presentation.reverse.derived ? 'mixed-relation' : '',
+            ...focusClasses(presentation, selected), checked ? 'trace-checked-edge' : '', activeTrace && !checked ? 'trace-irrelevant-edge' : '',
+          ].filter(Boolean).join(' '),
+        }]
+      }
+      if (presentation.kind === 'bidirectional' && presentation.reverse) {
+        return [directionEdge(presentation, presentation.forward, true), directionEdge(presentation, presentation.reverse, true)].filter((edge): edge is FlowEdge => Boolean(edge))
+      }
+      const edge = directionEdge(presentation, presentation.forward, false)
+      return edge ? [edge] : []
+    })
+  }, [relationPresentations, expandedRelationPairKey, worldKeyById, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace, mapQuestionMode, activeMapLevel])
 
   const MiniMapWithRelations = useMemo(() => {
     const worldByKey = new Map(worlds.map((world) => [String(world.key), world]))
@@ -823,6 +914,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const courseLesson = activeLevel ? learnLessonByTaskId.get(activeLevel.id) : undefined
   const isQuestionTask = activeLevel?.interactionMode === 'question'
+  const previousSoundResultRef = useRef<VerificationResult>(null)
+  useEffect(() => {
+    if (result && result !== previousSoundResultRef.current) {
+      playSound(result.kind === 'success' ? 'success' : 'failure', soundEffects)
+    }
+    previousSoundResultRef.current = result
+  }, [result, soundEffects])
   useEffect(() => {
     if (result && result.kind !== 'error' && !isQuestionTask) verificationResultRef.current?.focus()
   }, [isQuestionTask, result])
@@ -895,6 +993,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       if (event.key === 'Escape') {
         setSelectedWorldKey(null)
         setSelectedEdgeKey(null)
+        setExpandedRelationPairKey(null)
         return
       }
       if (shouldDeleteSelectedEdge({ key: event.key, target: event.target, selectedEdgeKey, canEditEdges })) {
@@ -949,20 +1048,54 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setResult(null)
   }
 
-  const addWorld = () => {
+  const preferredWorldSpawn = (): WorldPosition => {
+    if (selectedWorld) return { x: selectedWorld.position.x + WORLD_NODE_SIZE + 54, y: selectedWorld.position.y }
+    const bounds = graphCanvasRef.current?.getBoundingClientRect()
+    if (flowInstance && bounds) {
+      const center = flowInstance.screenToFlowPosition({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 })
+      return { x: center.x - WORLD_NODE_SIZE / 2, y: center.y - WORLD_NODE_SIZE / 2 }
+    }
+    return { x: 90, y: 90 }
+  }
+
+  const addWorld = (preferredPosition?: WorldPosition) => {
     if (!canEditWorlds) return
     saveHistoryPoint()
     const used = new Set(worlds.map(({ id }) => id))
     let number = worlds.length
     while (used.has(`w${number}`)) number += 1
+    const spawnPosition = findFreeWorldPosition(worlds, preferredPosition ?? preferredWorldSpawn())
     setWorlds((current) => [...current, {
       key: nextWorldKey,
       id: `w${number}`,
       atoms: '',
-      position: { x: 90 + (current.length % 3) * 240, y: 90 + Math.floor(current.length / 3) * 150 },
+      position: spawnPosition,
     }])
     setNextWorldKey((key) => key + 1)
     setResult(null)
+    playSound('create', soundEffects)
+  }
+
+  const tidyModel = () => {
+    if (worlds.length < 2) return
+    const positions = createTidyModelLayout(worlds, edges, evaluationWorld)
+    saveHistoryPoint(true)
+    setWorlds((current) => current.map((world) => ({ ...world, position: positions.get(world.key) ?? world.position })))
+    setCollidingWorldKeys(new Set())
+  }
+
+  const handleMapWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!flowInstance || !(event.target instanceof Element) || event.target.closest('.react-flow__panel')) return
+    if (!event.target.closest('.react-flow')) return
+    const bounds = graphCanvasRef.current?.getBoundingClientRect()
+    if (!bounds) return
+    event.preventDefault()
+    event.stopPropagation()
+    const application = applyMapWheelGesture(event, flowInstance.getViewport(), {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    })
+    void flowInstance.setViewport(application.viewport, { duration: 0 })
   }
 
   const removeWorld = (key: number) => {
@@ -999,6 +1132,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setEdges((current) => [...current, { key: nextEdgeKey, from: source, to: target }])
     setNextEdgeKey((key) => key + 1)
     setResult(null)
+    playSound('create', soundEffects)
   }
 
   const deleteEdge = (key: number) => {
@@ -1033,6 +1167,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setNextEdgeKey(level.edges.length)
     setSelectedWorldKey(null)
     setSelectedEdgeKey(null)
+    setHoveredWorldKey(null)
+    setExpandedRelationPairKey(null)
     setLeftPanelOpen(true)
     setRightPanelOpen(false)
     setEditorMode('edit')
@@ -1163,6 +1299,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const returnToSandbox = () => {
     if (isGuidedMode) exitCampaign()
     setAppView('workspace')
+  }
+
+  const openWorkspaceTour = () => {
+    setWorkspaceTourStep(0)
+    setAppView('workspace')
+    setShowWorkspaceTour(true)
+    setUtilityMenuOpen(false)
   }
 
   const dismissWorkspaceTour = () => {
@@ -1916,11 +2059,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     else setAppView('home')
   }
 
-  const activeGuideTabs: readonly (readonly [GuideTab, string])[] = guideTab === 'start'
-    ? [['start', 'Introduction']]
-    : guideTab === 'objectives' || guideTab === 'controls'
-      ? [['controls', 'Controls'], ['objectives', 'Objectives & constraints']]
-      : [['theory', 'Frames & models'], ['operators', 'Box & diamond'], ['scopes', 'Semantic scopes'], ['relations', 'Relations & axioms'], ['glossary', 'Glossary']]
+  const activeGuideTabs: readonly (readonly [GuideTab, string])[] = guideTab === 'objectives' || guideTab === 'controls'
+    ? [['controls', 'Controls'], ['objectives', 'Objectives & constraints']]
+    : [['theory', 'Frames & models'], ['operators', 'Box & diamond'], ['scopes', 'Semantic scopes'], ['relations', 'Relations & axioms'], ['glossary', 'Glossary']]
 
   const nextIncompleteLearnLesson = learnLessons.find((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))
   const nextLearningTitle = !learnProgress.welcomeViewed
@@ -1980,7 +2121,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? `Restart ${missionNavigationUnit}` : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open Modal Logic Guide" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Guide</button>}
           {document.fullscreenEnabled && <button type="button" className="icon-button fullscreen-button" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={() => void toggleFullscreen()}>⛶</button>}
-          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover">{appView === 'workspace' && <button type="button" role="menuitem" onClick={() => { setWorkspaceTourStep(0); setShowWorkspaceTour(true); setUtilityMenuOpen(false) }}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
+          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover">{appView === 'workspace' && <button type="button" role="menuitem" onClick={openWorkspaceTour}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
         </div>
       </header>
 
@@ -2002,8 +2143,26 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'learn' && (
         <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p><button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : playableLearningCompleted === availableLearningTotal ? 'Replay Learning' : 'Continue Learning'}</button></div><div className="collection-progress"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>available tasks complete</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
-          <div className="learn-chapter-list"><article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article><article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><div className="chapter-actions"><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div></article>{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); const expanded = expandedLearnChapterId === chapter.id; return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{expanded && <div className="chapter-lesson-outline"><ol>{chapter.lessons.map((lesson) => { const lessonComplete = learnProgress.completedLessonIds.includes(lesson.id); const lessonCurrent = learnProgress.currentLessonId === lesson.id || (!chapterComplete && learnLessons[currentIndex]?.id === lesson.id); return <li className={lessonComplete ? 'complete' : lessonCurrent ? 'current' : ''} key={lesson.id}><span><b>{lesson.title}</b><small>{lessonComplete ? 'Completed' : lessonCurrent ? 'Current' : 'Unfinished'}</small></span><button type="button" onClick={() => startLearnLesson(learnLessons.findIndex(({ id }) => id === lesson.id))}>{lessonComplete ? 'Replay' : 'Open'}</button></li> })}</ol>{chapterComplete && <div className="chapter-recap"><strong>Section recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.recapQuestions && <ChapterRecapQuestions questions={chapter.recapQuestions} />}{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>}</div>{available ? <div className="chapter-actions"><button type="button" className="primary-action" onClick={() => startLearnLesson(currentIndex < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : currentIndex)}>{chapterComplete ? 'Replay section' : completed > 0 ? 'Continue' : 'Start'}</button><button type="button" className="secondary-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide lessons' : 'View lessons'}</button>{!chapterComplete && completed > 0 && <button type="button" className="text-button" onClick={() => restartLearnChapter(chapter.id)}>Restart section</button>}</div> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p>{playableLearningCompleted < availableLearningTotal ? <button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : 'Continue Learning'}</button> : <p className="learning-complete-status" role="status">Available learning complete.</p>}</div><div className="collection-progress"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>available tasks complete</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
+          <div className="learn-chapter-list">
+            <article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className={learnProgress.welcomeViewed ? 'secondary-button' : 'primary-action'} onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article>
+            <article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><div className="chapter-actions"><button type="button" className={tutorialCompleted === tutorialLevels.length ? 'secondary-button' : 'primary-action'} onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div></article>
+            {learnCourse.chapters.map((chapter) => {
+              const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length
+              const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0
+              const available = chapter.lessons.length > 0
+              const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id))
+              const expanded = expandedLearnChapterId === chapter.id
+              return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}>
+                <div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{expanded && <div className="chapter-lesson-outline"><ol>{chapter.lessons.map((lesson) => {
+                  const lessonComplete = learnProgress.completedLessonIds.includes(lesson.id)
+                  const lessonCurrent = learnProgress.currentLessonId === lesson.id || (!chapterComplete && learnLessons[currentIndex]?.id === lesson.id)
+                  return <li className={lessonComplete ? 'complete' : lessonCurrent ? 'current' : ''} key={lesson.id}><span><b>{lesson.title}</b><small>{lessonComplete ? 'Completed' : lessonCurrent ? 'Current' : 'Unfinished'}</small></span><button type="button" className={lessonComplete ? 'secondary-button' : 'text-button'} onClick={() => startLearnLesson(learnLessons.findIndex(({ id }) => id === lesson.id))}>{lessonComplete ? 'Replay' : 'Open'}</button></li>
+                })}</ol>{chapterComplete && <div className="chapter-recap"><strong>Section recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.recapQuestions && <ChapterRecapQuestions questions={chapter.recapQuestions} />}{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>}</div>
+                {available ? <div className="chapter-actions"><button type="button" className={chapterComplete ? 'secondary-button' : 'primary-action'} onClick={() => startLearnLesson(currentIndex < 0 ? learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id) : currentIndex)}>{chapterComplete ? 'Replay section' : completed > 0 ? 'Continue' : 'Start'}</button><button type="button" className="text-button" aria-expanded={expanded} onClick={() => setExpandedLearnChapterId((current) => current === chapter.id ? null : chapter.id)}>{expanded ? 'Hide lessons' : 'View lessons'}</button>{!chapterComplete && completed > 0 && <button type="button" className="text-button" onClick={() => restartLearnChapter(chapter.id)}>Restart section</button>}</div> : <span className="chapter-coming">Coming later</span>}
+              </article>
+            })}
+          </div>
         </section>
       )}
       {appView === 'welcome' && <ModalLogicWelcome onBegin={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onSkip={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onBack={() => setAppView('learn')} />}
@@ -2016,6 +2175,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <article><h2>Workspace density</h2><p>Comfortable spacing favors reading; compact spacing keeps more controls visible.</p><div className="settings-choice"><button type="button" className={interfaceDensity === 'comfortable' ? 'active' : ''} aria-pressed={interfaceDensity === 'comfortable'} onClick={() => setInterfaceDensity('comfortable')}>Comfortable</button><button type="button" className={interfaceDensity === 'compact' ? 'active' : ''} aria-pressed={interfaceDensity === 'compact'} onClick={() => setInterfaceDensity('compact')}>Compact</button></div></article>
             <article><h2>Map display</h2><label><input type="checkbox" checked={showMinimap} onChange={(event) => setShowMinimap(event.target.checked)} /> Show minimap</label><label><input type="checkbox" checked={showDerivedEdges} onChange={(event) => setShowDerivedEdges(event.target.checked)} /> Show edges derived from enforced frame properties</label></article>
             <article><h2>Motion</h2><label><input type="checkbox" checked={reduceMotion} onChange={(event) => setReduceMotion(event.target.checked)} /> Reduce interface animation</label><p>The operating-system reduced-motion preference is respected independently.</p></article>
+            <article><h2>Sound</h2><label><input type="checkbox" checked={soundEffects} onChange={(event) => setSoundEffects(event.target.checked)} /> Sound effects</label><p>Short create and verification cues only. Sound is off by default; there is no background music.</p></article>
             <article><h2>Window</h2><p>Fullscreen is available directly from the global toolbar when the browser and embedding policy support it.</p></article>
             <article><h2>Privacy</h2><p>Models, formulas, settings, and study history stay in this browser. They are not automatically sent anywhere. This build uses no analytics SDK or tracking cookies; explicit exports and share links contain only the data you choose to share.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage local data</button></article>
           </div>
@@ -2050,30 +2210,20 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'guide' && (
         <section className="content-screen guide-screen" aria-labelledby="guide-screen-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Concepts and controls</p><h1 id="guide-screen-title" className="clean-display">Modal Logic Guide</h1><p>Begin with an intuitive picture of modal logic, continue into formal Kripke semantics, or look up exactly how the game works.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
-          <div className="guide-actions"><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>Replay Welcome to Modal Logic</button><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button><button type="button" className="secondary-button" onClick={() => setAppView('tutorial')}>Replay Learn the Controls</button><button type="button" className="secondary-button" onClick={() => setAppView('campaigns')}>Open Campaigns</button><button type="button" className="secondary-button" onClick={returnToSandbox}>Try in Sandbox</button></div>
-          {guideTab !== 'overview' && <div className="guide-local-nav"><button type="button" className="guide-overview-back" onClick={() => setGuideTab('overview')}>← Guide overview</button><div className="guide-path-label">{guideTab === 'start' ? 'Intuitive introduction' : guideTab === 'objectives' || guideTab === 'controls' ? 'How to play' : 'Formal semantics'}</div></div>}
+          <div className="screen-hero compact"><div><p className="eyebrow">Reference manual</p><h1 id="guide-screen-title" className="clean-display">Modal Logic Guide</h1><p>Look up formal Kripke semantics, modal operators, objectives, relations, controls, and terminology. Guided teaching remains in Learn.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
+          <div className="guide-actions"><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>Replay Welcome to Modal Logic</button><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', 0)}>Replay Learn the Controls</button><button type="button" className="secondary-button" onClick={openWorkspaceTour}>Replay workspace tour</button><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button><button type="button" className="secondary-button" onClick={returnToSandbox}>Try in Sandbox</button></div>
+          {guideTab !== 'overview' && <div className="guide-local-nav"><button type="button" className="guide-overview-back" onClick={() => setGuideTab('overview')}>← Guide overview</button><div className="guide-path-label">{guideTab === 'objectives' || guideTab === 'controls' ? 'How to play' : 'Formal semantics'}</div></div>}
           {guideTab !== 'overview' && <div className="guide-tabs" role="tablist" aria-label="Guide sections">{activeGuideTabs.map(([tab, label]) => <button type="button" role="tab" aria-selected={guideTab === tab} className={guideTab === tab ? 'active' : ''} onClick={() => setGuideTab(tab)} key={tab}>{label}</button>)}</div>}
           <div className="guide-page-grid">
             {guideTab === 'overview' && <div className="learn-paths guide-wide" aria-label="Learning paths">
-              <button type="button" className="learn-path intuitive" onClick={() => setGuideTab('start')}><span>01 · No logic background required</span><strong>Modal Logic: Intuitive Introduction</strong><p>Possible worlds, accessible alternatives, necessity, possibility, and where modal reasoning is used.</p><b>Start introduction →</b></button>
-              <button type="button" className="learn-path formal" onClick={() => setGuideTab('theory')}><span>02 · Mathematical reference</span><strong>Formal Modal Semantics</strong><p>Kripke frames and models, satisfaction, modal clauses, semantic scopes, and frame properties.</p><b>Open formal guide →</b></button>
-              <button type="button" className="learn-path gameplay" onClick={() => setGuideTab('controls')}><span>03 · Game and interface</span><strong>How to Play</strong><p>Build models, edit relations and valuations, understand objectives, verify answers, and manage local data.</p><b>Open game guide →</b></button>
+              <button type="button" className="learn-path formal" onClick={() => setGuideTab('theory')}><span>01 · Mathematical reference</span><strong>Formal Modal Semantics</strong><p>Kripke frames and models, satisfaction, modal clauses, semantic scopes, and frame properties.</p><b>Open formal guide →</b></button>
+              <button type="button" className="learn-path gameplay" onClick={() => setGuideTab('controls')}><span>02 · Game and interface</span><strong>Controls and Objectives</strong><p>Quickly look up map gestures, model editing, relation display, objectives, and local data.</p><b>Open controls reference →</b></button>
             </div>}
-            {guideTab === 'start' && <>
-              <details className="intro-topic guide-wide"><summary><span><small>The basic idea</small><strong>Reasoning about alternatives</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Ordinary logic asks whether a statement is true or false. Modal logic can also ask whether it must be true, could be true, is known, or will be true. It does this by comparing a situation with relevant alternatives.</p></div></details>
-              <details className="intro-topic"><summary><span><small>Possible worlds</small><strong>Different ways things could be</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>A world represents one possible state of affairs. It need not be a whole universe: it can represent a system state, a moment in time, or one way the available information might be.</p></div></details>
-              <details className="intro-topic"><summary><span><small>Relations</small><strong>Which alternatives count?</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>An arrow from one world to another says that the second world is accessible from the first. The arrows determine which alternatives matter from each point of view.</p></div></details>
-              <details className="intro-topic"><summary><span><small>Modal questions</small><strong>Possible and necessary</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Something is possible when it is true in at least one accessible world. It is necessary when it is true in every accessible world.</p></div></details>
-              <details className="intro-topic"><summary><span><small>Why the arrows matter</small><strong>Structure changes truth</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>The same facts placed in the same worlds can give different modal answers when the arrows change. Much of the game is about understanding that interaction.</p></div></details>
-              <details className="intro-topic"><summary><span><small>Applications</small><strong>Where modal logic appears</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Modal ideas are used in philosophy, computer-system verification, knowledge and multi-agent reasoning, linguistics, and the logic of time and action.</p></div></details>
-              <details className="intro-topic guide-wide"><summary><span><small>Next step</small><strong>From intuition to mathematics</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>This introduction deliberately avoids notation. Continue to Formal semantics for Kripke frames and models, or open Box &amp; diamond for the precise truth conditions of the two modal operators.</p></div></details>
-            </>}
             {guideTab === 'theory' && <><article><h2>Kripke frame</h2><p><strong>F = ⟨W,R⟩</strong>, where W is a non-empty set of worlds and <strong>R ⊆ W × W</strong> is the accessibility relation.</p></article><article><h2>Valuation</h2><p><strong>ν: Prop → ℘(W)</strong> assigns each propositional atom the worlds at which it is true.</p></article><article><h2>Kripke model</h2><p><strong>M = ⟨W,R,ν⟩</strong>. A pointed model additionally singles out an evaluation world w.</p></article><article><h2>Satisfaction</h2><p><strong>M,w ⊨ φ</strong> means that φ is true at w in M. Boolean connectives retain their classical truth conditions at each world.</p></article></>}
             {guideTab === 'operators' && <><article><h2>Necessity</h2><p><strong>M,w ⊨ □φ</strong> iff for every v, if wRv then M,v ⊨ φ.</p></article><article><h2>Possibility</h2><p><strong>M,w ⊨ ◇φ</strong> iff there is some v such that wRv and M,v ⊨ φ.</p></article><article><h2>Vacuous truth</h2><p>If w has no successors, □φ is true and ◇φ is false. Necessity does not require a witness; possibility does.</p></article><article><h2>Nested modalities</h2><p>In □◇p, the game checks every immediate successor and then looks from each of them for a further p-successor.</p></article></>}
             {guideTab === 'scopes' && <><article><h2>Pointed truth</h2><p><strong>M,w ⊨ φ</strong>: evaluate one selected world under the displayed valuation.</p></article><article><h2>Model-global truth</h2><p><strong>M ⊨ φ</strong>: φ must hold at every world of the displayed model while ν remains fixed.</p></article><article><h2>Frame validity</h2><p><strong>F ⊨ φ</strong>: φ must hold at every world under every valuation on the displayed finite frame.</p></article><article><h2>Counterexamples</h2><p>A pointed or global failure identifies a world. Failure of frame validity additionally supplies a countervaluation.</p></article></>}
             {guideTab === 'relations' && <><article><h2>Frame properties</h2><p>Reflexive, symmetric, transitive, serial, Euclidean, irreflexive, and acyclic describe the accessibility relation, not the current valuation.</p></article><article><h2>Validate and enforce</h2><p>Validate reports whether a relation has a property. Enforce derives the closure needed for supported properties and displays derived edges separately.</p></article><article><h2>Modal axioms</h2><p>T, D, B, 4, and 5 are modal axiom schemas. Their validity characterizes familiar classes of frames.</p></article><article><h2>Instance comparison</h2><p>The Correspondence Lab compares both sides on one finite frame. Agreement there illustrates a theorem; it is not itself a general proof.</p></article></>}
-            {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, change editing mode, inspect the minimap, and open the Modal Logic Guide without leaving the current model.</p></article><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
+            {guideTab === 'controls' && <><MapControlsReference onReplayTour={openWorkspaceTour} /><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
             {guideTab === 'objectives' && <><article><h2>Objective scopes</h2><p>Pointed, model-global, frame-validity, and correspondence objectives use different semantic quantification.</p></article><article><h2>Construction constraints</h2><p>Levels can bound size, require or forbid edges and atoms, and require or exclude frame properties.</p></article><article><h2>Locked inputs</h2><p>Formulas, worlds, valuations, relations, evaluation worlds, and constraint controls may be fixed.</p></article><article><h2>Optional bonuses</h2><p>Some missions evaluate an additional construction challenge only after the primary objective succeeds.</p></article></>}
             {guideTab === 'glossary' && <><article><h2>World</h2><p>An element of W representing a possible state. Worlds may share the same valuation while differing structurally.</p></article><article><h2>Successor</h2><p>v is a successor of w when wRv. Arrow direction matters.</p></article><article><h2>Valuation</h2><p>The assignment ν of propositional atoms to sets of worlds.</p></article><article><h2>Countervaluation</h2><p>A valuation witnessing that a formula is not valid on a frame.</p></article><article><h2>Explicit edge</h2><p>An accessibility pair stored directly in the construction.</p></article><article><h2>Derived edge</h2><p>An edge added by an enforced relational closure rather than drawn explicitly.</p></article></>}
           </div>
@@ -2187,7 +2337,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <div><h2>Visual model</h2><p>Drag worlds and connect their handles</p></div>
             {!isQuestionTask && <div className="model-view-switch" role="group" aria-label="Model view"><button type="button" className={modelView === 'graph' ? 'active' : ''} aria-pressed={modelView === 'graph'} onClick={() => setModelView('graph')}>Graph</button><button type="button" className={modelView === 'table' ? 'active' : ''} aria-pressed={modelView === 'table'} onClick={() => setModelView('table')}>Table</button></div>}
           </div>
-          <div className="graph-canvas">
+          <div className="graph-canvas" ref={graphCanvasRef} onWheelCapture={handleMapWheel}>
             {modelView === 'graph' ? <ReactFlow
               nodes={flowNodes}
               edges={flowEdges}
@@ -2196,18 +2346,33 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               onNodesChange={onNodesChange}
               nodesDraggable={canEditWorlds}
               nodesConnectable={canEditEdges}
-              edgesFocusable={canEditEdges}
+              edgesFocusable
               nodesFocusable
-              onNodeDragStart={() => { if (canEditWorlds) saveHistoryPoint() }}
-              onNodeDragStop={(_event, node) => setWorlds((current) => current.map((world) => world.key === Number(node.id) ? { ...world, position: node.position } : world))}
+              onNodeDragStart={() => { if (canEditWorlds) saveHistoryPoint(true) }}
+              onNodeDrag={(_event, node) => setCollidingWorldKeys(findOverlappingWorldKeys(worlds, Number(node.id), node.position))}
+              onNodeDragStop={(_event, node) => { setWorlds((current) => current.map((world) => world.key === Number(node.id) ? { ...world, position: node.position } : world)); setCollidingWorldKeys(new Set()) }}
+              onNodeMouseEnter={(_event, node) => setHoveredWorldKey(Number(node.id))}
+              onNodeMouseLeave={() => setHoveredWorldKey(null)}
               onNodeClick={(_event, node) => {
                 const selectedWorld = worlds.find(({ key }) => key === Number(node.id))
                 if (selectedWorld && isQuestionTask && (activeLevel?.prediction?.kind === 'world-choice' || activeLevel?.prediction?.kind === 'counterexample-world')) choosePredictionAnswer(selectedWorld.id.trim())
                 else setSelectedWorldKey(Number(node.id))
-                setResult(null)
+                setExpandedRelationPairKey(null)
               }}
               onConnect={connectWorlds}
-              onEdgeClick={(_event, edge) => { if (canEditEdges) setSelectedEdgeKey(explicitKeyFromFlowEdgeId(edge.id)) }}
+              onEdgeClick={(_event, edge) => {
+                const pairKey = (edge.data as { pairKey?: string } | undefined)?.pairKey
+                if (edge.id.startsWith('pair:') && pairKey) {
+                  setExpandedRelationPairKey(pairKey)
+                  setSelectedEdgeKey(null)
+                  setSelectedWorldKey(null)
+                  return
+                }
+                if (expandedRelationPairKey && pairKey !== expandedRelationPairKey) setExpandedRelationPairKey(null)
+                const explicitKey = explicitKeyFromFlowEdgeId(edge.id)
+                setSelectedEdgeKey(canEditEdges ? explicitKey : null)
+                setSelectedWorldKey(null)
+              }}
               onEdgeDoubleClick={(_event, edge) => {
                 const key = explicitKeyFromFlowEdgeId(edge.id)
                 if (key !== null) deleteEdge(key)
@@ -2216,21 +2381,33 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 const key = explicitKeyFromFlowEdgeId(id)
                 if (key !== null) deleteEdge(key)
               })}
-              onPaneClick={() => { setSelectedEdgeKey(null); setSelectedWorldKey(null) }}
+              onPaneClick={(event) => {
+                setSelectedEdgeKey(null)
+                setSelectedWorldKey(null)
+                setExpandedRelationPairKey(null)
+                if (shouldCreateWorldFromPaneClick({ detail: event.detail, canEditWorlds, pointerType: 'pointerType' in event ? String(event.pointerType) : 'mouse' }) && flowInstance) {
+                  const position = flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+                  addWorld({ x: position.x - WORLD_NODE_SIZE / 2, y: position.y - WORLD_NODE_SIZE / 2 })
+                }
+              }}
               deleteKeyCode={null}
               fitView
               fitViewOptions={{ padding: 0.25 }}
-              minZoom={0.35}
-              maxZoom={1.8}
+              minZoom={MAP_MIN_ZOOM}
+              maxZoom={MAP_MAX_ZOOM}
               {...modelMapInteractionProps}
               colorMode="light"
             >
               <Panel position="top-left" className="map-toolbar">
                 {!focusedIntroWorkspace && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => applySandboxPreset('build')}>◇ Model · Build</button><button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => applySandboxPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" onClick={() => applySandboxPreset('frame')}>R Frame rules</button></div>}
-                {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" onClick={addWorld} disabled={!canEditWorlds}>+ World</button>}
+                {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" onClick={() => addWorld()} disabled={!canEditWorlds}>+ World</button>}
                 <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Evaluation panel" aria-pressed={leftPanelOpen} title="Toggle Evaluation panel">◧ Evaluation</button>
                 {(showWorldPanel || showEdgePanel) && <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle Model panel" aria-pressed={rightPanelOpen} title="Toggle Model panel">◨ Model</button>}
                 {canUseHistory && <><button type="button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button><button type="button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button></>}
+                <button type="button" onClick={() => void flowInstance?.zoomIn()} disabled={!flowInstance} aria-label="Zoom in" title="Zoom in">+</button>
+                <button type="button" onClick={() => void flowInstance?.zoomOut()} disabled={!flowInstance} aria-label="Zoom out" title="Zoom out">−</button>
+                <button type="button" onClick={() => void flowInstance?.fitView({ padding: 0.25 })} disabled={!flowInstance || worlds.length === 0}>Fit model</button>
+                <button type="button" onClick={tidyModel} disabled={worlds.length < 2 || (gameMode !== 'sandbox' && !canEditWorlds)}>Tidy model</button>
                 {!focusedIntroWorkspace && <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>}
                 {!focusedIntroWorkspace && <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Frame rules{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>}
                 {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
@@ -2241,7 +2418,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               {worlds.length === 0 && (
                 <Panel position="top-center" className="empty-graph-state">
                   <strong>Start with a world</strong><span>Then connect worlds to define accessibility.</span>
-                  <button type="button" onClick={addWorld} disabled={!canEditWorlds}>Add first world</button>
+                  <button type="button" onClick={() => addWorld()} disabled={!canEditWorlds}>Add first world</button>
                 </Panel>
               )}
               {selectedWorld && (
@@ -2268,7 +2445,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 maskColor="rgba(236, 233, 223, .62)"
                 ariaLabel="Model overview and viewport control"
               />}
-            </ReactFlow> : <div className="model-table-wrap"><table className="model-table"><caption>Keyboard-accessible model view. Changes are synchronized with the graph.</caption><thead><tr><th>World</th><th>Atoms</th><th>Successors</th><th>Actions</th></tr></thead><tbody>{worlds.map((world) => <tr key={world.key} className={world.id.trim() === activeTrace?.worldId ? 'current' : ''}><td><input aria-label={`Table world ${world.id || world.key}`} disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></td><td><input aria-label={`Atoms at ${world.id || world.key}`} disabled={!canEditValuations} value={world.atoms} placeholder="none" onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></td><td>{effectiveEdges.filter(({ from }) => from === world.id.trim()).map(({ to }) => to).join(', ') || 'none'}</td><td><button type="button" onClick={() => selectEvaluationWorld(world.id.trim())} disabled={!world.id.trim() || !canEditEvaluation}>Evaluate here</button>{canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(world.key)}>Delete</button>}</td></tr>)}</tbody></table>{worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add the first world to populate both views.</span><button type="button" onClick={addWorld} disabled={!canEditWorlds}>Add first world</button></div>}</div>}
+            </ReactFlow> : <div className="model-table-wrap"><table className="model-table"><caption>Keyboard-accessible model view. Changes are synchronized with the graph.</caption><thead><tr><th>World</th><th>Atoms</th><th>Successors</th><th>Actions</th></tr></thead><tbody>{worlds.map((world) => <tr key={world.key} className={world.id.trim() === activeTrace?.worldId ? 'current' : ''}><td><input aria-label={`Table world ${world.id || world.key}`} disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></td><td><input aria-label={`Atoms at ${world.id || world.key}`} disabled={!canEditValuations} value={world.atoms} placeholder="none" onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></td><td>{effectiveEdges.filter(({ from }) => from === world.id.trim()).map(({ to }) => to).join(', ') || 'none'}</td><td><button type="button" onClick={() => selectEvaluationWorld(world.id.trim())} disabled={!world.id.trim() || !canEditEvaluation}>Evaluate here</button>{canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(world.key)}>Delete</button>}</td></tr>)}</tbody></table>{worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add the first world to populate both views.</span><button type="button" onClick={() => addWorld()} disabled={!canEditWorlds}>Add first world</button></div>}</div>}
           </div>
         </div>
 
@@ -2288,7 +2465,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               </div>
             ))}
           </div>
-          {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" className="secondary-button" onClick={addWorld} disabled={!canEditWorlds}>+ Add world</button>}
+          {(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds') && <button type="button" className="secondary-button" onClick={() => addWorld()} disabled={!canEditWorlds}>+ Add world</button>}
         </div>}
 
         {showEdgePanel && <div className="panel edge-panel">
@@ -2552,10 +2729,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <article><span>06</span><div><h3>Global and frame validity</h3><p><strong>M ⊨ φ</strong> quantifies over worlds under ν. <strong>F ⊨ φ</strong> additionally quantifies over every valuation ν.</p></div></article>
             </div>}
             {guideTab === 'controls' && <div className="help-grid">
-              <div><h3>Build the model</h3><p>Drag worlds to move them. Drag from a bottom/source handle to a top/target handle to create an accessibility edge; reversing source and target reverses the arrow. Click a world to inspect it, then select Set as evaluation world.</p></div>
+              <MapControlsReference onReplayTour={() => { setShowHelp(false); openWorkspaceTour() }} />
               <div><h3>Guided tasks</h3><p>Make the requested edit, select Check task, then continue after the task is confirmed.</p></div>
               <div><h3>Editor modes</h3><p>Edit mode unlocks construction tools. Evaluate mode locks the graph against accidental changes and keeps verification close at hand.</p></div>
-              <div><h3>Edit and delete</h3><p>Edit names and valuations in the side panel. Double-click an explicit edge, or select it and use the delete button.</p></div>
               <div><h3>Legend</h3><p><span className="legend-swatch petrol" /> Evaluation world<br /><span className="legend-line" /> Explicit edge<br /><span className="legend-line derived" /> Edge derived from frame properties<br /><span className="legend-reflexive">↻</span> Reflexive relation wRw</p></div>
               <div><h3>Verification scopes</h3><p>Check one world, every world under the current valuation, or frame validity across every valuation of the formula's atoms.</p></div>
               <div><h3>Formal notation</h3><p>A frame is F = ⟨W,R⟩ and a model is M = ⟨W,R,ν⟩. We write M,w ⊨ φ for truth at a world; ⊨ is used consistently throughout the game.</p></div>
@@ -2563,7 +2739,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <div><h3>Correspondence lab</h3><p>Load standard modal axioms T, D, B, 4, and 5 to compare finite-frame validity with their corresponding frame properties.</p></div>
               <div><h3>Formula notation</h3><p>Use ¬, ∧, ∨, →, □, ◇ or the alternatives !, &amp;, |, -&gt;, box, diamond.</p></div>
               <div><h3>Storage</h3><p>Your sandbox is saved only in this browser. Reset model restores the initial example.</p></div>
-              <div><h3>Workspace</h3><p>Use the model toolbar to undo or redo edits, change editing mode, manage constraints, and show derived edges. Fullscreen and panel visibility remain available in the header.</p></div>
             </div>}
             {guideTab === 'objectives' && <div className="help-grid objective-guide">
               <div><h3>Pointed objectives</h3><p>Make or refute M,w ⊨ φ at one selected world under the current valuation.</p></div>
