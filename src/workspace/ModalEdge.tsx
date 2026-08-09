@@ -49,7 +49,12 @@ export function selectModalEdgeRoute({
   return { kind: 'horizontal', path: getBezierPath({ sourceX, sourceY, targetX, targetY })[0] }
 }
 
-type ModalEdgeData = { readonly selfLoop?: boolean; readonly reversePair?: boolean; readonly routeSign?: number }
+type ModalEdgeData = {
+  readonly selfLoop?: boolean
+  readonly reversePair?: boolean
+  readonly routeSign?: number
+  readonly description?: string
+}
 
 export function ModalEdge(props: EdgeProps) {
   const data = (props.data ?? {}) as ModalEdgeData
@@ -62,7 +67,10 @@ export function ModalEdge(props: EdgeProps) {
     reversePair: data.reversePair,
     routeSign: data.routeSign,
   })
-  return <BaseEdge id={props.id} path={route.path} markerStart={props.markerStart} markerEnd={props.markerEnd} style={props.style} interactionWidth={22} />
+  return <>
+    {data.description && <title>{data.description}</title>}
+    <BaseEdge id={props.id} path={route.path} markerStart={props.markerStart} markerEnd={props.markerEnd} style={props.style} interactionWidth={22} />
+  </>
 }
 
 export const modalEdgeTypes = { modal: ModalEdge }
