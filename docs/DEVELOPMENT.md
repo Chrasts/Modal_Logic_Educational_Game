@@ -345,6 +345,28 @@ Desktop sidebars are deliberately narrower than the graph and can still be
 collapsed. Learn navigation says lesson, Campaigns/Practice says mission, and
 Sandbox has no unit terminology.
 
+`GameLevel.interactionMode` explicitly separates `construction` tasks from
+read-only `question` tasks. Do not infer this distinction from an empty
+`editable` array or from prediction metadata. Question answers remain in the
+mission panel; `world-choice` and `counterexample-world` answers are selected
+only on the map. Learn completion also stays in the mission panel so React Flow
+remains mounted and its viewport/model state is preserved.
+
+The workspace tour is stored under `logic-game:workspace-tour:v1` and can be
+reopened from More. React Flow uses free `panOnScroll`, disables wheel zoom, and
+keeps pinch zoom enabled. The custom modal edge router handles horizontal,
+near-vertical, reverse-pair, and self-loop paths; explicit edges use a 22px
+interaction width and retain keyboard deletion when edge editing is allowed.
+
+Manual map QA before release:
+
+- Chrome and Edge on a real trackpad: two-finger scrolling pans in both axes,
+  pinch zooms, and scrolling outside the map moves the page normally.
+- A self-loop is visibly outside its world, can be selected through its wide
+  hit area, and Backspace/Delete removes only the edge when editing is allowed.
+- Near-vertical arrows, reverse pairs, and arrowheads remain separated while
+  dragging worlds; question tasks never mutate the model.
+
 The duplicate-content audit uses `createLevelFingerprint`. It ignores layout
 coordinates and normalizes world names, valuations, edges, objectives and
 required predictions, edit permissions, primary/bonus constraints, frame

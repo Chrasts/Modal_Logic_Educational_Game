@@ -6,7 +6,7 @@ Logic Model Builder is an interactive modal-logic laboratory and puzzle game for
 
 The foundations course moves from worlds, valuations, and accessibility to possibility and necessity, □/◇ contrasts and dualities, nested modalities, countermodels, local/model-global/frame truth, and elementary frame properties. Learners should already be comfortable with propositional connectives before the later chapters.
 
-Recommended use is a short instructor introduction followed by individual prediction, construction, verification, and explanation. The chapter recaps are useful as retrieval practice because they do not depend on operating the graph editor. Ask learners to justify witnesses for ◇, counterexamples for □, and the quantifier change between `M,w ⊨ φ`, `M ⊨ φ`, and `F ⊨ φ`.
+Recommended use is a short instructor introduction followed by individual questions, construction, verification, and explanation. Read-only questions use **Confirm answer**, while model-building tasks use **Check task**. The chapter recaps are useful as retrieval practice because they do not depend on operating the graph editor. Ask learners to justify witnesses for ◇, counterexamples for □, and the quantifier change between `M,w ⊨ φ`, `M ⊨ φ`, and `F ⊨ φ`.
 
 ## Common misconceptions
 
@@ -14,7 +14,7 @@ Recommended use is a short instructor introduction followed by individual predic
 - A successor relation is directed.
 - An empty successor set makes `□φ` vacuously true but `◇φ` false.
 - Local truth does not imply model-global truth; one displayed valuation does not establish frame validity.
-- A finite instance check illustrates T/D/B/4/5 correspondence but is not a proof of the general theorem.
+- A finite frame check can illustrate a modal principle or correspondence but is not a proof of the general theorem.
 - A reduced countermodel is not claimed to be absolutely minimal.
 
 ## Assessment and limits
