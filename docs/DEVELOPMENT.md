@@ -143,7 +143,7 @@ be combined with formula equivalence.
 
 Successful guided or custom missions receive a canonical finite-structure
 signature in the local guest profile. Canonicalization ignores world names and
-coordinates. It preserves explicit semantic relation edges and preserves
+coordinates. It preserves the effective accessibility relation for semantic solution comparison and preserves
 valuations for pointed/model objectives; frame and correspondence solutions
 ignore the displayed valuation. Pointed objectives additionally preserve the
 designated evaluation world. The current exact permutation algorithm is capped
@@ -460,3 +460,36 @@ parseable formula when semantic, exactly three hints, an existing evaluation
 world, and unique lesson/task IDs. `createLevelFingerprint` is compared across
 Controls and Learn; an exact duplicate is allowed only through an explicit,
 pedagogically justified test allowlist.
+
+## Stabilized editor invariants
+
+`workspace/model-integrity.ts` is the boundary for editable Kripke data. A
+committed world id is trimmed, non-empty, and unique; a committed explicit edge
+has existing endpoints and a unique ordered pair. Text fields may hold a local
+invalid draft, but verification and persistence see only the last valid commit.
+World renames update incident explicit edges and the evaluation world atomically.
+World deletion forms the induced submodel by removing that world and every
+incident pair. It deliberately never bridges predecessors to successors, and
+the full cascade is one history operation.
+
+Relation rows use an uncommitted draft, so opening or cancelling **+ Add edge**
+does not alter the model or undo stack. React Flow uses loose handles: only the
+drag source world and destination world determine the ordered pair. Selection is
+exclusive across worlds and edges, and keyboard deletion is ignored while a
+text-entry control has focus.
+
+The verifier receives the effective relation (explicit pairs plus enabled
+closures), independent of whether derived pairs are displayed. Tidy receives
+only explicit pairs. `logic/frame.ts` returns machine-readable property
+witnesses; missing-edge overlays are presentation-only and must never enter
+model state, persistence, verification, or history.
+
+## Real-browser checks
+
+`npm run test:e2e` starts Vite at the configured GitHub Pages base path and runs
+the focused Chromium journeys in `e2e/`. They cover a fresh Learn route, the
+workspace-first concept dialog, progressive hints, world drag, direction from
+loose handles, selection deletion and Undo, blank-pane double click, Tidy,
+explicit reflexive badges, and a narrow mobile workspace. These checks augment
+Vitest; they do not replace the hardware and assistive-technology checklist in
+`ACCESSIBILITY_AUDIT.md`.

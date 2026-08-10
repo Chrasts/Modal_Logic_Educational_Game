@@ -112,3 +112,21 @@ Frame-validity and correspondence displays are exhaustive checks of the finite
 frame instance currently shown, within the displayed valuation limit. They do
 not prove a general correspondence theorem. Likewise, reduced models and
 reference constructions are not claims of absolute mathematical minimality.
+
+## Workspace-first lesson flow
+
+Semantic lessons now open a compact concept dialog before mounting the existing
+task workspace. It states the objective, intuition, formal rule, key points and
+warning, and includes a stepped worked example rendered with the same static
+Kripke-diagram component used by candidate-model questions. The retired parallel
+lesson view has been removed; all construction, questions, feedback and transfer
+work use the shared workspace and evaluator.
+
+Hints are progressive and explicit. Opening **Details & hints** does not count as
+hint use; each reveal advances one level and records that level locally. A first
+wrong answer gives targeted corrective feedback without exposing the complete
+success explanation. Later attempts progressively add detail. Eligible lessons
+may offer an optional transfer task after the main success, and transfer
+completion is stored separately from required lesson completion. Prerequisites
+remain visible recommendations rather than locks, and the Home/Continue route
+resumes the current in-memory task before selecting another lesson.

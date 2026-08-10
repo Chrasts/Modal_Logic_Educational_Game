@@ -21,6 +21,17 @@ Record prior experience separately; do not rank cohorts against one another.
 
 Track time to first success, edge-direction errors, local/global/frame confusion, vacuous-truth explanations, blind verification attempts, hint use, unclear affordances, graph-to-result navigation, and transfer to editor-free questions. Record task abandonment and observer interventions as well as successes.
 
+Before recruiting participants, a facilitator should complete these release
+scenarios on the deployed candidate: rename and undo a world with incident
+relations; reject a duplicate/empty name; add/cancel/duplicate a relation draft;
+draw both directions from arbitrary handles; delete a selected world and confirm
+that no bridge appears; verify hidden derived relations and trace reveal; inspect
+a frame-property witness on the map; finish a lesson with progressively revealed
+hints and its optional transfer; and navigate the core route at desktop and
+mobile widths with keyboard alone. Record browser, device, input hardware and
+candidate commit. Any semantic mutation caused solely by a display action is a
+pilot blocker.
+
 ## Pre/post-test blueprint
 
 Use different surface details but the same constructs in both forms:

@@ -12,7 +12,7 @@
 - Reduced motion follows both the OS preference and a saved in-app preference.
 - Mobile workspaces use MODEL/FORMULA/RESULT tabs, a sticky result action, larger controls and graph handles, and a world-inspector bottom-sheet treatment.
 
-The Vitest UI suite checks landmark/focus behavior, formula-error focus, table synchronization, mobile-section controls, result announcements, trace stepping, and essential keyboard-operable controls.
+The Vitest UI suite checks landmark/focus behavior, formula-error focus, table synchronization, mobile-section controls, result announcements, trace stepping, draft validation, selection deletion, and essential keyboard-operable controls. Playwright additionally exercises focused desktop and 390 px Chromium journeys, including map drag, loose-handle relation creation, Undo, Learn dialogs, progressive hints, and mobile verification reachability.
 
 ## Manual WCAG 2.2 AA pass
 
@@ -49,4 +49,4 @@ below for each browser/assistive-technology combination; leave the result as
 Allowed result values are `Pass`, `Fail`, `Blocked`, and `Not run`. Every
 `Fail` or `Blocked` row must include an issue link before release sign-off.
 
-The current automated environment exposed no controllable browser backend, so no visual/manual result is claimed by this document. This is a release verification step, not a reason to weaken the implemented keyboard and semantic markup.
+Automated Chromium journeys are recorded separately from this table. They do not constitute a human WCAG review, a screen-reader pass, a 200% zoom inspection, or testing on physical touch/trackpad hardware, so no manual result is claimed here.
