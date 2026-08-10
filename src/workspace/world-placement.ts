@@ -49,3 +49,18 @@ export function findOverlappingWorldKeys(worlds: readonly PositionedWorld[], mov
   }
   return overlapping
 }
+
+export function commitWorldPosition<T extends PositionedWorld>(worlds: readonly T[], movingKey: number, position: WorldPosition): readonly T[] {
+  return worlds.map((world) => world.key === movingKey ? { ...world, position: { ...position } } : world)
+}
+
+export function applyCollisionClassNames<T extends { readonly id: string; readonly className?: string }>(
+  nodes: readonly T[],
+  collidingWorldKeys: ReadonlySet<number>,
+): readonly T[] {
+  return nodes.map((node) => {
+    const classes = (node.className ?? '').split(/\s+/u).filter((name) => name && name !== 'colliding-world-node')
+    if (collidingWorldKeys.has(Number(node.id))) classes.push('colliding-world-node')
+    return { ...node, className: classes.join(' ') }
+  })
+}

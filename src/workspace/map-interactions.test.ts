@@ -8,6 +8,7 @@ describe('model map gesture contract', () => {
       panOnScroll: false,
       panOnScrollMode: PanOnScrollMode.Free,
       zoomOnScroll: false,
+      zoomOnDoubleClick: false,
       zoomOnPinch: true,
       panOnDrag: true,
     })

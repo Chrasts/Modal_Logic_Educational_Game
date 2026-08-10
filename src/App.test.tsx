@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
@@ -110,16 +110,36 @@ describe('sandbox user interface', () => {
   it('keeps Fit out of history and makes Tidy one undoable presentation step without clearing a result', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
+    const savedPositions = () => JSON.parse(localStorage.getItem('logic-game:sandbox:v1') ?? '{}').worlds?.map(({ position }: { position: { x: number; y: number } }) => position)
+    await waitFor(() => expect(savedPositions()).toHaveLength(2))
+    const originalPositions = savedPositions()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Fit model' }))
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText('Objective met')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Tidy model' }))
+    await waitFor(() => expect(savedPositions()).not.toEqual(originalPositions))
+    const tidyPositions = savedPositions()
     expect(screen.getByText('Objective met')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(savedPositions()).toEqual(originalPositions))
     expect(screen.getByText('Objective met')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Redo' }))
+    await waitFor(() => expect(savedPositions()).toEqual(tidyPositions))
+    expect(screen.getByText('Objective met')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Hide derived' }))
+    expect(screen.getByText('Objective met')).toBeVisible()
+  })
+
+  it('invalidates the current result after an objective-relevant valuation change', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Objective met')).toBeVisible()
+    await user.clear(screen.getAllByLabelText('True atoms')[1])
+    expect(screen.queryByText('Objective met')).not.toBeInTheDocument()
   })
 
   it('creates and deletes an explicit self-loop without deleting its world', async () => {
@@ -133,6 +153,15 @@ describe('sandbox user interface', () => {
     await user.click(screen.getAllByRole('button', { name: 'Delete edge' }).at(-1)!)
     expect(screen.getAllByLabelText('Edge source world')).toHaveLength(1)
     expect(screen.getAllByLabelText('World')).toHaveLength(2)
+  })
+
+  it('keeps self-loop directed semantics in the keyboard-accessible table view', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: '+ Add edge' }))
+    await user.click(screen.getByRole('button', { name: 'Table' }))
+    const w0Row = screen.getByLabelText('Table world w0').closest('tr')!
+    expect(w0Row).toHaveTextContent('w0')
   })
 
   it('focuses a verification result and communicates its status with text', async () => {
@@ -489,6 +518,16 @@ describe('sandbox user interface', () => {
     expect(within(truthChapter).getByText('Atomic truth')).toBeVisible()
     expect(within(truthChapter).getAllByText(/Current|Unfinished|Completed/).length).toBeGreaterThanOrEqual(5)
     expect(within(truthChapter).getAllByRole('button', { name: 'Open' })).toHaveLength(5)
+  })
+
+  it('expands Learn the Controls with the same lesson-row action contract', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="learn" />)
+    const controls = screen.getByRole('heading', { name: 'Learn the Controls' }).closest('article')!
+    expect(within(controls).getByRole('button', { name: 'Start' })).toHaveClass('primary-action')
+    await user.click(within(controls).getByRole('button', { name: 'View lessons' }))
+    expect(within(controls).getAllByRole('button', { name: 'Open' })).toHaveLength(tutorialLevels.length)
+    expect(within(controls).getByRole('button', { name: 'Hide lessons' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('continues from the completed Possibility chapter into Necessity', async () => {
@@ -1083,7 +1122,9 @@ describe('sandbox user interface', () => {
     }))
     const user = userEvent.setup()
     render(<App initialView="learn" />)
-    expect(screen.getByText('Available learning complete.')).toBeVisible()
+    expect(screen.getByRole('status')).toHaveTextContent('56/56course complete')
+    expect(screen.getAllByText(/course complete/i)).toHaveLength(1)
+    expect(document.querySelector('.learning-complete-status')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Replay Learning' })).not.toBeInTheDocument()
     const replays = screen.getAllByRole('button', { name: 'Replay section' })
     expect(replays.length).toBeGreaterThan(0)

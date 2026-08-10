@@ -14,6 +14,12 @@ export interface RelationPresentation {
   readonly reverse?: RelationDirectionPresentation
 }
 
+export interface ReflexiveRelationPresentation {
+  readonly worldId: string
+  readonly explicitKey?: number
+  readonly derived: boolean
+}
+
 const directionKey = (from: string, to: string) => `${from}\u0000${to}`
 export const canonicalRelationPairKey = (left: string, right: string) => left <= right
   ? `${left}\u0001${right}`
@@ -30,12 +36,9 @@ export function buildRelationPresentations(
     const edgeKey = directionKey(edge.from, edge.to)
     if (consumed.has(edgeKey)) continue
     consumed.add(edgeKey)
+    if (edge.from === edge.to) continue
     const explicitKey = explicitEdgeKeyByPair.get(edgeKey)
     const direction: RelationDirectionPresentation = { ...edge, explicitKey, derived: explicitKey === undefined }
-    if (edge.from === edge.to) {
-      presentations.push({ kind: 'single', pairKey: canonicalRelationPairKey(edge.from, edge.to), source: edge.from, target: edge.to, forward: direction })
-      continue
-    }
     const reverseEdgeKey = directionKey(edge.to, edge.from)
     const reverseEdge = unique.get(reverseEdgeKey)
     if (!reverseEdge) {
@@ -56,6 +59,19 @@ export function buildRelationPresentations(
     })
   }
   return presentations
+}
+
+export function buildReflexiveRelationPresentations(
+  displayedEdges: readonly DirectedRelation[],
+  explicitEdgeKeyByPair: ReadonlyMap<string, number>,
+): ReadonlyMap<string, ReflexiveRelationPresentation> {
+  const reflexive = new Map<string, ReflexiveRelationPresentation>()
+  for (const edge of displayedEdges) {
+    if (edge.from !== edge.to || reflexive.has(edge.from)) continue
+    const explicitKey = explicitEdgeKeyByPair.get(directionKey(edge.from, edge.to))
+    reflexive.set(edge.from, { worldId: edge.from, explicitKey, derived: explicitKey === undefined })
+  }
+  return reflexive
 }
 
 export function describeRelationPresentation(presentation: RelationPresentation): string {

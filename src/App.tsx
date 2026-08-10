@@ -24,11 +24,13 @@ import { MissionHeader, type MissionHeaderMode } from './components/MissionHeade
 import { QuestionTaskPanel } from './components/QuestionTaskPanel'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
+import { ReflexiveRelationBadge } from './workspace/ReflexiveRelationBadge'
 import { modalEdgeTypes, resolveModalEdgeEndpoints } from './workspace/ModalEdge'
 import { applyMapWheelGesture, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps } from './workspace/map-interactions'
-import { buildRelationPresentations, describeRelationPresentation, type RelationDirectionPresentation, type RelationPresentation } from './workspace/relation-presentation'
-import { findFreeWorldPosition, findOverlappingWorldKeys, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, type WorldPosition } from './workspace/world-placement'
+import { buildReflexiveRelationPresentations, buildRelationPresentations, describeRelationPresentation, type RelationDirectionPresentation, type RelationPresentation } from './workspace/relation-presentation'
+import { applyCollisionClassNames, commitWorldPosition, findFreeWorldPosition, findOverlappingWorldKeys, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, type WorldPosition } from './workspace/world-placement'
 import { createTidyModelLayout } from './workspace/model-layout'
+import { assignRelationRouteLanes, RECIPROCAL_ARROWHEAD_SIZE, SINGLE_ARROWHEAD_SIZE, type RelationRouteItem } from './workspace/relation-routing'
 import { isTextEntryTarget, shouldDeleteSelectedEdge } from './workspace/edge-keyboard'
 import { playSound } from './audio/sound-effects'
 import type { LearnStage } from './learn'
@@ -102,10 +104,10 @@ function ChapterRecapQuestions({ questions }: { readonly questions: readonly Con
 function MapControlsReference({ onReplayTour }: { readonly onReplayTour: () => void }) {
   return <>
     <article><h2>Select and edit worlds</h2><p>Click a world to select it and focus its incoming and outgoing relations. Use the model panel to rename it, change its true atoms, or make it the evaluation world when the task permits.</p></article>
-    <article><h2>Add and position worlds</h2><p>Use + World for a collision-aware position near the selected world or viewport centre. On desktop, double-click empty map space to create a world there. Dragging may intentionally overlap worlds; Tidy model is the explicit recovery action.</p></article>
-    <article><h2>Relations</h2><p>Drag between handles or use Accessibility. A two-way relation is collapsed into one ↔ line; click it to expose each direction. Only explicit directions can be selected and deleted.</p></article>
+    <article><h2>Add and position worlds</h2><p>Use + World for a collision-aware position near the selected world or viewport centre. On desktop, double-click empty map space to create one world without zooming. Dragging may intentionally overlap worlds; Tidy model is the explicit recovery action.</p></article>
+    <article><h2>Relations</h2><p>Drag between handles or use Accessibility. A self-loop wRw appears only as ↻ on its world: solid is explicit and dashed is derived. A two-way relation is one ↔ line; click it to expose each direction. Only explicit directions can be selected and deleted.</p></article>
     <article><h2>Move around the map</h2><p>Drag empty space to pan. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans freely in X and Y; pinch zooms. Zoom in, Zoom out, and Fit model are available in the map toolbar.</p></article>
-    <article><h2>Tidy and Fit</h2><p>Tidy model changes world positions as one undoable step. Fit model changes only the viewport and never enters model history.</p></article>
+    <article><h2>Tidy and Fit</h2><p>Tidy model creates a compact structural layout as one undoable step. Fit model changes only the viewport and never enters model history.</p></article>
     <article className="guide-action-card"><h2>Workspace tour</h2><p>Replay the short overlay without resetting the current mission, model, or progress.</p><button type="button" className="secondary-button" onClick={onReplayTour}>Replay workspace tour</button></article>
   </>
 }
@@ -162,7 +164,7 @@ const workspaceTourSteps = [
   { title: 'Model map', body: 'The map shows worlds, their true atoms, and directed accessibility. This is where you inspect or build the Kripke model.' },
   { title: 'Task and editing panel', body: 'The task stays above the workspace. Available editing panels expose only the controls needed for the current task.' },
   { title: 'Evaluation and results', body: 'Evaluation explains whether the target is met and can reveal world-by-world semantic evidence.' },
-  { title: 'Navigating the map', body: 'Drag empty map space to pan. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans in both directions; pinch zooms. Use Zoom, Fit model, or Tidy model in the compact toolbar when useful. Desktop panels can collapse and reopen.', mobileBody: 'Drag empty map space or use a two-finger gesture to pan, and pinch to zoom. Zoom and Fit model remain available in the map toolbar. On mobile, switch between the Model, Formula, and Result tabs.' },
+  { title: 'Navigating the map', body: 'Drag empty map space to pan. Double-click it to create one world without zooming. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans in both directions; pinch zooms. Tidy creates a compact structural layout; Fit changes only the viewport.', mobileBody: 'Drag empty map space or use a two-finger gesture to pan, and pinch to zoom. Zoom and Fit model remain available in the map toolbar. On mobile, switch between the Model, Formula, and Result tabs.' },
 ] as const
 type InterfaceDensity = 'comfortable' | 'compact'
 interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean; readonly soundEffects: boolean; readonly leftPanelOpen: boolean; readonly rightPanelOpen: boolean }
@@ -626,6 +628,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges],
   )
 
+  const reflexiveRelations = useMemo(
+    () => buildReflexiveRelationPresentations(displayedEdges, explicitEdgeKeyByPair),
+    [displayedEdges, explicitEdgeKeyByPair],
+  )
+
   const evaluationTraceSteps = result && 'verdict' in result && result.verdict
     ? flattenEvaluationTraces([result.verdict.formula, result.verdict.relation, result.verdict.correspondence]
       .filter(Boolean).flatMap((section) => section?.evaluationTraces ?? []))
@@ -656,6 +663,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         : gameMode === 'guidedCampaign' ? guidedCampaigns[guidedCampaignIndex]?.levels[campaignLevelIndex]
           : gameMode === 'custom' ? customLevels[campaignLevelIndex] : undefined
   const mapQuestionMode = activeMapLevel?.interactionMode === 'question'
+  const graphEdgesEditable = !mapQuestionMode
+    && editorMode === 'edit'
+    && !(activeMapLevel && learnLessonByTaskId.has(activeMapLevel.id) && result?.kind === 'success')
+    && (!activeMapLevel || activeMapLevel.editable.includes('edges'))
   const focusedWorldKey = hoveredWorldKey ?? selectedWorldKey
   const focusedWorldId = worlds.find((world) => world.key === focusedWorldKey)?.id.trim()
 
@@ -667,9 +678,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <div className="node-label">
           <strong>{world.id || 'unnamed'}</strong>
           <span>{world.atoms.trim() || '∅'}</span>
-          {effectiveEdges.some((edge) => edge.from === world.id.trim() && edge.to === world.id.trim()) && (
-            <span className="reflexive-badge" title={`${world.id} R ${world.id}`} aria-label="Reflexive relation">↻</span>
-          )}
+          {(() => {
+            const reflexive = reflexiveRelations.get(world.id.trim())
+            if (!reflexive) return null
+            const selected = reflexive.explicitKey !== undefined && reflexive.explicitKey === selectedEdgeKey
+            const checked = traceCheckedEdges.has(`${world.id.trim()}\u0000${world.id.trim()}`)
+            return <ReflexiveRelationBadge presentation={reflexive} selected={selected} checked={checked} editable={graphEdgesEditable} onSelect={(explicitKey) => {
+                setSelectedWorldKey(null)
+                setExpandedRelationPairKey(null)
+                setSelectedEdgeKey(explicitKey)
+              }} />
+          })()}
           {activeTrace?.rule === 'atom' && activeTrace.worldId === world.id.trim() && <span className="trace-atom-badge">ATOM {activeTrace.formula} {activeTrace.value ? '✓' : '✕'}</span>}
           {world.id.trim() === traceWitnessWorld && <span className="trace-role-badge witness">WITNESS</span>}
           {world.id.trim() === traceCounterexampleWorld && <span className="trace-role-badge counterexample">COUNTEREXAMPLE</span>}
@@ -679,22 +698,25 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     className: [
       world.id.trim() === evaluationWorld ? 'evaluation-node' : '',
       world.key === selectedWorldKey ? 'selected-world-node' : '',
-      collidingWorldKeys.has(world.key) ? 'colliding-world-node' : '',
       mapQuestionMode && predictionAnswer === world.id.trim() ? 'question-answer-node' : '',
       world.id.trim() === activeTrace?.worldId ? 'trace-current-node' : '',
       world.id.trim() === traceWitnessWorld ? 'trace-witness-node' : '',
       world.id.trim() === traceCounterexampleWorld ? 'trace-counterexample-node' : '',
       activeTrace && !traceRelatedWorlds.has(world.id.trim()) ? 'trace-irrelevant-node' : '',
     ].filter(Boolean).join(' '),
-    ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}`,
+    ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${reflexiveRelations.has(world.id.trim()) ? `, ${reflexiveRelations.get(world.id.trim())?.derived ? 'derived' : 'explicit'} reflexive accessibility` : ''}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}`,
     domAttributes: mapQuestionMode ? { 'aria-pressed': predictionAnswer === world.id.trim() } : undefined,
-  })), [worlds, effectiveEdges, evaluationWorld, selectedWorldKey, collidingWorldKeys, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer])
+  })), [worlds, evaluationWorld, selectedWorldKey, selectedEdgeKey, reflexiveRelations, graphEdgesEditable, traceCheckedEdges, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer])
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodeBlueprints)
 
   useEffect(() => {
     setFlowNodes(nodeBlueprints)
   }, [nodeBlueprints, setFlowNodes])
+
+  useEffect(() => {
+    setFlowNodes((current) => applyCollisionClassNames(current, collidingWorldKeys) as FlowNode[])
+  }, [collidingWorldKeys, setFlowNodes])
 
   const worldKeyById = useMemo(
     () => new Map(worlds.map((world) => [world.id.trim(), String(world.key)])),
@@ -713,7 +735,24 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   }, [expandedRelationPairKey, relationPresentations])
 
   const flowEdges = useMemo<FlowEdge[]>(() => {
-    const marker = (derived: boolean) => ({ type: derived ? MarkerType.Arrow : MarkerType.ArrowClosed, color: derived ? '#7a4d26' : '#285f67' })
+    const directionId = (direction: RelationDirectionPresentation) => direction.explicitKey === undefined ? `derived:${direction.from}:${direction.to}` : `explicit:${direction.explicitKey}`
+    const routeItems = relationPresentations.flatMap<RelationRouteItem>((presentation) => {
+      if (presentation.kind === 'bidirectional' && presentation.reverse && expandedRelationPairKey === presentation.pairKey) {
+        return [
+          { id: directionId(presentation.forward), source: presentation.forward.from, target: presentation.forward.to, kind: 'expanded' },
+          { id: directionId(presentation.reverse), source: presentation.reverse.from, target: presentation.reverse.to, kind: 'expanded' },
+        ]
+      }
+      if (presentation.kind === 'bidirectional') return [{ id: `pair:${presentation.source}:${presentation.target}`, source: presentation.source, target: presentation.target, kind: 'reciprocal' }]
+      return [{ id: directionId(presentation.forward), source: presentation.source, target: presentation.target, kind: 'single' }]
+    })
+    const routeLanes = assignRelationRouteLanes(routeItems, worlds.map((world) => ({ id: world.id.trim(), position: world.position })))
+    const marker = (derived: boolean, reciprocal = false) => ({
+      type: derived ? MarkerType.Arrow : MarkerType.ArrowClosed,
+      color: derived ? '#7a4d26' : '#285f67',
+      width: reciprocal ? RECIPROCAL_ARROWHEAD_SIZE : SINGLE_ARROWHEAD_SIZE,
+      height: reciprocal ? RECIPROCAL_ARROWHEAD_SIZE : SINGLE_ARROWHEAD_SIZE,
+    })
     const focusClasses = (presentation: RelationPresentation, selected: boolean) => {
       const incident = Boolean(focusedWorldId && (presentation.source === focusedWorldId || presentation.target === focusedWorldId))
       return [
@@ -725,18 +764,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     const directionEdge = (presentation: RelationPresentation, direction: RelationDirectionPresentation, reversePair: boolean): FlowEdge | null => {
       const endpoints = resolveModalEdgeEndpoints(worldKeyById.get(direction.from), worldKeyById.get(direction.to))
       if (!endpoints) return null
-      const editable = direction.explicitKey !== undefined && !mapQuestionMode && (!activeMapLevel || activeMapLevel.editable.includes('edges'))
+      const editable = direction.explicitKey !== undefined && graphEdgesEditable
       const selected = direction.explicitKey === selectedEdgeKey
       const directionPair = `${direction.from}\u0000${direction.to}`
+      const id = directionId(direction)
+      const lane = routeLanes.get(id)
       return {
-        id: direction.explicitKey === undefined ? `derived:${direction.from}:${direction.to}` : `explicit:${direction.explicitKey}`,
+        id,
         source: endpoints.source,
         target: endpoints.target,
         type: 'modal',
         data: {
-          selfLoop: direction.from === direction.to,
           reversePair,
-          routeSign: reversePair ? 1 : direction.from <= direction.to ? 1 : -1,
+          routeSign: 1,
+          sourceOffset: lane?.sourceOffset,
+          targetOffset: lane?.targetOffset,
+          curveOffset: lane?.curveOffset,
           pairKey: presentation.pairKey,
           description: direction.derived ? `Accessibility from ${direction.from} to ${direction.to}, derived by an enforced frame rule` : `Accessibility from ${direction.from} to ${direction.to}, explicit`,
         },
@@ -765,15 +808,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         const bothDerived = presentation.forward.derived && presentation.reverse.derived
         const checked = traceCheckedEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`)
           || traceCheckedEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)
+        const id = `pair:${presentation.source}:${presentation.target}`
+        const lane = routeLanes.get(id)
         return [{
-          id: `pair:${presentation.source}:${presentation.target}`,
+          id,
           source: endpoints.source,
           target: endpoints.target,
           type: 'modal',
-          data: { pairKey: presentation.pairKey, description: describeRelationPresentation(presentation) },
+          data: { pairKey: presentation.pairKey, description: describeRelationPresentation(presentation), sourceOffset: lane?.sourceOffset, targetOffset: lane?.targetOffset, curveOffset: lane?.curveOffset },
           interactionWidth: 24,
-          markerEnd: marker(presentation.forward.derived),
-          markerStart: marker(presentation.reverse.derived),
+          markerEnd: marker(presentation.forward.derived, true),
+          markerStart: marker(presentation.reverse.derived, true),
           selectable: true,
           focusable: true,
           ariaLabel: describeRelationPresentation(presentation),
@@ -790,7 +835,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       const edge = directionEdge(presentation, presentation.forward, false)
       return edge ? [edge] : []
     })
-  }, [relationPresentations, expandedRelationPairKey, worldKeyById, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace, mapQuestionMode, activeMapLevel])
+  }, [relationPresentations, expandedRelationPairKey, worldKeyById, worlds, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace, graphEdgesEditable])
 
   const MiniMapWithRelations = useMemo(() => {
     const worldByKey = new Map(worlds.map((world) => [String(world.key), world]))
@@ -2143,10 +2188,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
       {appView === 'learn' && (
         <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p>{playableLearningCompleted < availableLearningTotal ? <button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : 'Continue Learning'}</button> : <p className="learning-complete-status" role="status">Available learning complete.</p>}</div><div className="collection-progress"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>available tasks complete</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p>{playableLearningCompleted < availableLearningTotal && <button type="button" className="primary-action" onClick={continueLearningPath}>{playableLearningCompleted === 0 ? 'Start Learning' : 'Continue Learning'}</button>}</div><div className="collection-progress" role="status"><strong>{playableLearningCompleted}/{availableLearningTotal}</strong><span>{playableLearningCompleted === availableLearningTotal ? 'course complete' : 'available tasks complete'}</span><div className="progress-meter"><i style={{ width: `${playableLearningCompleted / availableLearningTotal * 100}%` }} /></div></div></div>
           <div className="learn-chapter-list">
             <article><div><p className="eyebrow">{learnProgress.welcomeViewed ? 'Viewed' : 'Not viewed'}</p><h2>Welcome to Modal Logic</h2><p>Possible worlds, accessibility, possibility, necessity, and how guided tasks work.</p></div><button type="button" className={learnProgress.welcomeViewed ? 'secondary-button' : 'primary-action'} onClick={() => setAppView('welcome')}>{learnProgress.welcomeViewed ? 'Replay introduction' : 'Open introduction'}</button></article>
-            <article><div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} steps</small></div><div className="chapter-actions"><button type="button" className={tutorialCompleted === tutorialLevels.length ? 'secondary-button' : 'primary-action'} onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div></article>
+            <article className={`${tutorialCompleted === tutorialLevels.length ? 'complete ' : ''}${expandedLearnChapterId === 'controls' ? 'expanded' : ''}`}>
+              <div><p className="eyebrow">{tutorialCompleted === tutorialLevels.length ? 'Completed' : 'Available'}</p><h2>Learn the Controls</h2><p>Use the shared model editor before beginning semantic lessons.</p><small>{tutorialCompleted}/{tutorialLevels.length} lessons</small>{expandedLearnChapterId === 'controls' && <div className="chapter-lesson-outline"><ol>{tutorialLevels.map((level, index) => {
+                const lessonComplete = completedLevelIds.has(level.id)
+                const lessonCurrent = !lessonComplete && index === nextTutorialIndex
+                return <li className={lessonComplete ? 'complete' : lessonCurrent ? 'current' : ''} key={level.id}><span><b>{level.title}</b><small>{lessonComplete ? 'Completed' : lessonCurrent ? 'Current' : 'Unfinished'}</small></span><button type="button" className={lessonComplete ? 'secondary-button' : 'text-button'} onClick={() => startGuidedLevel('tutorial', index)}>{lessonComplete ? 'Replay' : 'Open'}</button></li>
+              })}</ol></div>}</div>
+              <div className="chapter-actions"><button type="button" className={tutorialCompleted === tutorialLevels.length ? 'secondary-button' : 'primary-action'} onClick={() => startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex)}>{tutorialCompleted === tutorialLevels.length ? 'Replay section' : tutorialCompleted > 0 ? 'Continue' : 'Start'}</button><button type="button" className="text-button" aria-expanded={expandedLearnChapterId === 'controls'} onClick={() => setExpandedLearnChapterId((current) => current === 'controls' ? null : 'controls')}>{expandedLearnChapterId === 'controls' ? 'Hide lessons' : 'View lessons'}</button>{tutorialCompleted > 0 && tutorialCompleted < tutorialLevels.length && <button type="button" className="text-button" onClick={restartControlsSection}>Restart section</button>}</div>
+            </article>
             {learnCourse.chapters.map((chapter) => {
               const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length
               const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0
@@ -2348,9 +2400,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               nodesConnectable={canEditEdges}
               edgesFocusable
               nodesFocusable
-              onNodeDragStart={() => { if (canEditWorlds) saveHistoryPoint(true) }}
+              onNodeDragStart={() => { if (canEditWorlds) { saveHistoryPoint(true); setCollidingWorldKeys(new Set()) } }}
               onNodeDrag={(_event, node) => setCollidingWorldKeys(findOverlappingWorldKeys(worlds, Number(node.id), node.position))}
-              onNodeDragStop={(_event, node) => { setWorlds((current) => current.map((world) => world.key === Number(node.id) ? { ...world, position: node.position } : world)); setCollidingWorldKeys(new Set()) }}
+              onNodeDragStop={(_event, node) => { setWorlds((current) => commitWorldPosition(current, Number(node.id), node.position) as EditableWorld[]); setCollidingWorldKeys(new Set()) }}
               onNodeMouseEnter={(_event, node) => setHoveredWorldKey(Number(node.id))}
               onNodeMouseLeave={() => setHoveredWorldKey(null)}
               onNodeClick={(_event, node) => {
@@ -2413,7 +2465,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
                 {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
               </Panel>
-              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><span><i className="selected" />SELECTED</span><span><i className="current" />CURRENT WORLD</span><span><i className="witness" />WITNESS</span><span><i className="counterexample" />COUNTEREXAMPLE</span><span><i className="derived" />DERIVED</span><span><i className="checked" />CHECKED EDGE</span><span><i className="irrelevant" />IRRELEVANT</span></Panel>
+              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><span><i className="selected" />SELECTED</span><span><i className="current" />CURRENT WORLD</span><span><i className="witness" />WITNESS</span><span><i className="counterexample" />COUNTEREXAMPLE</span><span><i className="explicit-edge" />EXPLICIT EDGE</span><span><i className="derived" />DERIVED EDGE</span><span><i className="two-way" />TWO-WAY</span><span><i className="reflexive" />EXPLICIT ↻</span><span><i className="reflexive derived-reflexive" />DERIVED ↻</span><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></Panel>
               {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
               {worlds.length === 0 && (
                 <Panel position="top-center" className="empty-graph-state">

@@ -72,6 +72,7 @@ export const modelMapInteractionProps = Object.freeze({
   panOnScroll: false,
   panOnScrollMode: PanOnScrollMode.Free,
   zoomOnScroll: false,
+  zoomOnDoubleClick: false,
   zoomOnPinch: true,
   panOnDrag: true,
 })

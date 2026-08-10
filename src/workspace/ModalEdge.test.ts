@@ -6,14 +6,14 @@ describe('modal edge routing', () => {
     expect(resolveModalEdgeEndpoints('0', '0')).toEqual({ source: '0', target: '0' })
   })
 
-  it('selects a standard curve for horizontal edges', () => {
-    expect(selectModalEdgeRoute({ sourceX: 0, sourceY: 0, targetX: 240, targetY: 20 }).kind).toBe('horizontal')
+  it('selects a direct perimeter-to-perimeter route without a lane offset', () => {
+    expect(selectModalEdgeRoute({ sourceX: 48, sourceY: 48, targetX: 240, targetY: 48 }).kind).toBe('direct')
   })
 
-  it('offsets near-vertical edges', () => {
-    const route = selectModalEdgeRoute({ sourceX: 0, sourceY: 0, targetX: 10, targetY: 240 })
-    expect(route.kind).toBe('vertical')
-    expect(route.path).toContain('58')
+  it('uses the assigned deterministic lane offset for incident edges', () => {
+    const route = selectModalEdgeRoute({ sourceX: 0, sourceY: 0, targetX: 10, targetY: 240, curveOffset: 16 })
+    expect(route.kind).toBe('curved')
+    expect(route.path).not.toBe(selectModalEdgeRoute({ sourceX: 0, sourceY: 0, targetX: 10, targetY: 240, curveOffset: -16 }).path)
   })
 
   it('separates reverse pairs on opposite sides', () => {
@@ -22,13 +22,7 @@ describe('modal edge routing', () => {
     expect(forward.kind).toBe('reverse')
     expect(reverse.kind).toBe('reverse')
     expect(forward.path).not.toBe(reverse.path)
-    expect(forward.path).toContain(',42')
-    expect(reverse.path).toContain(',-42')
-  })
-
-  it('draws a large external self-loop', () => {
-    const route = selectModalEdgeRoute({ sourceX: 100, sourceY: 100, targetX: 100, targetY: 100, selfLoop: true })
-    expect(route.kind).toBe('self-loop')
-    expect(route.path).toContain('C 174')
+    expect(forward.path).toContain(',34')
+    expect(reverse.path).toContain(',-34')
   })
 })
