@@ -290,12 +290,12 @@ export const tutorialLevels: readonly GameLevel[] = [
   {
     id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility edge', concept: 'Directed arrows',
     learningObjective: 'Create a directed accessibility edge.',
-    briefing: 'Drag from the bottom/source handle of the world where the arrow begins to the top/target handle of its destination. Reversing source and target reverses the arrow.',
+    briefing: 'Start dragging a relation from the world where the arrow should begin and release it on the destination world. The connection point around a world is only a convenient handle; it does not determine direction.',
     successDebrief: 'Accessibility is directional: w0 → w1 is different from w1 → w0.',
     instruction: 'Draw an arrow from w0 to w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
     edges: [], constraints: { requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'], structuralObjective: {}, workspacePresentation: { edges: true }, tutorialControls: ['edges'], atomVocabulary: ['p'],
-    taskSteps: ['Start at the bottom/source handle of w0.', 'Drag to the top/target handle of w1.', 'Check task.'],
+    taskSteps: ['Start dragging from any connection point on w0.', 'Release on any connection point on w1.', 'Check task.'],
   },
   {
     id: 'tutorial-v2-correct-edge', chapter: 'How to Play', title: 'Correct an edge', concept: 'Editing arrows',

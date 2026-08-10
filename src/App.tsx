@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type WheelEvent as ReactWheelEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import {
   Background,
+  ConnectionMode,
   MarkerType,
   MiniMap,
   MiniMapNode,
@@ -18,22 +19,29 @@ import { campaignTracks, legacyTutorialLevelIds, tutorialLevels, type GameLevel 
 import { guidedCampaigns } from './guided-campaigns'
 import { learnCourse, learnLessons, learnLessonByTaskId, type ConceptQuestion } from './learn'
 import { emptyLearnProgress, learnProgressKey, loadLearnProgress, type LearnProgress } from './learn-progress'
-import { LearnLessonView } from './LearnLessonView'
 import { ModalLogicWelcome } from './ModalLogicWelcome'
 import { MissionHeader, type MissionHeaderMode } from './components/MissionHeader'
 import { QuestionTaskPanel } from './components/QuestionTaskPanel'
+import { StaticKripkeDiagram } from './components/StaticKripkeDiagram'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
 import { ReflexiveRelationBadge } from './workspace/ReflexiveRelationBadge'
 import { modalEdgeTypes, resolveModalEdgeEndpoints } from './workspace/ModalEdge'
-import { applyMapWheelGesture, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps } from './workspace/map-interactions'
+import { MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps, resolveMapWheelHandling } from './workspace/map-interactions'
 import { buildReflexiveRelationPresentations, buildRelationPresentations, describeRelationPresentation, type RelationDirectionPresentation, type RelationPresentation } from './workspace/relation-presentation'
 import { applyCollisionClassNames, commitWorldPosition, findFreeWorldPosition, findOverlappingWorldKeys, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, type WorldPosition } from './workspace/world-placement'
 import { createTidyModelLayout } from './workspace/model-layout'
 import { assignRelationRouteLanes, RECIPROCAL_ARROWHEAD_SIZE, SINGLE_ARROWHEAD_SIZE, type RelationRouteItem } from './workspace/relation-routing'
-import { isTextEntryTarget, shouldDeleteSelectedEdge } from './workspace/edge-keyboard'
+import { isTextEntryTarget, resolveDeleteSelection } from './workspace/selection-keyboard'
+import { deleteWorldFromEditableModel, validateEditableModel, validateExplicitEdgeCandidate, validateWorldIdCandidate } from './workspace/model-integrity'
+import { WorldIdInput } from './workspace/WorldIdInput'
+import { worldNodeTypes } from './workspace/WorldNode'
+import { insertAtSelection } from './formula-input'
+import { findFrameRuleConflicts } from './logic/frame-rule-conflicts'
+import { ProgressiveHints } from './components/ProgressiveHints'
+import { WorkedExampleCard } from './learn/WorkedExampleCard'
+import { buildQuestionFeedback } from './learn/question-feedback'
 import { playSound } from './audio/sound-effects'
-import type { LearnStage } from './learn'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
 import { createShareUrl, readSharedJson } from './share-url'
@@ -60,6 +68,7 @@ import {
   type AccessibilityEdge,
   type FrameProperties,
   type FramePropertyName,
+  type FramePropertyWitness,
   type EvaluationTrace,
   type ObjectiveScope,
   type ObjectiveVerdict,
@@ -78,6 +87,12 @@ interface EditableEdge {
   to: string
 }
 
+interface EdgeDraft {
+  readonly from: string
+  readonly to: string
+  readonly error?: string
+}
+
 type VerificationResult =
   | { readonly kind: 'success' | 'failure'; readonly message: string; readonly detail: string; readonly diagnostic?: string; readonly verdict?: ObjectiveVerdict; readonly bonus?: { achieved: boolean; detail: string }; readonly prediction?: { correct: boolean; detail: string } }
   | { readonly kind: 'error'; readonly message: string }
@@ -86,11 +101,30 @@ type VerificationResult =
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom'
 type GuideTab = 'overview' | 'theory' | 'operators' | 'scopes' | 'relations' | 'objectives' | 'controls' | 'glossary'
-type AppView = 'home' | 'practice' | 'workspace' | 'learn' | 'welcome' | 'learnLesson' | 'tutorial' | 'campaigns' | 'create' | 'guide' | 'profile' | 'settings'
+type AppView = 'home' | 'practice' | 'workspace' | 'learn' | 'welcome' | 'tutorial' | 'campaigns' | 'create' | 'guide' | 'profile' | 'settings'
 type CampaignSection = 'challenges' | 'practice'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
+
+const describeFrameWitness = (witness: FramePropertyWitness): string => {
+  if (witness.kind === 'missing-reflexive') return `${witness.world} is missing its reflexive relation.`
+  if (witness.kind === 'irreflexive-loop') return `${witness.world} accesses itself.`
+  if (witness.kind === 'missing-successor') return `${witness.world} has no successor.`
+  if (witness.kind === 'missing-symmetric') return `${witness.edge.from} → ${witness.edge.to} exists, but ${witness.missing.from} → ${witness.missing.to} is missing.`
+  if (witness.kind === 'missing-transitive') return `${witness.first.from} → ${witness.first.to} → ${witness.second.to} needs ${witness.missing.from} → ${witness.missing.to}.`
+  if (witness.kind === 'missing-euclidean') return `The two successors of ${witness.first.from} need ${witness.missing.from} → ${witness.missing.to}.`
+  return `Directed cycle: ${witness.worlds.join(' → ')}.`
+}
+
+function handleTabListKeyDown<T extends string>(event: ReactKeyboardEvent<HTMLElement>, order: readonly T[], current: T, onChange: (next: T) => void) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const index = Math.max(0, order.indexOf(current))
+  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? order.length - 1 : event.key === 'ArrowLeft' ? (index - 1 + order.length) % order.length : (index + 1) % order.length
+  onChange(order[nextIndex])
+  requestAnimationFrame(() => event.currentTarget.querySelector<HTMLElement>('[role="tab"][tabindex="0"]')?.focus())
+}
 
 function ChapterRecapQuestions({ questions }: { readonly questions: readonly ConceptQuestion[] }) {
   const [answers, setAnswers] = useState<Readonly<Record<number, string>>>({})
@@ -105,9 +139,9 @@ function MapControlsReference({ onReplayTour }: { readonly onReplayTour: () => v
   return <>
     <article><h2>Select and edit worlds</h2><p>Click a world to select it and focus its incoming and outgoing relations. Use the model panel to rename it, change its true atoms, or make it the evaluation world when the task permits.</p></article>
     <article><h2>Add and position worlds</h2><p>Use + World for a collision-aware position near the selected world or viewport centre. On desktop, double-click empty map space to create one world without zooming. Dragging may intentionally overlap worlds; Tidy model is the explicit recovery action.</p></article>
-    <article><h2>Relations</h2><p>Drag between handles or use Accessibility. A self-loop wRw appears only as ↻ on its world: solid is explicit and dashed is derived. A two-way relation is one ↔ line; click it to expose each direction. Only explicit directions can be selected and deleted.</p></article>
+    <article><h2>Relations</h2><p>Start dragging on the world where the arrow begins and release on its destination; any of the four connection points works and handle position does not determine direction. You can also use Accessibility. A self-loop wRw appears only as ↻ on its world: solid is explicit and dashed is derived. A two-way relation is one ↔ line; click it to expose each direction. Only explicit directions can be selected and deleted.</p></article>
     <article><h2>Move around the map</h2><p>Drag empty space to pan. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans freely in X and Y; pinch zooms. Zoom in, Zoom out, and Fit model are available in the map toolbar.</p></article>
-    <article><h2>Tidy and Fit</h2><p>Tidy model creates a compact structural layout as one undoable step. Fit model changes only the viewport and never enters model history.</p></article>
+    <article><h2>Tidy and Fit</h2><p>Tidy model organizes the explicit construction as one undoable step; enforced derived relations are redrawn over that layout. Fit model changes only the viewport and never enters model history.</p></article>
     <article className="guide-action-card"><h2>Workspace tour</h2><p>Replay the short overlay without resetting the current mission, model, or progress.</p><button type="button" className="secondary-button" onClick={onReplayTour}>Replay workspace tour</button></article>
   </>
 }
@@ -239,18 +273,23 @@ function loadDraft(): SandboxDraft | null {
         ? world.position
         : { x: 90 + (index % 3) * 240, y: 90 + Math.floor(index / 3) * 150 },
     }))
-    const worldIds = new Set(normalizedWorlds.map((world) => world.id.trim()).filter(Boolean))
+    const normalizedIds = normalizedWorlds.map((world) => world.id.trim())
+    if (normalizedIds.some((id) => !id) || new Set(normalizedIds).size !== normalizedIds.length) return null
+    const worldIds = new Set(normalizedIds)
     const validRuleModes = new Set<FrameRuleMode>(['off', 'validate', 'enforce'])
     const enforceableRules = new Set(['reflexive', 'symmetric', 'transitive', 'euclidean'])
     const normalizedFrameRules = Object.fromEntries(Object.entries(draft.frameRules ?? {})
       .filter(([property, mode]) => property in defaultFrameRules && validRuleModes.has(mode as FrameRuleMode))
       .map(([property, mode]) => [property, mode === 'enforce' && !enforceableRules.has(property) ? 'validate' : mode])) as Partial<FrameRules>
     const validScopes = new Set(['pointed', 'model', 'frame', 'correspondence', 'world'])
+    const normalizedEdges = draft.edges.filter((edge) => worldIds.has(edge.from.trim()) && worldIds.has(edge.to.trim()))
+      .map((edge, index) => ({ ...edge, from: edge.from.trim(), to: edge.to.trim(), key: index }))
+    if (validateEditableModel(normalizedWorlds, normalizedEdges).length > 0) return null
     return {
       ...draft,
       worlds: normalizedWorlds,
-      edges: draft.edges.filter((edge) => worldIds.has(edge.from.trim()) && worldIds.has(edge.to.trim()))
-        .map((edge, index) => ({ ...edge, key: index })),
+      edges: normalizedEdges,
+      evaluationWorld: worldIds.has(draft.evaluationWorld.trim()) ? draft.evaluationWorld.trim() : normalizedIds[0] ?? '',
       frameRules: { ...defaultFrameRules, ...normalizedFrameRules },
       evaluationScope: typeof draft.evaluationScope === 'string' && validScopes.has(draft.evaluationScope)
         ? draft.evaluationScope as SandboxDraft['evaluationScope']
@@ -357,10 +396,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [initialInterfaceSettings] = useState(loadInterfaceSettings)
   const [gameMode, setGameMode] = useState<GameMode>('sandbox')
   const [learnProgress, setLearnProgress] = useState<LearnProgress>(loadLearnProgress)
-  const [learnHintLevel, setLearnHintLevel] = useState(1)
-  const [learnStage, setLearnStage] = useState<LearnStage>('concept')
-  const [learnLessonId, setLearnLessonId] = useState<string | null>(null)
-  const [learnExampleStep, setLearnExampleStep] = useState(0)
+  const [learnHintLevel, setLearnHintLevel] = useState(0)
   const [learnTransferActive, setLearnTransferActive] = useState(false)
   const [learnConceptOpen, setLearnConceptOpen] = useState(false)
   const [expandedLearnChapterId, setExpandedLearnChapterId] = useState<string | null>(null)
@@ -387,6 +423,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [comparisonFormulaSource, setComparisonFormulaSource] = useState(initialDraft?.comparisonFormulaSource ?? '')
   const [worlds, setWorlds] = useState(initialDraft?.worlds ?? initialWorlds)
   const [edges, setEdges] = useState(initialDraft?.edges ?? initialEdges)
+  const [edgeDraft, setEdgeDraft] = useState<EdgeDraft | null>(null)
+  const [edgeEditErrors, setEdgeEditErrors] = useState<Readonly<Record<number, string>>>({})
   const [evaluationWorld, setEvaluationWorld] = useState(initialDraft?.evaluationWorld ?? 'w0')
   const [targetTruth, setTargetTruth] = useState(initialDraft?.targetTruth ?? true)
   const [evaluationScope, setEvaluationScope] = useState<EvaluationScope>(
@@ -463,10 +501,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [soundEffects, setSoundEffects] = useState(initialInterfaceSettings.soundEffects)
   const [leftPanelOpen, setLeftPanelOpen] = useState(initialInterfaceSettings.leftPanelOpen)
   const [rightPanelOpen, setRightPanelOpen] = useState(initialInterfaceSettings.rightPanelOpen)
+  const resetInterfacePreferences = () => {
+    setInterfaceDensity(defaultInterfaceSettings.density)
+    setShowMinimap(defaultInterfaceSettings.showMinimap)
+    setShowDerivedEdges(defaultInterfaceSettings.showDerivedEdges)
+    setReduceMotion(defaultInterfaceSettings.reduceMotion)
+    setSoundEffects(defaultInterfaceSettings.soundEffects)
+    setLeftPanelOpen(defaultInterfaceSettings.leftPanelOpen)
+    setRightPanelOpen(defaultInterfaceSettings.rightPanelOpen)
+    try { localStorage.removeItem(interfaceSettingsKey) } catch { /* Preferences remain reset in memory. */ }
+  }
   const [showWorkspaceTour, setShowWorkspaceTour] = useState(() => initialView === 'workspace' && localStorage.getItem(workspaceTourKey) !== 'seen')
   const [workspaceTourStep, setWorkspaceTourStep] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
+  const [workspaceStatus, setWorkspaceStatus] = useState('')
+  const [activeFrameWitness, setActiveFrameWitness] = useState<FramePropertyWitness | null>(null)
   const [hoveredWorldKey, setHoveredWorldKey] = useState<number | null>(null)
   const [collidingWorldKeys, setCollidingWorldKeys] = useState<ReadonlySet<number>>(new Set())
   const [expandedRelationPairKey, setExpandedRelationPairKey] = useState<string | null>(null)
@@ -498,8 +548,20 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setEvaluationWorld(snapshot.evaluationWorld)
     setFrameRules({ ...snapshot.frameRules })
     setSelectedWorldKey(null)
+    setSelectedEdgeKey(null)
+    setExpandedRelationPairKey(null)
+    setEdgeDraft(null)
+    setEdgeEditErrors({})
+    setActiveFrameWitness(null)
+    setWorkspaceStatus('')
+    setEdgeDraft(null)
     if (!preserveResult) setResult(null)
   }
+
+  const clearGraphSelection = () => { setSelectedWorldKey(null); setSelectedEdgeKey(null); setExpandedRelationPairKey(null) }
+  const selectWorld = (key: number) => { setSelectedWorldKey(key); setSelectedEdgeKey(null); setExpandedRelationPairKey(null) }
+  const selectExplicitEdge = (key: number | null) => { setSelectedWorldKey(null); setSelectedEdgeKey(key); setExpandedRelationPairKey(null) }
+  const selectReciprocalPair = (pairKey: string) => { setSelectedWorldKey(null); setSelectedEdgeKey(null); setExpandedRelationPairKey(pairKey) }
 
   const undo = () => {
     const previous = historyPast.current.pop()
@@ -594,10 +656,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return () => document.removeEventListener('mousedown', closeOnOutsideClick)
   }, [])
 
-  const usableWorldIds = useMemo(
-    () => worlds.map(({ id }) => id.trim()).filter((id, index, ids) => id && ids.indexOf(id) === index),
-    [worlds],
-  )
+  const usableWorldIds = useMemo(() => worlds.map(({ id }) => id.trim()), [worlds])
 
   const effectiveEdges = useMemo(
     () => applyFrameProperties(usableWorldIds, edges, {
@@ -615,22 +674,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       .map(([property]) => checkFrameProperty(usableWorldIds, effectiveEdges, property as FramePropertyName)),
     [frameRules, usableWorldIds, effectiveEdges],
   )
+  const frameRuleConflicts = useMemo(() => findFrameRuleConflicts(frameRules, usableWorldIds.length), [frameRules, usableWorldIds.length])
+
+  useEffect(() => { setActiveFrameWitness(null) }, [worlds, edges, evaluationWorld, frameRules])
 
   const explicitEdgeKeyByPair = useMemo(
     () => new Map(edges.map((edge) => [`${edge.from}\u0000${edge.to}`, edge.key])),
     [edges],
-  )
-
-  const displayedEdges = useMemo(
-    () => showDerivedEdges
-      ? effectiveEdges
-      : effectiveEdges.filter((edge) => explicitEdgeKeyByPair.has(`${edge.from}\u0000${edge.to}`)),
-    [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges],
-  )
-
-  const reflexiveRelations = useMemo(
-    () => buildReflexiveRelationPresentations(displayedEdges, explicitEdgeKeyByPair),
-    [displayedEdges, explicitEdgeKeyByPair],
   )
 
   const evaluationTraceSteps = result && 'verdict' in result && result.verdict
@@ -656,9 +706,26 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       ? [`${activeTraceEntry.parent.worldId}\u0000${activeTrace?.worldId}`]
       : []),
   ]), [activeTrace, activeTraceEntry?.parent])
+  const derivedPairKeys = useMemo(() => new Set(effectiveEdges
+    .map(({ from, to }) => `${from}\u0000${to}`)
+    .filter((pair) => !explicitEdgeKeyByPair.has(pair))), [effectiveEdges, explicitEdgeKeyByPair])
+  const displayedEdges = useMemo(
+    () => showDerivedEdges
+      ? effectiveEdges
+      : effectiveEdges.filter((edge) => {
+        const pair = `${edge.from}\u0000${edge.to}`
+        return explicitEdgeKeyByPair.has(pair) || traceCheckedEdges.has(pair)
+      }),
+    [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges, traceCheckedEdges],
+  )
+  const traceForcedDerivedPairKeys = useMemo(() => new Set([...traceCheckedEdges].filter((pair) => !showDerivedEdges && derivedPairKeys.has(pair))), [derivedPairKeys, showDerivedEdges, traceCheckedEdges])
+  const reflexiveRelations = useMemo(
+    () => buildReflexiveRelationPresentations(displayedEdges, explicitEdgeKeyByPair),
+    [displayedEdges, explicitEdgeKeyByPair],
+  )
 
   const activeMapLevel = gameMode === 'tutorial' ? tutorialLevels[campaignLevelIndex]
-    : gameMode === 'learn' ? learnLessons[campaignLevelIndex]?.task
+    : gameMode === 'learn' ? (learnTransferActive ? learnLessons[campaignLevelIndex]?.transferTask : undefined) ?? learnLessons[campaignLevelIndex]?.task
       : gameMode === 'campaign' ? campaignTracks[playingTrackIndex ?? campaignTrackIndex]?.levels[campaignLevelIndex]
         : gameMode === 'guidedCampaign' ? guidedCampaigns[guidedCampaignIndex]?.levels[campaignLevelIndex]
           : gameMode === 'custom' ? customLevels[campaignLevelIndex] : undefined
@@ -669,11 +736,27 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     && (!activeMapLevel || activeMapLevel.editable.includes('edges'))
   const focusedWorldKey = hoveredWorldKey ?? selectedWorldKey
   const focusedWorldId = worlds.find((world) => world.key === focusedWorldKey)?.id.trim()
+  const frameWitnessPresentation = useMemo(() => {
+    const worldIds = new Set<string>()
+    const premiseEdges = new Set<string>()
+    let missingEdge: AccessibilityEdge | null = null
+    const addEdge = (edge: AccessibilityEdge) => { worldIds.add(edge.from); worldIds.add(edge.to); premiseEdges.add(`${edge.from}\u0000${edge.to}`) }
+    const witness = activeFrameWitness
+    if (!witness) return { worldIds, premiseEdges, missingEdge }
+    if (witness.kind === 'missing-reflexive' || witness.kind === 'irreflexive-loop' || witness.kind === 'missing-successor') worldIds.add(witness.world)
+    else if (witness.kind === 'missing-symmetric') { addEdge(witness.edge); missingEdge = witness.missing }
+    else if (witness.kind === 'missing-transitive' || witness.kind === 'missing-euclidean') { addEdge(witness.first); addEdge(witness.second); missingEdge = witness.missing }
+    else witness.worlds.forEach((world, index) => { worldIds.add(world); if (index < witness.worlds.length - 1) premiseEdges.add(`${world}\u0000${witness.worlds[index + 1]}`) })
+    if (missingEdge) { worldIds.add(missingEdge.from); worldIds.add(missingEdge.to) }
+    return { worldIds, premiseEdges, missingEdge }
+  }, [activeFrameWitness])
 
   const nodeBlueprints = useMemo<FlowNode[]>(() => worlds.map((world) => ({
     id: String(world.key),
+    type: 'world',
     position: world.position,
     data: {
+      isEvaluation: world.id.trim() === evaluationWorld,
       label: (
         <div className="node-label">
           <strong>{world.id || 'unnamed'}</strong>
@@ -683,12 +766,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             if (!reflexive) return null
             const selected = reflexive.explicitKey !== undefined && reflexive.explicitKey === selectedEdgeKey
             const checked = traceCheckedEdges.has(`${world.id.trim()}\u0000${world.id.trim()}`)
-            return <ReflexiveRelationBadge presentation={reflexive} selected={selected} checked={checked} editable={graphEdgesEditable} onSelect={(explicitKey) => {
-                setSelectedWorldKey(null)
-                setExpandedRelationPairKey(null)
-                setSelectedEdgeKey(explicitKey)
-              }} />
+            return <ReflexiveRelationBadge presentation={reflexive} selected={selected} checked={checked} editable={graphEdgesEditable} onSelect={selectExplicitEdge} />
           })()}
+          {activeFrameWitness?.kind === 'missing-reflexive' && activeFrameWitness.world === world.id.trim() && <span className="frame-witness-ghost-reflexive" title="Missing for reflexivity">↻</span>}
           {activeTrace?.rule === 'atom' && activeTrace.worldId === world.id.trim() && <span className="trace-atom-badge">ATOM {activeTrace.formula} {activeTrace.value ? '✓' : '✕'}</span>}
           {world.id.trim() === traceWitnessWorld && <span className="trace-role-badge witness">WITNESS</span>}
           {world.id.trim() === traceCounterexampleWorld && <span className="trace-role-badge counterexample">COUNTEREXAMPLE</span>}
@@ -703,10 +783,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       world.id.trim() === traceWitnessWorld ? 'trace-witness-node' : '',
       world.id.trim() === traceCounterexampleWorld ? 'trace-counterexample-node' : '',
       activeTrace && !traceRelatedWorlds.has(world.id.trim()) ? 'trace-irrelevant-node' : '',
+      frameWitnessPresentation.worldIds.has(world.id.trim()) ? 'frame-witness-node' : '',
     ].filter(Boolean).join(' '),
     ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${reflexiveRelations.has(world.id.trim()) ? `, ${reflexiveRelations.get(world.id.trim())?.derived ? 'derived' : 'explicit'} reflexive accessibility` : ''}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}`,
     domAttributes: mapQuestionMode ? { 'aria-pressed': predictionAnswer === world.id.trim() } : undefined,
-  })), [worlds, evaluationWorld, selectedWorldKey, selectedEdgeKey, reflexiveRelations, graphEdgesEditable, traceCheckedEdges, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer])
+  })), [worlds, evaluationWorld, selectedWorldKey, selectedEdgeKey, reflexiveRelations, graphEdgesEditable, traceCheckedEdges, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer, activeFrameWitness, frameWitnessPresentation.worldIds])
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodeBlueprints)
 
@@ -793,6 +874,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           'model-edge', reversePair ? 'expanded-relation' : '', direction.derived ? 'derived-edge' : '', selected ? 'selected-edge' : '',
           ...focusClasses(presentation, selected),
           traceCheckedEdges.has(directionPair) ? 'trace-checked-edge' : '',
+          traceForcedDerivedPairKeys.has(directionPair) ? 'trace-forced-derived-edge' : '',
+          frameWitnessPresentation.premiseEdges.has(directionPair) ? 'frame-witness-premise-edge' : '',
           direction.to === traceWitnessWorld && activeTrace?.worldId === direction.from ? 'trace-witness-edge' : '',
           direction.to === traceCounterexampleWorld && activeTrace?.worldId === direction.from ? 'trace-counterexample-edge' : '',
           activeTrace && !traceCheckedEdges.has(directionPair) ? 'trace-irrelevant-edge' : '',
@@ -800,7 +883,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       }
     }
 
-    return relationPresentations.flatMap<FlowEdge>((presentation) => {
+    const normalEdges = relationPresentations.flatMap<FlowEdge>((presentation) => {
       if (presentation.kind === 'bidirectional' && expandedRelationPairKey !== presentation.pairKey) {
         const endpoints = resolveModalEdgeEndpoints(worldKeyById.get(presentation.source), worldKeyById.get(presentation.target))
         if (!endpoints || !presentation.reverse) return []
@@ -826,6 +909,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             'model-edge', 'bidirectional-edge', bothDerived ? 'derived-edge' : '',
             presentation.forward.derived !== presentation.reverse.derived ? 'mixed-relation' : '',
             ...focusClasses(presentation, selected), checked ? 'trace-checked-edge' : '', activeTrace && !checked ? 'trace-irrelevant-edge' : '',
+            (frameWitnessPresentation.premiseEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`) || frameWitnessPresentation.premiseEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)) ? 'frame-witness-premise-edge' : '',
           ].filter(Boolean).join(' '),
         }]
       }
@@ -835,7 +919,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       const edge = directionEdge(presentation, presentation.forward, false)
       return edge ? [edge] : []
     })
-  }, [relationPresentations, expandedRelationPairKey, worldKeyById, worlds, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceWitnessWorld, traceCounterexampleWorld, activeTrace, graphEdgesEditable])
+    const missing = frameWitnessPresentation.missingEdge
+    if (!missing || missing.from === missing.to) return normalEdges
+    const endpoints = resolveModalEdgeEndpoints(worldKeyById.get(missing.from), worldKeyById.get(missing.to))
+    if (!endpoints) return normalEdges
+    return [...normalEdges, {
+      id: `frame-witness-missing:${missing.from}:${missing.to}`,
+      source: endpoints.source,
+      target: endpoints.target,
+      type: 'modal',
+      data: { description: `Missing relation from ${missing.from} to ${missing.to} for the selected frame-property witness` },
+      markerEnd: { type: MarkerType.Arrow, color: '#a43f2d', width: SINGLE_ARROWHEAD_SIZE, height: SINGLE_ARROWHEAD_SIZE },
+      selectable: false,
+      focusable: false,
+      className: 'model-edge frame-witness-missing-edge',
+    }]
+  }, [relationPresentations, expandedRelationPairKey, worldKeyById, worlds, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceForcedDerivedPairKeys, traceWitnessWorld, traceCounterexampleWorld, activeTrace, graphEdgesEditable, frameWitnessPresentation])
 
   const MiniMapWithRelations = useMemo(() => {
     const worldByKey = new Map(worlds.map((world) => [String(world.key), world]))
@@ -901,6 +1000,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const distinctSolutions = Object.values(guestProfile.solutionSignatures).reduce((total, signatures) => total + signatures.length, 0)
   const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
   const currentValuation = Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)]))
+  const formulaParseStatus = useMemo(() => {
+    if (!formulaSource.trim()) return null
+    try { parseFormula(formulaSource); return 'valid' as const } catch { return 'invalid' as const }
+  }, [formulaSource])
+  const insertFormulaSymbol = (symbol: string) => {
+    const input = formulaInputRef.current
+    const insertion = insertAtSelection(formulaSource, symbol, input?.selectionStart ?? formulaSource.length, input?.selectionEnd ?? formulaSource.length)
+    setFormulaSource(insertion.value)
+    setResult(null)
+    setTimeout(() => { formulaInputRef.current?.focus(); formulaInputRef.current?.setSelectionRange(insertion.selectionStart, insertion.selectionEnd) }, 0)
+  }
   const scopeComparison = (() => {
     const configuredWorld = activeLevel?.scopeComparison?.evaluationWorld ?? (activeLevel?.showScopeComparison ? evaluationWorld : undefined)
     if (!configuredWorld || !result || !formulaSource.trim() || usableWorldIds.length === 0) return null
@@ -958,6 +1068,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return summary
   }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const courseLesson = activeLevel ? learnLessonByTaskId.get(activeLevel.id) : undefined
+  const revealLearnHint = (index: number) => {
+    if (!courseLesson) return
+    const bounded = Math.max(1, Math.min(courseLesson.hints.length, index))
+    setLearnHintLevel((current) => Math.max(current, bounded))
+    setLearnProgress((current) => {
+      const used = current.hintsUsed[courseLesson.id] ?? []
+      if (used.includes(bounded)) return current
+      return { ...current, hintsUsed: { ...current.hintsUsed, [courseLesson.id]: [...used, bounded] } }
+    })
+  }
   const isQuestionTask = activeLevel?.interactionMode === 'question'
   const previousSoundResultRef = useRef<VerificationResult>(null)
   useEffect(() => {
@@ -1036,14 +1156,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         }
       }
       if (event.key === 'Escape') {
-        setSelectedWorldKey(null)
-        setSelectedEdgeKey(null)
-        setExpandedRelationPairKey(null)
+        clearGraphSelection()
+        setActiveFrameWitness(null)
         return
       }
-      if (shouldDeleteSelectedEdge({ key: event.key, target: event.target, selectedEdgeKey, canEditEdges })) {
+      const deleteSelection = resolveDeleteSelection({ key: event.key, target: event.target, selectedWorldKey, selectedEdgeKey, canEditWorlds, canEditEdges })
+      if (deleteSelection) {
         event.preventDefault()
-        deleteEdge(selectedEdgeKey!)
+        if (deleteSelection.kind === 'world') removeWorld(deleteSelection.key)
+        else deleteEdge(deleteSelection.key)
         return
       }
       if (event.altKey && evaluationTraceSteps.length > 0 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
@@ -1074,22 +1195,28 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     return () => window.removeEventListener('keydown', dismissCompletion)
   }, [activeLevel, completionDismissed, result])
 
-  const updateWorld = (key: number, field: 'id' | 'atoms', value: string) => {
-    if (field === 'id' && !canEditWorlds) return
-    if (field === 'atoms' && !canEditValuations) return
-    if (field === 'atoms' && tutorialAtomVocabulary) value = value.split(/[\s,]+/u).filter((atom) => tutorialAtomVocabulary.includes(atom)).join(' ')
-    const previous = worlds.find((world) => world.key === key)
-    setWorlds((current) => current.map((world) => world.key === key ? { ...world, [field]: value } : world))
-    if (field === 'id' && previous) {
-      const oldId = previous.id.trim()
-      const newId = value.trim()
-      setEdges((current) => current.map((edge) => ({
-        ...edge,
-        from: edge.from === oldId ? newId : edge.from,
-        to: edge.to === oldId ? newId : edge.to,
-      })))
-      if (evaluationWorld === oldId) setEvaluationWorld(newId)
-    }
+  const renameWorld = (key: number, nextId: string): string | null => {
+    if (!canEditWorlds) return 'World names are locked in this task.'
+    const index = worlds.findIndex((world) => world.key === key)
+    if (index < 0) return 'This world no longer exists.'
+    const error = validateWorldIdCandidate(worlds, index, nextId)
+    if (error) return error
+    const previous = worlds[index]
+    const oldId = previous.id.trim()
+    const newId = nextId.trim()
+    if (oldId === newId && previous.id === newId) return null
+    saveHistoryPoint()
+    setWorlds((current) => current.map((world) => world.key === key ? { ...world, id: newId } : world))
+    setEdges((current) => current.map((edge) => ({ ...edge, from: edge.from === oldId ? newId : edge.from, to: edge.to === oldId ? newId : edge.to })))
+    if (evaluationWorld === oldId) setEvaluationWorld(newId)
+    setResult(null)
+    return null
+  }
+
+  const updateWorldAtoms = (key: number, value: string) => {
+    if (!canEditValuations) return
+    if (tutorialAtomVocabulary) value = value.split(/[\s,]+/u).filter((atom) => tutorialAtomVocabulary.includes(atom)).join(' ')
+    setWorlds((current) => current.map((world) => world.key === key ? { ...world, atoms: value } : world))
     setResult(null)
   }
 
@@ -1123,6 +1250,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const tidyModel = () => {
     if (worlds.length < 2) return
+    // Layout intentionally uses explicit edges only.
     const positions = createTidyModelLayout(worlds, edges, evaluationWorld)
     saveHistoryPoint(true)
     setWorlds((current) => current.map((world) => ({ ...world, position: positions.get(world.key) ?? world.position })))
@@ -1134,37 +1262,62 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     if (!event.target.closest('.react-flow')) return
     const bounds = graphCanvasRef.current?.getBoundingClientRect()
     if (!bounds) return
-    event.preventDefault()
-    event.stopPropagation()
-    const application = applyMapWheelGesture(event, flowInstance.getViewport(), {
+    const handling = resolveMapWheelHandling(event, flowInstance.getViewport(), {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
     })
-    void flowInstance.setViewport(application.viewport, { duration: 0 })
+    if (handling.useNativePan || !handling.application) return
+    event.preventDefault()
+    event.stopPropagation()
+    void flowInstance.setViewport(handling.application.viewport, { duration: 0 })
   }
 
   const removeWorld = (key: number) => {
     if (!canEditWorlds) return
+    const deletion = deleteWorldFromEditableModel(worlds, edges, key, evaluationWorld)
+    if (!deletion) return
     saveHistoryPoint()
-    const removed = worlds.find((world) => world.key === key)
-    const remainingWorlds = worlds.filter((world) => world.key !== key)
-    setWorlds(remainingWorlds)
-    if (removed) {
-      const removedId = removed.id.trim()
-      setEdges((current) => current.filter(({ from, to }) => from !== removedId && to !== removedId))
-      if (evaluationWorld === removedId) setEvaluationWorld(remainingWorlds[0]?.id.trim() ?? '')
-    }
-    setSelectedWorldKey((current) => current === key ? null : current)
+    setWorlds(deletion.worlds as EditableWorld[])
+    setEdges(deletion.edges as EditableEdge[])
+    setEvaluationWorld(deletion.evaluationWorld)
+    clearGraphSelection()
+    setHoveredWorldKey(null)
+    setCollidingWorldKeys(new Set())
+    setEdgeDraft(null)
     setResult(null)
+    setWorkspaceStatus(`Deleted ${deletion.removedWorldId}${deletion.incidentRelationCount ? ` and ${deletion.incidentRelationCount} incident explicit relation${deletion.incidentRelationCount === 1 ? '' : 's'}` : ''}. Undo is available.`)
   }
 
   const addEdge = () => {
     if (!canEditEdges) return
+    setEdgeDraft({ from: '', to: '' })
+  }
+
+  const commitEdgeDraft = () => {
+    if (!canEditEdges || !edgeDraft) return
+    const error = validateExplicitEdgeCandidate(worlds, edges, edgeDraft.from, edgeDraft.to)
+    if (error) { setEdgeDraft({ ...edgeDraft, error }); return }
     saveHistoryPoint()
-    const fallback = usableWorldIds[0] ?? ''
-    setEdges((current) => [...current, { key: nextEdgeKey, from: fallback, to: fallback }])
+    setEdges((current) => [...current, { key: nextEdgeKey, from: edgeDraft.from, to: edgeDraft.to }])
     setNextEdgeKey((key) => key + 1)
+    setEdgeDraft(null)
     setResult(null)
+    playSound('create', soundEffects)
+  }
+
+  const replaceEdgeEndpoint = (edgeKey: number, field: 'from' | 'to', nextWorldId: string): string | null => {
+    if (!canEditEdges) return 'Relations are locked in this task.'
+    const edgeIndex = edges.findIndex((edge) => edge.key === edgeKey)
+    if (edgeIndex < 0) return 'This relation no longer exists.'
+    const candidate = { ...edges[edgeIndex], [field]: nextWorldId }
+    const error = validateExplicitEdgeCandidate(worlds, edges, candidate.from, candidate.to, edgeIndex)
+    if (error) { setEdgeEditErrors((current) => ({ ...current, [edgeKey]: error })); return error }
+    if (edges[edgeIndex][field] === nextWorldId) return null
+    saveHistoryPoint()
+    setEdges((current) => current.map((edge) => edge.key === edgeKey ? candidate : edge))
+    setEdgeEditErrors((current) => { const next = { ...current }; delete next[edgeKey]; return next })
+    setResult(null)
+    return null
   }
 
   const connectWorlds = (connection: Connection) => {
@@ -1182,10 +1335,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const deleteEdge = (key: number) => {
     if (!canEditEdges) return
+    const removed = edges.find((edge) => edge.key === key)
+    if (!removed) return
     saveHistoryPoint()
     setEdges((current) => current.filter((edge) => edge.key !== key))
-    setSelectedEdgeKey((current) => current === key ? null : current)
+    clearGraphSelection()
     setResult(null)
+    setWorkspaceStatus(`Deleted explicit relation ${removed.from} to ${removed.to}. Undo is available.`)
   }
 
   const selectEvaluationWorld = (worldId: string) => {
@@ -1284,15 +1440,25 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     if (!lesson) return
     if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     setGameMode('learn')
-    setLearnLessonId(lesson.id)
-    setLearnStage('task')
-    setLearnExampleStep(0)
     setLearnTransferActive(false)
-    setLearnHintLevel(1)
+    setLearnHintLevel(0)
     setPredictionAnswer(learnProgress.predictionAnswers[lesson.id] ?? '')
     setLearnProgress((current) => ({ ...current, currentLessonId: lesson.id, highestStageByLesson: { ...current.highestStageByLesson, [lesson.id]: Math.max(current.highestStageByLesson[lesson.id] ?? 0, 0) } }))
     loadLevel(index, learnTaskLevels)
     setLearnConceptOpen(true)
+    setAppView('workspace')
+  }
+
+  const startLearnTransfer = (lessonId: string) => {
+    const index = learnLessons.findIndex((lesson) => lesson.id === lessonId)
+    const lesson = learnLessons[index]
+    if (!lesson?.transferTask) return
+    setGameMode('learn')
+    setLearnTransferActive(true)
+    setLearnHintLevel(0)
+    const transferLevels = learnLessons.map((item) => item.id === lessonId ? { ...lesson.transferTask!, prediction: undefined } : item.task)
+    loadLevel(index, transferLevels)
+    setLearnConceptOpen(false)
     setAppView('workspace')
   }
 
@@ -1313,20 +1479,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       completedChapterIds: current.completedChapterIds.filter((id) => id !== chapter.id),
     }))
     startLearnLesson(learnLessons.findIndex(({ id }) => id === chapter.lessons[0].id))
-  }
-
-  const activeLearnLesson = learnLessonId ? learnLessons.find(({ id }) => id === learnLessonId) : undefined
-  const beginLearnTask = () => {
-    if (!activeLearnLesson) return
-    const index = learnLessons.findIndex(({ id }) => id === activeLearnLesson.id)
-    const task = learnTransferActive && activeLearnLesson.transferTask ? activeLearnLesson.transferTask : activeLearnLesson.task
-    loadLevel(index, learnTaskLevels)
-    if (learnTransferActive && activeLearnLesson.transferTask) {
-      loadLevel(0, [{ ...task, prediction: undefined }])
-    }
-    setLearnStage(learnTransferActive ? 'transfer' : 'task')
-    setResult(null)
-    setAppView('workspace')
   }
 
   const markWelcomeViewed = () => setLearnProgress((current) => current.welcomeViewed ? current : { ...current, welcomeViewed: true })
@@ -1468,7 +1620,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           highestStageByLesson: { ...current.highestStageByLesson, [courseLesson.id]: Math.max(current.highestStageByLesson[courseLesson.id] ?? 0, success ? 4 : 3) },
         }
       })
-      if (!success) setLearnHintLevel((current) => Math.min(3, current + 1))
     }
   }
 
@@ -1483,6 +1634,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         return
       }
       const ids = worlds.map(({ id }) => id.trim())
+      const integrityIssues = validateEditableModel(worlds, edges)
+      if (integrityIssues.length > 0) throw new Error('The editable model contains an invalid world name or explicit relation. Repair it before verification.')
       if (ids.length === 0) throw new Error('Add at least one world before verification.')
       if (ids.some((id) => !id)) throw new Error('Every world must have a name.')
       if (new Set(ids).size !== ids.length) throw new Error('World names must be unique.')
@@ -1605,9 +1758,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined,
         objectiveFailure,
       )
-      if (courseLesson && overallSuccess) {
-        setLearnStage(learnTransferActive ? 'completion' : 'feedback')
-      }
       if (overallSuccess && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
         try {
@@ -2099,7 +2249,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       else setAppView('home')
       return
     }
-    if (appView === 'learnLesson' || appView === 'welcome') setAppView('learn')
+    if (appView === 'welcome') setAppView('learn')
     else if (appView === 'tutorial' || appView === 'campaigns' || appView === 'practice' || appView === 'create') setAppView('home')
     else setAppView('home')
   }
@@ -2113,10 +2263,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     ? 'Welcome to Modal Logic'
     : nextTutorialIndex >= 0
       ? tutorialLevels[nextTutorialIndex].title
-      : nextIncompleteLearnLesson?.title ?? 'Learn overview'
+      : nextIncompleteLearnLesson?.title
   const missionHeaderMode: MissionHeaderMode = gameMode === 'guidedCampaign' ? 'campaign' : gameMode === 'campaign' ? 'practice' : gameMode === 'custom' ? 'custom' : 'learn'
   const questionFeedback = isQuestionTask && result && 'prediction' in result && result.prediction
-    ? { correct: result.prediction.correct, detail: !result.prediction.correct && courseLesson ? `${result.prediction.detail} ${courseLesson.successExplanation}` : result.prediction.detail }
+    ? { correct: result.prediction.correct, detail: buildQuestionFeedback({ attemptCount: activeLevelFailureCount + (result.prediction.correct ? 0 : 1), detail: result.prediction.detail, correct: result.prediction.correct, lesson: courseLesson }) }
     : undefined
   const missionSectionTitle = courseLesson && activeLearnChapter
     ? activeLearnChapter.title
@@ -2166,11 +2316,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? `Restart ${missionNavigationUnit}` : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open Modal Logic Guide" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Guide</button>}
           {document.fullscreenEnabled && <button type="button" className="icon-button fullscreen-button" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={() => void toggleFullscreen()}>⛶</button>}
-          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover">{appView === 'workspace' && <button type="button" role="menuitem" onClick={openWorkspaceTour}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
+          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover" onKeyDown={(event) => { const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')]; const index = items.indexOf(document.activeElement as HTMLElement); if (event.key === 'Escape') { event.preventDefault(); setUtilityMenuOpen(false); requestAnimationFrame(() => utilityMenuButtonRef.current?.focus()); return } if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length; items[next]?.focus() }}>{appView === 'workspace' && <button type="button" role="menuitem" onClick={openWorkspaceTour}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
         </div>
       </header>
 
       <main id="main-content" className="main-content" tabIndex={-1}>
+
+      {appView !== 'workspace' && gameMode !== 'sandbox' && activeLevel && <aside className="resume-session-banner" aria-label="Current guided session"><span>Current {gameMode === 'learn' || gameMode === 'tutorial' ? 'lesson' : 'mission'} in progress: <strong>{activeLevel.title}</strong></span><button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Resume</button></aside>}
 
       {appView === 'home' && (
         <HomeView completed={playableLearningCompleted} total={availableLearningTotal} nextTitle={nextLearningTitle} onLearn={continueLearningPath} onCampaigns={() => setAppView('campaigns')} onSandbox={returnToSandbox} onProfile={() => setAppView('profile')} onSettings={() => setAppView('settings')} onData={openDataManager} />
@@ -2206,7 +2358,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id))
               const expanded = expandedLearnChapterId === chapter.id
               return <article className={`${chapterComplete ? 'complete ' : ''}${expanded ? 'expanded' : ''}`} key={chapter.id}>
-                <div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{expanded && <div className="chapter-lesson-outline"><ol>{chapter.lessons.map((lesson) => {
+                <div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{chapter.prerequisiteChapterIds.length > 0 && <p className="chapter-prerequisites">Recommended after: {chapter.prerequisiteChapterIds.map((id) => learnCourse.chapters.find((candidate) => candidate.id === id)?.title ?? id).join(', ')}</p>}{available && <small>{completed}/{chapter.lessons.length} lessons</small>}{expanded && <div className="chapter-lesson-outline"><ol>{chapter.lessons.map((lesson) => {
                   const lessonComplete = learnProgress.completedLessonIds.includes(lesson.id)
                   const lessonCurrent = learnProgress.currentLessonId === lesson.id || (!chapterComplete && learnLessons[currentIndex]?.id === lesson.id)
                   return <li className={lessonComplete ? 'complete' : lessonCurrent ? 'current' : ''} key={lesson.id}><span><b>{lesson.title}</b><small>{lessonComplete ? 'Completed' : lessonCurrent ? 'Current' : 'Unfinished'}</small></span><button type="button" className={lessonComplete ? 'secondary-button' : 'text-button'} onClick={() => startLearnLesson(learnLessons.findIndex(({ id }) => id === lesson.id))}>{lessonComplete ? 'Replay' : 'Open'}</button></li>
@@ -2218,18 +2370,17 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         </section>
       )}
       {appView === 'welcome' && <ModalLogicWelcome onBegin={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onSkip={() => { markWelcomeViewed(); startGuidedLevel('tutorial', nextTutorialIndex < 0 ? 0 : nextTutorialIndex) }} onBack={() => setAppView('learn')} />}
-      {appView === 'learnLesson' && activeLearnLesson && <LearnLessonView lesson={activeLearnLesson} stage={learnStage} predictionAnswer={predictionAnswer} predictionMessage={predictionAnswer ? (activeLearnLesson.task.prediction?.kind === 'truth' ? `You predict ${predictionAnswer}. You will test this in the workspace.` : `You selected ${predictionAnswer}. You will test this in the workspace.`) : undefined} exampleStep={learnExampleStep} onStage={(stage) => { setLearnStage(stage); if (stage === 'transfer') setLearnTransferActive(true) }} onPrediction={(answer) => { setPredictionAnswer(answer); const prediction = activeLearnLesson.task.prediction; const correct = prediction?.kind === 'truth' ? undefined : prediction?.expectedChoice === answer; setLearnProgress((current) => ({ ...current, predictionAnswers: { ...current.predictionAnswers, [activeLearnLesson.id]: answer }, predictionCorrectness: correct === undefined ? current.predictionCorrectness : { ...current.predictionCorrectness, [activeLearnLesson.id]: correct } })) }} onExampleStep={setLearnExampleStep} onBeginTask={beginLearnTask} onBack={() => { setLearnTransferActive(false); setAppView('learn') }} />}
-
       {appView === 'settings' && (
         <section className="content-screen settings-screen" aria-labelledby="settings-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Local preferences</p><h1 id="settings-title" className="clean-display">Settings</h1><p>These display preferences are stored only in this browser and do not change modal semantics or mission rules.</p></div></div>
           <div className="settings-grid">
             <article><h2>Workspace density</h2><p>Comfortable spacing favors reading; compact spacing keeps more controls visible.</p><div className="settings-choice"><button type="button" className={interfaceDensity === 'comfortable' ? 'active' : ''} aria-pressed={interfaceDensity === 'comfortable'} onClick={() => setInterfaceDensity('comfortable')}>Comfortable</button><button type="button" className={interfaceDensity === 'compact' ? 'active' : ''} aria-pressed={interfaceDensity === 'compact'} onClick={() => setInterfaceDensity('compact')}>Compact</button></div></article>
-            <article><h2>Map display</h2><label><input type="checkbox" checked={showMinimap} onChange={(event) => setShowMinimap(event.target.checked)} /> Show minimap</label><label><input type="checkbox" checked={showDerivedEdges} onChange={(event) => setShowDerivedEdges(event.target.checked)} /> Show edges derived from enforced frame properties</label></article>
+            <article><h2>Map display</h2><label><input type="checkbox" checked={showMinimap} onChange={(event) => setShowMinimap(event.target.checked)} /> Show minimap</label><label><input type="checkbox" checked={showDerivedEdges} onChange={(event) => setShowDerivedEdges(event.target.checked)} /> Show derived relations</label><p>Display only. Enforced derived relations still affect verification when hidden.</p></article>
             <article><h2>Motion</h2><label><input type="checkbox" checked={reduceMotion} onChange={(event) => setReduceMotion(event.target.checked)} /> Reduce interface animation</label><p>The operating-system reduced-motion preference is respected independently.</p></article>
             <article><h2>Sound</h2><label><input type="checkbox" checked={soundEffects} onChange={(event) => setSoundEffects(event.target.checked)} /> Sound effects</label><p>Short create and verification cues only. Sound is off by default; there is no background music.</p></article>
             <article><h2>Window</h2><p>Fullscreen is available directly from the global toolbar when the browser and embedding policy support it.</p></article>
             <article><h2>Privacy</h2><p>Models, formulas, settings, and study history stay in this browser. They are not automatically sent anywhere. This build uses no analytics SDK or tracking cookies; explicit exports and share links contain only the data you choose to share.</p><button type="button" className="secondary-button" onClick={openDataManager}>Manage local data</button></article>
+            <article><h2>Reset preferences</h2><p>Restore comfortable density, minimap and derived relations on, motion override and sound off, and both workspace panels open. Learning and model data are untouched.</p><button type="button" className="secondary-button" onClick={resetInterfacePreferences}>Reset interface preferences</button></article>
           </div>
         </section>
       )}
@@ -2245,8 +2396,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'campaigns' && (
         <section className="content-screen campaign-screen" aria-labelledby="campaign-screen-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Challenges and practice</p><h1 id="campaign-screen-title">Campaigns</h1><p>Choose longer challenges or focused practice collections.</p><div className="learn-callout"><strong>New to modal logic?</strong><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button></div></div></div>
-          <div className="campaign-section-tabs" role="tablist" aria-label="Campaign sections">
-            {([['challenges', 'General Challenges'], ['practice', 'Practice Library']] as const).map(([section, label]) => <button key={section} type="button" role="tab" aria-selected={campaignSection === section} aria-controls={`campaign-${section}`} className={campaignSection === section ? 'active' : ''} onClick={() => setCampaignSection(section)}>{label}</button>)}
+          <div className="campaign-section-tabs" role="tablist" aria-label="Campaign sections" onKeyDown={(event) => handleTabListKeyDown(event, ['challenges', 'practice'], campaignSection, setCampaignSection)}>
+            {([['challenges', 'General Challenges'], ['practice', 'Practice Library']] as const).map(([section, label]) => <button key={section} type="button" role="tab" tabIndex={campaignSection === section ? 0 : -1} aria-selected={campaignSection === section} aria-controls={`campaign-${section}`} className={campaignSection === section ? 'active' : ''} onClick={() => setCampaignSection(section)}>{label}</button>)}
           </div>
           {campaignSection === 'challenges' && <section className="campaign-block" id="campaign-challenges" role="tabpanel" aria-labelledby="challenges-block-title"><div className="track-heading"><div><p className="eyebrow">Longer guided campaigns</p><h2 id="challenges-block-title">General Challenges</h2><p>Combine skills after completing the corresponding introductory ideas. Recommendations are not locks.</p></div></div><div className="learn-chapter-list">{guidedCampaigns.map((campaign, index) => { const completed = campaign.levels.filter((level) => completedLevelIds.has(level.id)).length; return <article className={completed === campaign.levels.length ? 'complete' : ''} key={campaign.id}><div><p className="eyebrow">Recommended after: {campaign.recommendedAfter}</p><h3>{campaign.title}</h3><p>{campaign.description}</p><small>{completed}/{campaign.levels.length} missions · {campaign.difficulty} · {campaign.estimatedTime}</small></div><button type="button" className="primary-action" onClick={() => startGuidedCampaign(index)}>{completed === campaign.levels.length ? 'Replay campaign' : completed ? 'Continue campaign' : 'Start campaign'}</button></article> })}</div></section>}
           {campaignSection === 'practice' && <section className="campaign-block" id="campaign-practice" role="tabpanel" aria-labelledby="practice-block-title"><div className="track-heading"><div><p className="eyebrow">Non-linear targeted exercises</p><h2 id="practice-block-title">Practice Library</h2><p>Choose a collection to rehearse a particular semantic objective or construction technique.</p></div><div className="collection-progress"><strong>{overallCampaignCompleted}/{overallCampaignLevels}</strong><span>practice missions complete</span></div></div><div className="learn-chapter-list">{campaignTracks.map((track, index) => { const completed = track.levels.filter((level) => completedLevelIds.has(level.id)).length; return <article className={completed === track.levels.length ? 'complete' : ''} key={track.id}><div><p className="eyebrow">Practice collection</p><h3>{track.title}</h3><p>{track.description}</p><small>{completed}/{track.levels.length} missions</small></div><button type="button" className="secondary-button" onClick={() => { setCampaignTrackIndex(index); setAppView('practice') }}>{completed === track.levels.length ? 'Replay collection' : completed ? 'Continue practice' : 'Open collection'}</button></article> })}</div></section>}
@@ -2265,14 +2416,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <div className="screen-hero compact"><div><p className="eyebrow">Reference manual</p><h1 id="guide-screen-title" className="clean-display">Modal Logic Guide</h1><p>Look up formal Kripke semantics, modal operators, objectives, relations, controls, and terminology. Guided teaching remains in Learn.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
           <div className="guide-actions"><button type="button" className="secondary-button" onClick={() => setAppView('welcome')}>Replay Welcome to Modal Logic</button><button type="button" className="secondary-button" onClick={() => startGuidedLevel('tutorial', 0)}>Replay Learn the Controls</button><button type="button" className="secondary-button" onClick={openWorkspaceTour}>Replay workspace tour</button><button type="button" className="secondary-button" onClick={() => setAppView('learn')}>Open Learn</button><button type="button" className="secondary-button" onClick={returnToSandbox}>Try in Sandbox</button></div>
           {guideTab !== 'overview' && <div className="guide-local-nav"><button type="button" className="guide-overview-back" onClick={() => setGuideTab('overview')}>← Guide overview</button><div className="guide-path-label">{guideTab === 'objectives' || guideTab === 'controls' ? 'How to play' : 'Formal semantics'}</div></div>}
-          {guideTab !== 'overview' && <div className="guide-tabs" role="tablist" aria-label="Guide sections">{activeGuideTabs.map(([tab, label]) => <button type="button" role="tab" aria-selected={guideTab === tab} className={guideTab === tab ? 'active' : ''} onClick={() => setGuideTab(tab)} key={tab}>{label}</button>)}</div>}
+          {guideTab !== 'overview' && <div className="guide-tabs" role="tablist" aria-label="Guide sections" onKeyDown={(event) => handleTabListKeyDown(event, activeGuideTabs.map(([tab]) => tab), guideTab, setGuideTab)}>{activeGuideTabs.map(([tab, label]) => <button type="button" role="tab" tabIndex={guideTab === tab ? 0 : -1} aria-selected={guideTab === tab} className={guideTab === tab ? 'active' : ''} onClick={() => setGuideTab(tab)} key={tab}>{label}</button>)}</div>}
           <div className="guide-page-grid">
             {guideTab === 'overview' && <div className="learn-paths guide-wide" aria-label="Learning paths">
               <button type="button" className="learn-path formal" onClick={() => setGuideTab('theory')}><span>01 · Mathematical reference</span><strong>Formal Modal Semantics</strong><p>Kripke frames and models, satisfaction, modal clauses, semantic scopes, and frame properties.</p><b>Open formal guide →</b></button>
               <button type="button" className="learn-path gameplay" onClick={() => setGuideTab('controls')}><span>02 · Game and interface</span><strong>Controls and Objectives</strong><p>Quickly look up map gestures, model editing, relation display, objectives, and local data.</p><b>Open controls reference →</b></button>
             </div>}
             {guideTab === 'theory' && <><article><h2>Kripke frame</h2><p><strong>F = ⟨W,R⟩</strong>, where W is a non-empty set of worlds and <strong>R ⊆ W × W</strong> is the accessibility relation.</p></article><article><h2>Valuation</h2><p><strong>ν: Prop → ℘(W)</strong> assigns each propositional atom the worlds at which it is true.</p></article><article><h2>Kripke model</h2><p><strong>M = ⟨W,R,ν⟩</strong>. A pointed model additionally singles out an evaluation world w.</p></article><article><h2>Satisfaction</h2><p><strong>M,w ⊨ φ</strong> means that φ is true at w in M. Boolean connectives retain their classical truth conditions at each world.</p></article></>}
-            {guideTab === 'operators' && <><article><h2>Necessity</h2><p><strong>M,w ⊨ □φ</strong> iff for every v, if wRv then M,v ⊨ φ.</p></article><article><h2>Possibility</h2><p><strong>M,w ⊨ ◇φ</strong> iff there is some v such that wRv and M,v ⊨ φ.</p></article><article><h2>Vacuous truth</h2><p>If w has no successors, □φ is true and ◇φ is false. Necessity does not require a witness; possibility does.</p></article><article><h2>Nested modalities</h2><p>In □◇p, the game checks every immediate successor and then looks from each of them for a further p-successor.</p></article></>}
+            {guideTab === 'operators' && <><article><h2>Necessity</h2><p><strong>M,w ⊨ □φ</strong> iff for every v, if wRv then M,v ⊨ φ.</p></article><article><h2>Possibility</h2><p><strong>M,w ⊨ ◇φ</strong> iff there is some v such that wRv and M,v ⊨ φ.</p><StaticKripkeDiagram compact ariaLabel="Possibility witness example" evaluationWorld="w0" worlds={[{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }]} edges={[{ from: 'w0', to: 'w1' }]} /></article><article><h2>Vacuous truth</h2><p>If w has no successors, □φ is true and ◇φ is false. Necessity does not require a witness; possibility does.</p></article><article><h2>Nested modalities</h2><p>In □◇p, the game checks every immediate successor and then looks from each of them for a further p-successor.</p></article></>}
             {guideTab === 'scopes' && <><article><h2>Pointed truth</h2><p><strong>M,w ⊨ φ</strong>: evaluate one selected world under the displayed valuation.</p></article><article><h2>Model-global truth</h2><p><strong>M ⊨ φ</strong>: φ must hold at every world of the displayed model while ν remains fixed.</p></article><article><h2>Frame validity</h2><p><strong>F ⊨ φ</strong>: φ must hold at every world under every valuation on the displayed finite frame.</p></article><article><h2>Counterexamples</h2><p>A pointed or global failure identifies a world. Failure of frame validity additionally supplies a countervaluation.</p></article></>}
             {guideTab === 'relations' && <><article><h2>Frame properties</h2><p>Reflexive, symmetric, transitive, serial, Euclidean, irreflexive, and acyclic describe the accessibility relation, not the current valuation.</p></article><article><h2>Validate and enforce</h2><p>Validate reports whether a relation has a property. Enforce derives the closure needed for supported properties and displays derived edges separately.</p></article><article><h2>Modal axioms</h2><p>T, D, B, 4, and 5 are modal axiom schemas. Their validity characterizes familiar classes of frames.</p></article><article><h2>Instance comparison</h2><p>The Correspondence Lab compares both sides on one finite frame. Agreement there illustrates a theorem; it is not itself a general proof.</p></article></>}
             {guideTab === 'controls' && <><MapControlsReference onReplayTour={openWorkspaceTour} /><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
@@ -2304,13 +2455,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           progressLabel={missionProgressLabel}
           objective={activeLevel.instruction}
           state={completedLearnTask ? 'completed' : isQuestionTask ? 'question' : 'active'}
-          content={completedLearnTask && courseLesson ? <div className="mission-complete-content" role="status"><strong>{courseLesson.title}</strong><p>{courseLesson.successExplanation}</p>{courseLesson.commonMistake && <small><b>Common mistake:</b> {courseLesson.commonMistake}</small>}{!nextLearnChapter && activeLearnChapterIndex === activeLearnChapter!.lessons.length - 1 && <div className="course-next-links"><span>Course complete. Continue with:</span><button type="button" onClick={() => { setCampaignSection('challenges'); setAppView('campaigns') }}>Campaigns</button><button type="button" onClick={() => { exitCampaign(); setAppView('workspace') }}>Sandbox</button><button type="button" onClick={() => setAppView('guide')}>Guide</button></div>}</div>
+          content={completedLearnTask && courseLesson ? <div className="mission-complete-content" role="status"><strong>{learnTransferActive ? 'Transfer complete' : courseLesson.title}</strong><p>{courseLesson.successExplanation}</p>{courseLesson.commonMistake && <small><b>Common mistake:</b> {courseLesson.commonMistake}</small>}{!nextLearnChapter && activeLearnChapterIndex === activeLearnChapter!.lessons.length - 1 && <div className="course-next-links"><span>Course complete. Continue with:</span><button type="button" onClick={() => { setCampaignSection('challenges'); setAppView('campaigns') }}>Campaigns</button><button type="button" onClick={() => { exitCampaign(); setAppView('workspace') }}>Sandbox</button><button type="button" onClick={() => setAppView('guide')}>Guide</button></div>}</div>
             : isQuestionTask ? <div className="mission-question-content"><p>{activeLevel.instruction}</p><QuestionTaskPanel level={activeLevel} answer={predictionAnswer} feedback={questionFeedback} onAnswer={choosePredictionAnswer} /></div>
               : undefined}
           previouslyCompleted={completedLevelIds.has(activeLevel.id)}
           taskSteps={isHowToPlay ? activeLevel.taskSteps : undefined}
           actions={<>
             {completedLearnTask && courseLesson ? <>
+              {!learnTransferActive && courseLesson.transferTask && <button type="button" className="secondary-button" onClick={() => startLearnTransfer(courseLesson.id)}>Try optional transfer</button>}
               {(activeLearnChapterIndex < activeLearnChapter!.lessons.length - 1 || nextLearnChapter?.lessons[0]) && <button type="button" className="verify-button" onClick={() => { const lesson = activeLearnChapterIndex < activeLearnChapter!.lessons.length - 1 ? activeLearnChapter!.lessons[activeLearnChapterIndex + 1] : nextLearnChapter!.lessons[0]; startLearnLesson(learnLessons.findIndex(({ id }) => id === lesson.id)) }}>Next lesson</button>}
               <button type="button" onClick={() => setAppView('learn')}>Back to Learn overview</button>
               <button type="button" onClick={() => loadLevel(campaignLevelIndex)}>Replay lesson</button>
@@ -2328,7 +2480,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             {(courseLesson?.chapterId === 'semantic-scopes' || activeLevel.scopeComparison) && <section className="scope-definition-card"><strong>Three semantic scopes</strong><p><b>Pointed · M,w ⊨ φ:</b> one selected world under the displayed valuation.</p><p><b>Model-global · M ⊨ φ:</b> every world under the current displayed valuation.</p><p><b>Frame-valid · F ⊨ φ:</b> every world under every valuation on the fixed frame.</p></section>}
             {activeLevel.workspacePresentation?.visibleConstraints?.length && <section><strong>Remember</strong><p>{activeLevel.workspacePresentation.visibleConstraints.join(' ')}</p></section>}
             {activeLevel.targetAnalysis && <section><strong>Analyse the target</strong>{activeLevel.targetAnalysis.map((item) => <p key={item}>{item}</p>)}</section>}
-            {courseLesson?.hints && <section className="mission-hints"><strong>Lesson hints</strong><div>{courseLesson.hints.map((hint, index) => <button type="button" key={hint} disabled={index + 1 > learnHintLevel} onClick={() => setLearnHintLevel((level) => Math.max(level, index + 1))}>Hint {index + 1}</button>)}</div>{learnHintLevel > 0 && <p>{courseLesson.hints[learnHintLevel - 1]}</p>}</section>}
+            {courseLesson?.hints && <section className="mission-hints"><strong>Lesson hints</strong><ProgressiveHints hints={courseLesson.hints} revealed={learnHintLevel} onReveal={revealLearnHint} /></section>}
             {activeLevel.hints && <section className="mission-hints"><strong>Strategic hints</strong><div>{activeLevel.hints.map((hint, index) => <button type="button" key={hint} disabled={index + 1 > guidedHintLevel} onClick={() => setGuidedHintLevel((level) => Math.max(level, index + 1))}>Hint {index + 1}</button>)}</div>{guidedHintLevel > 0 && <p>{activeLevel.hints[guidedHintLevel - 1]}</p>}</section>}
             {activeLevel.referenceSolution && <section className="reference-solution"><strong>Reference solution</strong><p>One validated construction, revealed separately from ordinary hints.</p>{(guidedHintLevel >= 3 || guestProfile.history.filter((entry) => entry.levelId === activeLevel.id && !entry.success).length >= 3) ? <><button type="button" className="secondary-button" onClick={() => { if (window.confirm('Showing the reference solution will reveal one complete construction. You can still complete the mission, but it will be recorded as assisted.')) setReferenceSolutionViewed((current) => new Set([...current, activeLevel.id])) }}>Show reference solution</button>{referenceSolutionViewed.has(activeLevel.id) && <code>Worlds: {activeLevel.referenceSolution.worlds.map((world) => `${world.id}${world.atoms ? `:{${world.atoms}}` : ':∅'}`).join(' · ')}<br />Edges: {activeLevel.referenceSolution.edges.map((edge) => `${edge.from} → ${edge.to}`).join(' · ') || '∅'}</code>}</> : <p>Available after Hint 3 or three unsuccessful attempts.</p>}</section>}
           </div> : undefined}
@@ -2345,6 +2497,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <label className="field">
             <span>Modal formula</span>
             <input ref={formulaInputRef} aria-label="Modal formula" disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
+            {formulaParseStatus && <small className={`parse-status ${formulaParseStatus}`}>Formula {formulaParseStatus}</small>}
           </label>
           {!isGuidedMode && !formulaSource.trim() && <div className="empty-card"><strong>No formula yet</strong><span>Enter an atom such as p, or start with □p / ◇p, then Verify.</span><button type="button" onClick={() => { setFormulaSource('p'); setTimeout(() => formulaInputRef.current?.focus(), 0) }}>Use p</button></div>}
           <label className="field comparison-formula">
@@ -2353,7 +2506,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           </label>
           <div className="symbol-row" aria-label="Insert symbol">
             {['¬', '∧', '∨', '→', '□', '◇'].map((symbol) => (
-              <button key={symbol} type="button" disabled={isGuidedMode} className="symbol-button" aria-label={`Insert ${symbol}`} onClick={() => setFormulaSource((value) => value + symbol)}>{symbol}</button>
+              <button key={symbol} type="button" disabled={isGuidedMode} className="symbol-button" aria-label={`Insert ${symbol}`} onClick={() => insertFormulaSymbol(symbol)}>{symbol}</button>
             ))}
           </div>
           <label className="field scope-picker">
@@ -2386,14 +2539,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <div className="panel graph-panel">
           <div className="panel-heading">
             <span className="step">02</span>
-            <div><h2>Visual model</h2><p>Drag worlds and connect their handles</p></div>
+            <div><h2>Visual model</h2><p>Drag from the world where an arrow begins and release on its destination; handle position does not set direction</p></div>
             {!isQuestionTask && <div className="model-view-switch" role="group" aria-label="Model view"><button type="button" className={modelView === 'graph' ? 'active' : ''} aria-pressed={modelView === 'graph'} onClick={() => setModelView('graph')}>Graph</button><button type="button" className={modelView === 'table' ? 'active' : ''} aria-pressed={modelView === 'table'} onClick={() => setModelView('table')}>Table</button></div>}
           </div>
           <div className="graph-canvas" ref={graphCanvasRef} onWheelCapture={handleMapWheel}>
             {modelView === 'graph' ? <ReactFlow
               nodes={flowNodes}
               edges={flowEdges}
+              nodeTypes={worldNodeTypes}
               edgeTypes={modalEdgeTypes}
+              connectionMode={ConnectionMode.Loose}
               onInit={setFlowInstance}
               onNodesChange={onNodesChange}
               nodesDraggable={canEditWorlds}
@@ -2408,35 +2563,31 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               onNodeClick={(_event, node) => {
                 const selectedWorld = worlds.find(({ key }) => key === Number(node.id))
                 if (selectedWorld && isQuestionTask && (activeLevel?.prediction?.kind === 'world-choice' || activeLevel?.prediction?.kind === 'counterexample-world')) choosePredictionAnswer(selectedWorld.id.trim())
-                else setSelectedWorldKey(Number(node.id))
-                setExpandedRelationPairKey(null)
+                else selectWorld(Number(node.id))
               }}
               onConnect={connectWorlds}
+              isValidConnection={(connection) => {
+                if (!canEditEdges || !connection.source || !connection.target) return false
+                const source = worlds.find(({ key }) => String(key) === connection.source)?.id.trim()
+                const target = worlds.find(({ key }) => String(key) === connection.target)?.id.trim()
+                return Boolean(source && target && !validateExplicitEdgeCandidate(worlds, edges, source, target))
+              }}
               onEdgeClick={(_event, edge) => {
                 const pairKey = (edge.data as { pairKey?: string } | undefined)?.pairKey
                 if (edge.id.startsWith('pair:') && pairKey) {
-                  setExpandedRelationPairKey(pairKey)
-                  setSelectedEdgeKey(null)
-                  setSelectedWorldKey(null)
+                  selectReciprocalPair(pairKey)
                   return
                 }
-                if (expandedRelationPairKey && pairKey !== expandedRelationPairKey) setExpandedRelationPairKey(null)
                 const explicitKey = explicitKeyFromFlowEdgeId(edge.id)
-                setSelectedEdgeKey(canEditEdges ? explicitKey : null)
-                setSelectedWorldKey(null)
-              }}
-              onEdgeDoubleClick={(_event, edge) => {
-                const key = explicitKeyFromFlowEdgeId(edge.id)
-                if (key !== null) deleteEdge(key)
+                selectExplicitEdge(canEditEdges ? explicitKey : null)
               }}
               onEdgesDelete={(deleted) => deleted.forEach(({ id }) => {
                 const key = explicitKeyFromFlowEdgeId(id)
                 if (key !== null) deleteEdge(key)
               })}
               onPaneClick={(event) => {
-                setSelectedEdgeKey(null)
-                setSelectedWorldKey(null)
-                setExpandedRelationPairKey(null)
+                clearGraphSelection()
+                setActiveFrameWitness(null)
                 if (shouldCreateWorldFromPaneClick({ detail: event.detail, canEditWorlds, pointerType: 'pointerType' in event ? String(event.pointerType) : 'mouse' }) && flowInstance) {
                   const position = flowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY })
                   addWorld({ x: position.x - WORLD_NODE_SIZE / 2, y: position.y - WORLD_NODE_SIZE / 2 })
@@ -2460,12 +2611,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 <button type="button" onClick={() => void flowInstance?.zoomOut()} disabled={!flowInstance} aria-label="Zoom out" title="Zoom out">−</button>
                 <button type="button" onClick={() => void flowInstance?.fitView({ padding: 0.25 })} disabled={!flowInstance || worlds.length === 0}>Fit model</button>
                 <button type="button" onClick={tidyModel} disabled={worlds.length < 2 || (gameMode !== 'sandbox' && !canEditWorlds)}>Tidy model</button>
-                {!focusedIntroWorkspace && <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>}
+                {!focusedIntroWorkspace && <button type="button" aria-label={`${showDerivedEdges ? 'Hide' : 'Show'} derived`} className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived ({derivedPairKeys.size})</button>}
                 {!focusedIntroWorkspace && <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Frame rules{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>}
                 {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
                 {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
               </Panel>
-              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><span><i className="selected" />SELECTED</span><span><i className="current" />CURRENT WORLD</span><span><i className="witness" />WITNESS</span><span><i className="counterexample" />COUNTEREXAMPLE</span><span><i className="explicit-edge" />EXPLICIT EDGE</span><span><i className="derived" />DERIVED EDGE</span><span><i className="two-way" />TWO-WAY</span><span><i className="reflexive" />EXPLICIT ↻</span><span><i className="reflexive derived-reflexive" />DERIVED ↻</span><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></Panel>
+              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><details><summary>Legend</summary><div><span><i className="selected" />SELECTED</span><span><i className="current" />CURRENT WORLD</span>{traceWitnessWorld && <span><i className="witness" />WITNESS</span>}{traceCounterexampleWorld && <span><i className="counterexample" />COUNTEREXAMPLE</span>}<span><i className="explicit-edge" />EXPLICIT EDGE</span>{derivedPairKeys.size > 0 && <span><i className="derived" />DERIVED EDGE</span>}{relationPresentations.some(({ kind }) => kind === 'bidirectional') && <span><i className="two-way" />TWO-WAY</span>}<span><i className="reflexive" />EXPLICIT ↻</span>{[...reflexiveRelations.values()].some(({ derived }) => derived) && <span><i className="reflexive derived-reflexive" />DERIVED ↻</span>}{activeTrace && <><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></>}</div></details></Panel>
+              {!showDerivedEdges && derivedPairKeys.size > 0 && <Panel position="bottom-right" className="derived-hidden-note">{derivedPairKeys.size} derived relation{derivedPairKeys.size === 1 ? '' : 's'} hidden. <span>Display only — verification still uses enforced relations.</span></Panel>}
+              {traceForcedDerivedPairKeys.size > 0 && <Panel position="top-center" className="trace-derived-note">A hidden derived relation is temporarily shown because the current trace uses it.</Panel>}
+              {workspaceStatus && <Panel position="top-center" className="workspace-live-status"><span aria-live="polite">{workspaceStatus}</span></Panel>}
               {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
               {worlds.length === 0 && (
                 <Panel position="top-center" className="empty-graph-state">
@@ -2476,8 +2630,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               {selectedWorld && (
                 <Panel position="bottom-left" className="world-inspector">
                   <div className="inspector-heading"><strong>{selectedWorld.id || 'Unnamed world'}</strong><button type="button" onClick={() => setSelectedWorldKey(null)} aria-label="Close world inspector">×</button></div>
-                  {canEditWorlds && <label><span>Name</span><input value={selectedWorld.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'id', event.target.value)} /></label>}
-                  {showValuations && tutorialAllows('valuations') && <label><span>True atoms</span><input disabled={!canEditValuations} value={selectedWorld.atoms} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(selectedWorld.key, 'atoms', event.target.value)} /></label>}
+                  {canEditWorlds && <label><span>Name</span><WorldIdInput value={selectedWorld.id} ariaLabel={`Name of world ${selectedWorld.id}`} onCommit={(value) => renameWorld(selectedWorld.key, value)} /></label>}
+                  {showValuations && tutorialAllows('valuations') && <label><span>True atoms</span><input disabled={!canEditValuations} value={selectedWorld.atoms} onFocus={saveHistoryPoint} onChange={(event) => updateWorldAtoms(selectedWorld.key, event.target.value)} /></label>}
                   <div className="inspector-actions">
                   {showEvaluationControl && tutorialAllows('evaluation') && <button type="button" onClick={() => selectEvaluationWorld(selectedWorld.id.trim())} disabled={!selectedWorld.id.trim() || !canEditEvaluation}>Set as evaluation world</button>}
                   {canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(selectedWorld.key)}>Delete</button>}
@@ -2490,14 +2644,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 pannable
                 zoomable
                 nodeComponent={MiniMapWithRelations}
-                nodeColor={(node) => node.className === 'evaluation-node' ? '#14647a' : '#7a4d26'}
+                nodeColor={(node) => node.data.isEvaluation === true ? '#14647a' : '#7a4d26'}
                 nodeStrokeColor="#f8f7f1"
                 nodeStrokeWidth={2}
                 nodeBorderRadius={50}
                 maskColor="rgba(236, 233, 223, .62)"
                 ariaLabel="Model overview and viewport control"
               />}
-            </ReactFlow> : <div className="model-table-wrap"><table className="model-table"><caption>Keyboard-accessible model view. Changes are synchronized with the graph.</caption><thead><tr><th>World</th><th>Atoms</th><th>Successors</th><th>Actions</th></tr></thead><tbody>{worlds.map((world) => <tr key={world.key} className={world.id.trim() === activeTrace?.worldId ? 'current' : ''}><td><input aria-label={`Table world ${world.id || world.key}`} disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></td><td><input aria-label={`Atoms at ${world.id || world.key}`} disabled={!canEditValuations} value={world.atoms} placeholder="none" onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></td><td>{effectiveEdges.filter(({ from }) => from === world.id.trim()).map(({ to }) => to).join(', ') || 'none'}</td><td><button type="button" onClick={() => selectEvaluationWorld(world.id.trim())} disabled={!world.id.trim() || !canEditEvaluation}>Evaluate here</button>{canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(world.key)}>Delete</button>}</td></tr>)}</tbody></table>{worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add the first world to populate both views.</span><button type="button" onClick={() => addWorld()} disabled={!canEditWorlds}>Add first world</button></div>}</div>}
+            </ReactFlow> : <div className="model-table-wrap"><table className="model-table"><caption>Keyboard-accessible model view. Changes are synchronized with the graph.</caption><thead><tr><th>World</th><th>Atoms</th><th>Effective successors</th><th>Actions</th></tr></thead><tbody>{worlds.map((world) => <tr key={world.key} className={world.id.trim() === activeTrace?.worldId ? 'current' : ''}><td><WorldIdInput ariaLabel={`Table world ${world.id || world.key}`} disabled={!canEditWorlds} value={world.id} onCommit={(value) => renameWorld(world.key, value)} /></td><td><input aria-label={`Atoms at ${world.id || world.key}`} disabled={!canEditValuations} value={world.atoms} placeholder="none" onFocus={saveHistoryPoint} onChange={(event) => updateWorldAtoms(world.key, event.target.value)} /></td><td><div className="successor-chips">{effectiveEdges.filter(({ from }) => from === world.id.trim()).map(({ from, to }) => { const derived = !explicitEdgeKeyByPair.has(`${from}\u0000${to}`); return <span key={`${from}:${to}`} className={derived ? 'derived' : 'explicit'} aria-label={`${to}, ${derived ? 'derived' : 'explicit'}`}>{to}<small>{derived ? 'derived' : 'explicit'}</small></span> })}{!effectiveEdges.some(({ from }) => from === world.id.trim()) && 'none'}</div></td><td><button type="button" onClick={() => selectEvaluationWorld(world.id.trim())} disabled={!world.id.trim() || !canEditEvaluation}>Evaluate here</button>{canEditWorlds && <button type="button" className="danger" onClick={() => removeWorld(world.key)}>Delete</button>}</td></tr>)}</tbody></table>{worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add the first world to populate both views.</span><button type="button" onClick={() => addWorld()} disabled={!canEditWorlds}>Add first world</button></div>}</div>}
           </div>
         </div>
 
@@ -2509,10 +2663,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <div className="world-list">
             {worlds.length === 0 && <div className="empty-card"><strong>No worlds yet</strong><span>Add a world to start building a model.</span></div>}
             {worlds.map((world, index) => (
-              <div className="world-row" key={world.key}>
+              <div className="world-row" key={world.key} onClick={() => selectWorld(world.key)}>
                 <span className="world-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-                {canEditWorlds || !focusedIntroWorkspace ? <label><span>World</span><input disabled={!canEditWorlds} value={world.id} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'id', event.target.value)} /></label> : <span className="readonly-world"><small>World</small>{world.id}</span>}
-                {showValuations && tutorialAllows('valuations') && <label className="atoms-field"><span>True atoms</span><input disabled={!canEditValuations} value={world.atoms} placeholder={isHowToPlay ? 'p' : 'p, q'} onFocus={saveHistoryPoint} onChange={(event) => updateWorld(world.key, 'atoms', event.target.value)} /></label>}
+                {canEditWorlds || !focusedIntroWorkspace ? <label><span>World</span><WorldIdInput ariaLabel={`World ${world.id || index + 1}`} disabled={!canEditWorlds} value={world.id} onCommit={(value) => renameWorld(world.key, value)} /></label> : <span className="readonly-world"><small>World</small>{world.id}</span>}
+                {showValuations && tutorialAllows('valuations') && <label className="atoms-field"><span>True atoms</span><input disabled={!canEditValuations} value={world.atoms} placeholder={isHowToPlay ? 'p' : 'p, q'} onFocus={saveHistoryPoint} onChange={(event) => updateWorldAtoms(world.key, event.target.value)} /></label>}
                 {canEditWorlds && <button type="button" className="remove-button" onClick={() => removeWorld(world.key)} aria-label={`Delete world ${world.id}`}>×</button>}
               </div>
             ))}
@@ -2528,23 +2682,33 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <div className="edge-list">
             {edges.length === 0 && <p className="empty-state">The model has no explicit edges.</p>}
             {edges.map((edge) => (
-              <div className="edge-row" key={edge.key}>
+              <div className="edge-row" key={edge.key} onClick={() => selectExplicitEdge(edge.key)}>
                 <span className="edge-mark" aria-hidden="true">R</span>
-                <select disabled={!canEditEdges} aria-label="Edge source world" value={edge.from} onFocus={saveHistoryPoint} onChange={(event) => { setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, from: event.target.value } : item)); setResult(null) }}>
-                  <option value="">—</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
+                <select disabled={!canEditEdges} aria-label="Edge source world" value={edge.from} onChange={(event) => { replaceEdgeEndpoint(edge.key, 'from', event.target.value) }}>
+                  {usableWorldIds.map((id) => <option key={id}>{id}</option>)}
                 </select>
                 <span className="relation-arrow" aria-hidden="true">→</span>
-                <select disabled={!canEditEdges} aria-label="Edge target world" value={edge.to} onFocus={saveHistoryPoint} onChange={(event) => { setEdges((current) => current.map((item) => item.key === edge.key ? { ...item, to: event.target.value } : item)); setResult(null) }}>
-                  <option value="">—</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
+                <select disabled={!canEditEdges} aria-label="Edge target world" value={edge.to} onChange={(event) => { replaceEdgeEndpoint(edge.key, 'to', event.target.value) }}>
+                  {usableWorldIds.map((id) => <option key={id}>{id}</option>)}
                 </select>
                 <button type="button" className="remove-button" disabled={!canEditEdges} onClick={() => deleteEdge(edge.key)} aria-label="Delete edge">×</button>
+                {edgeEditErrors[edge.key] && <small className="field-error" role="alert">{edgeEditErrors[edge.key]}</small>}
               </div>
             ))}
+            {edgeDraft && <div className="edge-row edge-draft-row">
+              <span className="edge-mark" aria-hidden="true">R</span>
+              <select aria-label="New relation source world" value={edgeDraft.from} onChange={(event) => setEdgeDraft({ from: event.target.value, to: edgeDraft.to })}><option value="">Choose source</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>
+              <span className="relation-arrow" aria-hidden="true">→</span>
+              <select aria-label="New relation target world" value={edgeDraft.to} onChange={(event) => setEdgeDraft({ from: edgeDraft.from, to: event.target.value })}><option value="">Choose destination</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>
+              <button type="button" className="secondary-button" disabled={!edgeDraft.from || !edgeDraft.to} onClick={commitEdgeDraft}>Add relation</button>
+              <button type="button" className="text-button" onClick={() => setEdgeDraft(null)}>Cancel</button>
+              {edgeDraft.error && <small className="field-error" role="alert">{edgeDraft.error}</small>}
+            </div>}
           </div>
-          {effectiveEdges.length > edges.length && (
-            <p className="derived-summary">+ {effectiveEdges.length - edges.length} edges derived from frame properties</p>
+          {derivedPairKeys.size > 0 && (
+            <p className="derived-summary">+ {derivedPairKeys.size} edge{derivedPairKeys.size === 1 ? '' : 's'} derived from frame properties. {showDerivedEdges ? 'Shown' : 'Hidden'} for display only — verification always uses enforced relations.</p>
           )}
-          <button type="button" className="secondary-button" onClick={addEdge} disabled={worlds.length === 0 || !canEditEdges}>+ Add edge</button>
+          <button type="button" className="secondary-button" onClick={addEdge} disabled={worlds.length === 0 || !canEditEdges || edgeDraft !== null}>+ Add edge</button>
         </div>}
 
         <div className="panel verify-panel">
@@ -2594,7 +2758,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
             {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
             {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Lesson note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => setLearnConceptOpen(true)}>Review concept</button>}</p>}
-            {result?.kind === 'failure' && courseLesson && activeLevelFailureCount >= 3 && <LearnRecoveryActions relatedTitle={relatedLearnLesson?.title} onReview={() => setLearnConceptOpen(true)} onHint={() => setLearnHintLevel(3)} onRelated={relatedLearnLesson ? () => startLearnLesson(learnLessons.findIndex(({ id }) => id === relatedLearnLesson.id)) : undefined} />}
+            {result?.kind === 'failure' && courseLesson && activeLevelFailureCount >= 3 && <LearnRecoveryActions relatedTitle={relatedLearnLesson?.title} onReview={() => setLearnConceptOpen(true)} onHint={() => revealLearnHint(Math.min(learnHintLevel + 1, 3))} onRelated={relatedLearnLesson ? () => startLearnLesson(learnLessons.findIndex(({ id }) => id === relatedLearnLesson.id)) : undefined} />}
             {result && 'verdict' in result && result.verdict && (
               <div className="verdict-sections">
                 {semanticFeedbackLevel === 1 && <p className="feedback-disclosure"><strong>Feedback level 1 · Try again.</strong> The objective is not met. Recheck the target scope and the part of the model relevant to the formula.</p>}
@@ -2644,7 +2808,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <div className="dialog-backdrop concept-backdrop" role="presentation" onMouseDown={() => setLearnConceptOpen(false)}>
           <section className="help-dialog lesson-concept-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-concept-title" onMouseDown={(event) => event.stopPropagation()}>
             <div className="dialog-heading"><div><p className="eyebrow">Learn Modal Logic · Lesson {activeLearnChapterIndex + 1}</p><h2 id="lesson-concept-title">{courseLesson.title}</h2></div><button type="button" className="dialog-close" onClick={() => setLearnConceptOpen(false)} aria-label="Close lesson concept">×</button></div>
-            <div className="lesson-concept-grid"><article><h3>What to do</h3><p>{activeLevel?.instruction}</p></article><article><h3>How it works</h3><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <code>{courseLesson.concept.formal}</code>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></article></div>
+            <div className="lesson-concept-grid"><article><h3>Learning objective</h3><p>{courseLesson.learningObjective}</p><h3>What to do</h3><p>{activeLevel?.instruction}</p></article><article><h3>{courseLesson.concept.heading}</h3><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <code>{courseLesson.concept.formal}</code>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul>{courseLesson.concept.warning && <p className="lesson-warning"><strong>Common pitfall:</strong> {courseLesson.concept.warning}</p>}</article>{courseLesson.workedExample && <WorkedExampleCard lessonId={courseLesson.id} example={courseLesson.workedExample} />}</div>
             <button type="button" className="primary-action" autoFocus onClick={() => setLearnConceptOpen(false)}>Start task</button>
           </section>
         </div>
@@ -2670,6 +2834,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <button type="button" className="dialog-close" onClick={() => setShowFrameRules(false)} aria-label="Close frame rules">×</button>
             </div>
             <p className="dialog-intro">Constraints are input conditions, separate from the active objective. <strong>Validate</strong> requires a property without changing the relation. <strong>Enforce</strong> computes the least closure and displays generated edges as dashed lines.</p>
+            {frameRuleConflicts.length > 0 && <div className="frame-rule-conflicts" role="status"><strong>Conflicting finite-frame requirements</strong>{frameRuleConflicts.map((conflict) => <p key={conflict.id}>{conflict.properties.join(' + ')}: {conflict.message}</p>)}</div>}
             <div className="frame-rule-grid">
               {([
                 ['reflexive', 'Reflexive', 'wRw for every world', true],
@@ -2698,7 +2863,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                       <option value="validate">Validate</option>
                       {canEnforce && <option value="enforce">Enforce</option>}
                     </select>
-                    {status && <span className={`rule-status ${status.holds ? 'pass' : 'fail'}`}>{status.holds ? 'Pass' : status.violations[0]}</span>}
+                    {status && <div className={`rule-status ${status.holds ? 'pass' : 'fail'}`}><span>{status.holds ? 'Pass' : `Fail · ${status.violations.length} violation${status.violations.length === 1 ? '' : 's'}`}</span>{!status.holds && <details><summary>Inspect violations</summary><ol>{status.witnesses.map((witness, index) => <li key={`${witness.kind}:${index}`}><span>{describeFrameWitness(witness)}</span><button type="button" className="text-button" onClick={() => { clearGraphSelection(); setActiveFrameWitness(witness); setShowFrameRules(false) }}>Show on map</button></li>)}</ol></details>}</div>}
                   </div>
                 )
               })}
@@ -2766,10 +2931,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <div><p className="eyebrow">Modal Logic Guide</p><h2 id="help-title">Guide</h2></div>
               <button type="button" className="dialog-close" onClick={() => setShowHelp(false)} aria-label="Close guide">×</button>
             </div>
-            <div className="guide-tabs" role="tablist" aria-label="Guide sections">
-              <button type="button" role="tab" aria-selected={guideTab === 'theory'} className={guideTab === 'theory' ? 'active' : ''} onClick={() => setGuideTab('theory')}>Modal logic</button>
-              <button type="button" role="tab" aria-selected={guideTab === 'controls'} className={guideTab === 'controls' ? 'active' : ''} onClick={() => setGuideTab('controls')}>Controls</button>
-              <button type="button" role="tab" aria-selected={guideTab === 'objectives'} className={guideTab === 'objectives' ? 'active' : ''} onClick={() => setGuideTab('objectives')}>Objectives & constraints</button>
+            <div className="guide-tabs" role="tablist" aria-label="Guide sections" onKeyDown={(event) => handleTabListKeyDown(event, ['theory', 'controls', 'objectives'], guideTab as 'theory' | 'controls' | 'objectives', setGuideTab)}>
+              <button type="button" role="tab" tabIndex={guideTab === 'theory' ? 0 : -1} aria-selected={guideTab === 'theory'} className={guideTab === 'theory' ? 'active' : ''} onClick={() => setGuideTab('theory')}>Modal logic</button>
+              <button type="button" role="tab" tabIndex={guideTab === 'controls' ? 0 : -1} aria-selected={guideTab === 'controls'} className={guideTab === 'controls' ? 'active' : ''} onClick={() => setGuideTab('controls')}>Controls</button>
+              <button type="button" role="tab" tabIndex={guideTab === 'objectives' ? 0 : -1} aria-selected={guideTab === 'objectives'} className={guideTab === 'objectives' ? 'active' : ''} onClick={() => setGuideTab('objectives')}>Objectives & constraints</button>
             </div>
             {isHowToPlay && <button type="button" className="secondary-button" onClick={() => { setShowHelp(false); setAppView('tutorial') }}>Replay Learn the Controls</button>}
             {guideTab === 'theory' && <div className="introduction-grid">
@@ -2802,7 +2967,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <div><h3>Valuation constraints</h3><p>An atom may be required to be true or false at a named world while other valuation choices remain editable.</p></div>
               <div><h3>Locked inputs</h3><p>A guided task can lock formulas, worlds, valuations, relations, the evaluation world, or the Constraints controls.</p></div>
               <div><h3>Campaign families</h3><p>Current campaigns cover local models and countermodels, global model building, frame validity, countervaluations, and correspondence.</p></div>
-              <div><h3>Optimization</h3><p>Maximum-size constraints create bounded or minimal constructions without changing modal semantics.</p></div>
+              <div><h3>Optimization</h3><p>Maximum-size constraints create constructions within an authored size bound without changing modal semantics.</p></div>
             </div>}
           </section>
         </div>

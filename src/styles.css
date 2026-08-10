@@ -490,14 +490,17 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 .scope-field { margin-bottom: .7rem; }
 
 .graph-canvas { min-height: 300px; flex: 1; overflow: hidden; border: 1px solid rgba(78, 84, 76, .2); border-radius: 9px; background: var(--cream); box-shadow: inset 0 0 35px rgba(44, 55, 48, .035); }
-.graph-canvas .react-flow__node-default { width: 96px; height: 96px; min-width: 96px; display: grid; place-items: center; border: 4px solid var(--brown); border-radius: 50%; background: var(--paper); color: #182019; padding: .6rem; box-shadow: 0 8px 18px rgba(49, 39, 28, .1); }
+.graph-canvas :is(.react-flow__node-default, .react-flow__node-world) { width: 96px; height: 96px; min-width: 96px; display: grid; place-items: center; border: 4px solid var(--brown); border-radius: 50%; background: var(--paper); color: #182019; padding: .6rem; box-shadow: 0 8px 18px rgba(49, 39, 28, .1); }
 .graph-canvas .react-flow__node { animation: world-arrive var(--motion-panel) var(--ease-ui); }
 .graph-canvas .react-flow__edge { animation: element-arrive var(--motion-ui) var(--ease-ui); }
-.graph-canvas .react-flow__node-default.evaluation-node { border-color: var(--petrol); box-shadow: 0 0 0 4px rgba(20, 100, 122, .16), 0 8px 18px rgba(49, 39, 28, .1); }
-.graph-canvas .react-flow__node-default.selected-world-node { box-shadow: 0 0 0 5px rgba(122, 77, 38, .16), 0 10px 22px rgba(49, 39, 28, .13); }
-.graph-canvas .react-flow__node-default.question-answer-node { box-shadow: 0 0 0 5px rgba(122, 77, 38,.32), 0 10px 22px rgba(49,39,28,.13); }
-.graph-canvas .react-flow__node-default.colliding-world-node { outline: 3px solid rgba(164,63,45,.5); outline-offset: 4px; box-shadow: 0 0 0 8px rgba(164,63,45,.12), 0 10px 22px rgba(49,39,28,.15); }
-.graph-canvas .react-flow__handle { width: 9px; height: 9px; border: 2px solid var(--paper); background: var(--petrol); }
+.graph-canvas :is(.react-flow__node-default, .react-flow__node-world).evaluation-node { border-color: var(--petrol); box-shadow: 0 0 0 4px rgba(20, 100, 122, .16), 0 8px 18px rgba(49, 39, 28, .1); }
+.graph-canvas :is(.react-flow__node-default, .react-flow__node-world).selected-world-node { box-shadow: 0 0 0 5px rgba(122, 77, 38, .16), 0 10px 22px rgba(49, 39, 28, .13); }
+.graph-canvas :is(.react-flow__node-default, .react-flow__node-world).question-answer-node { box-shadow: 0 0 0 5px rgba(122, 77, 38,.32), 0 10px 22px rgba(49,39,28,.13); }
+.graph-canvas :is(.react-flow__node-default, .react-flow__node-world).colliding-world-node { outline: 3px solid rgba(164,63,45,.5); outline-offset: 4px; box-shadow: 0 0 0 8px rgba(164,63,45,.12), 0 10px 22px rgba(49,39,28,.15); }
+.world-node-content { width: 100%; height: 100%; display: grid; place-items: center; }
+.graph-canvas .world-node-content .react-flow__handle { width: 18px; height: 18px; display: grid; place-items: center; border: 0; background: transparent; opacity: .48; }
+.graph-canvas .world-node-content .react-flow__handle i { width: 9px; height: 9px; border: 2px solid var(--paper); border-radius: 50%; background: var(--petrol); pointer-events: none; }
+.graph-canvas .react-flow__node-world:hover .react-flow__handle, .graph-canvas .react-flow__node-world.selected-world-node .react-flow__handle { opacity: 1; }
 .graph-canvas .react-flow__edge { transition: opacity var(--motion-fast) var(--ease-ui); }
 .graph-canvas .react-flow__edge-path { stroke: var(--petrol-dark); stroke-width: 2; transition: stroke var(--motion-fast) var(--ease-ui), stroke-width var(--motion-fast) var(--ease-ui), opacity var(--motion-fast) var(--ease-ui); }
 .graph-canvas .react-flow__edge.selected .react-flow__edge-path { stroke: var(--brown); stroke-width: 3; }
@@ -532,7 +535,9 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 .node-label .trace-role-badge.witness { color: #0d603d; }
 .node-label .trace-role-badge.counterexample { color: #8f2f20; }
 .node-label .trace-atom-badge { top: -1.35rem; color: var(--petrol-dark); }
-.trace-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .55rem; max-width: calc(100% - 220px); border: 1px solid rgba(92,96,87,.2); border-radius: 8px; background: rgba(248,247,241,.9); padding: .3rem .45rem; box-shadow: 0 4px 12px rgba(31,37,29,.08); }
+.trace-legend { max-width: calc(100% - 220px); border: 1px solid rgba(92,96,87,.2); border-radius: 8px; background: rgba(248,247,241,.9); padding: .3rem .45rem; box-shadow: 0 4px 12px rgba(31,37,29,.08); }
+.trace-legend summary { cursor: pointer; color: var(--petrol-dark); font-size: .62rem; font-weight: 800; text-align: center; }
+.trace-legend details > div { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem .55rem; padding-top: .35rem; }
 .trace-legend span { display: inline-flex; align-items: center; gap: .25rem; color: #4d554e; font-size: .5rem; font-weight: 800; }
 .trace-legend i { width: .65rem; height: .65rem; border: 2px solid var(--brown); border-radius: 50%; background: #fff; }
 .trace-legend i.current { border-color: var(--petrol); box-shadow: 0 0 0 2px rgba(20,100,122,.2); }
@@ -853,6 +858,52 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 .rule-status { grid-column: 1 / -1; border-radius: 5px; padding: .42rem .55rem; font-size: .67rem; line-height: 1.4; }
 .rule-status.pass { background: var(--petrol-soft); color: var(--petrol-dark); }
 .rule-status.fail { border-left: 3px solid var(--brown); background: var(--brown-soft); color: var(--brown-dark); }
+.rule-status details { margin-top: .3rem; }
+.rule-status ol { display: grid; gap: .35rem; margin: .35rem 0 0; padding-left: 1.2rem; }
+.rule-status li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.frame-rule-conflicts { margin: 0 0 .8rem; border-left: 4px solid #a43f2d; border-radius: 6px; background: #fff0ec; padding: .65rem .8rem; color: #792d20; }
+.frame-rule-conflicts p { margin: .25rem 0 0; font-size: .72rem; }
+.graph-canvas .frame-witness-node { outline: 4px double #a43f2d; outline-offset: 4px; }
+.graph-canvas .frame-witness-premise-edge .react-flow__edge-path { stroke: #a43f2d; stroke-width: 4; }
+.graph-canvas .frame-witness-missing-edge .react-flow__edge-path { stroke: #a43f2d; stroke-width: 2.5; stroke-dasharray: 5 4; opacity: .8; }
+.frame-witness-ghost-reflexive { position: absolute; inset: -1.5rem -1.55rem auto auto; display: grid; width: 1.65rem; height: 1.65rem; place-items: center; border: 2px dashed #a43f2d; border-radius: 50%; background: var(--paper); color: #a43f2d; }
+.trace-forced-derived-edge .react-flow__edge-path { opacity: 1 !important; }
+.derived-hidden-note, .trace-derived-note, .workspace-live-status { max-width: 18rem; border: 1px solid rgba(122,77,38,.25); border-radius: 7px; background: rgba(248,247,241,.94); padding: .45rem .6rem; color: #665447; font-size: .62rem; line-height: 1.4; pointer-events: none; }
+.derived-hidden-note span { display: block; }
+.world-id-input { display: grid; gap: .15rem; }
+.field-error { color: #922f20; font-size: .62rem; line-height: 1.35; }
+.edge-row .field-error { grid-column: 2 / -1; }
+.edge-draft-row { grid-template-columns: auto minmax(7rem,1fr) auto minmax(7rem,1fr) auto auto; }
+.successor-chips { display: flex; flex-wrap: wrap; gap: .25rem; }
+.successor-chips > span { display: inline-flex; gap: .2rem; border: 1px solid rgba(20,100,122,.22); border-radius: 999px; padding: .15rem .35rem; font: .65rem DM Mono, monospace; }
+.successor-chips > span.derived { border-style: dashed; color: var(--brown-dark); }
+.successor-chips small { font-size: .48rem; }
+.parse-status { color: #687068; font-size: .62rem; }
+.parse-status.valid { color: #147a50; }
+.parse-status.invalid { color: #a43f2d; }
+.resume-session-banner { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin: .8rem auto 0; width: min(1100px, calc(100% - 2rem)); border: 1px solid rgba(20,100,122,.2); border-radius: 9px; background: var(--petrol-soft); padding: .55rem .75rem; color: var(--petrol-dark); font-size: .75rem; }
+.chapter-prerequisites { color: #687068; font-size: .68rem; }
+.progressive-hints { display: grid; gap: .35rem; }
+.progressive-hints p { margin: 0; }
+.worked-example-card { grid-column: 1 / -1; display: grid; gap: .6rem; border: 1px solid rgba(20,100,122,.2); border-radius: 9px; background: rgba(220,235,239,.28); padding: .75rem; }
+.worked-example-card h3, .worked-example-card p { margin: 0; }
+.worked-example-meta { display: flex; justify-content: space-between; gap: .5rem; }
+.worked-example-card > div:last-child { display: flex; gap: .4rem; }
+.static-kripke-diagram { margin: 0; width: 100%; }
+.static-kripke-diagram svg { display: block; width: 100%; max-height: 220px; border-radius: 7px; background: rgba(255,255,255,.58); }
+.static-kripke-diagram.compact svg { max-height: 160px; }
+.static-edge { fill: none; stroke: var(--petrol-dark); stroke-width: 2; }
+.static-edge.highlighted { stroke: #a43f2d; stroke-width: 4; }
+.static-world circle { fill: var(--paper); stroke: var(--brown); stroke-width: 3; }
+.static-world.evaluation circle { stroke: var(--petrol); stroke-width: 4; }
+.static-world.highlighted circle { stroke: #a43f2d; }
+.static-world text { fill: var(--ink); font: 700 10px DM Mono, monospace; text-anchor: middle; }
+.static-world text.atoms { fill: var(--brown-dark); font-size: 8px; font-weight: 500; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; clip-path: inset(50%) !important; }
+
+@media (pointer: coarse) {
+  .graph-canvas .world-node-content .react-flow__handle { width: 24px; height: 24px; }
+}
 .dialog-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 .dialog-heading h2 { margin: 0; font: 700 2rem "Source Serif 4", Georgia, serif; }
 .dialog-close { width: 2.5rem; height: 2.5rem; border: 1px solid #c7c4b9; border-radius: 50%; background: transparent; color: var(--brown); font-size: 1.4rem; }
