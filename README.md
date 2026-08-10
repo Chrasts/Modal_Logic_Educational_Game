@@ -118,6 +118,22 @@ separate. A self-loop is shown only as ↻ on its world: a solid badge is explic
 and a dashed badge is derived. The table view always lists the underlying
 directed successors, including self-loops.
 
+Each world has four loose connection points. Relation direction is determined
+only by the world where a drag starts and the world where it ends; the chosen
+side of either world has no semantic meaning. New relations remain drafts until
+both endpoints are chosen. Committed world names and explicit ordered pairs are
+validated for uniqueness, and deleting a world removes only that world and its
+incident relations—no predecessor/successor bridge is invented. Select a world
+or explicit relation and press `Delete`/`Backspace`; the complete edit is one
+undoable history step.
+
+Frame rules affect the effective relation used by verification. Derived pairs
+remain semantically active when hidden, and the interface reports how many are
+hidden; a hidden pair needed by the current evaluation trace is temporarily
+shown. Frame-property failures list structured witnesses that can be highlighted
+on the map without adding the missing relation. **Tidy model** always lays out
+the explicit relation and never rewrites semantic data.
+
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.
 Purely structural introductory tasks use construction-only objectives: they
@@ -223,6 +239,10 @@ Requires Node.js 20 or newer.
 npm install
 npm run dev
 ```
+
+Run unit/integration tests with `npm test`, the production build with
+`npm run build`, and Chromium workspace journeys with `npm run test:e2e` after
+installing the Playwright browser once via `npx playwright install chromium`.
 
 Vite will print the local address. If Windows PowerShell blocks `npm.ps1`, use
 `npm.cmd run dev` instead.

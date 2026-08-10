@@ -1,0 +1,38 @@
+import { expect, test } from '@playwright/test'
+
+test('fresh learner reaches the controls workspace and sees direction-by-drag copy', async ({ page }) => {
+  await page.goto('./')
+  await page.getByRole('button', { name: /Start or continue Learn/ }).click()
+  await expect(page.getByRole('heading', { name: 'Welcome to Modal Logic' })).toBeVisible()
+  await page.getByRole('button', { name: 'Begin with the controls' }).click()
+  await expect(page.getByRole('region', { name: 'Current lesson' })).toBeVisible()
+  await page.getByRole('button', { name: 'Skip workspace tour' }).click()
+  await page.getByRole('button', { name: 'Back to Learn' }).click()
+  await page.getByRole('button', { name: 'View lessons' }).first().click()
+  await page.getByRole('button', { name: 'Open' }).nth(2).click()
+  await expect(page.getByRole('region', { name: 'Kripke model editor' }).getByText(/handle position.*does not set direction/i)).toBeVisible()
+})
+
+test('semantic lesson opens its workspace-first concept dialog with a worked example', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    localStorage.setItem('logic-game:learn-progress:v1', JSON.stringify({ version: 1, contentRevision: 3, welcomeViewed: true, completedLessonIds: [], completedChapterIds: [], highestStageByLesson: {}, attemptsByLesson: {}, successfulAttemptsByLesson: {}, predictionAnswers: {}, predictionCorrectness: {}, hintsUsed: {}, transferCompletedLessonIds: [], completedAt: {} }))
+  })
+  await page.goto('./')
+  await page.getByRole('button', { name: 'Learn', exact: true }).click()
+  const possibilityChapter = page.getByRole('heading', { name: 'Possibility', exact: true }).locator('xpath=ancestor::article')
+  await possibilityChapter.getByRole('button', { name: 'Start', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'A possible alternative' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Worked example' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Start task' }).click()
+  await page.getByText('Details & hints').click()
+  await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeVisible()
+  await page.getByRole('button', { name: 'Toggle Model panel' }).click()
+  await page.getByRole('textbox', { name: 'True atoms' }).nth(1).fill('p')
+  await page.getByRole('button', { name: 'Check task' }).click()
+  await expect(page.getByText('Task complete', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Next lesson' })).toBeVisible()
+})
