@@ -368,15 +368,23 @@ drag overlap is allowed and only receives transient visual feedback.
 
 `relation-presentation.ts` groups displayed directed reverse pairs without
 changing stored relation data. A pair is collapsed into one two-arrow edge until
-clicked; expanded directions reuse reverse-pair routing. Filled markers mean
-explicit and open brown markers mean derived. Hiding derived edges happens before
-grouping. The custom modal edge router still handles horizontal, near-vertical,
-reverse-pair, and self-loop paths with a 22px interaction width.
+clicked; expanded directions use opposite curves. Filled markers mean explicit
+and open brown markers mean derived. Hiding derived edges happens before grouping.
+Self-loops are removed from ordinary FlowEdge presentation and represented by the
+interactive world badge only. `relation-routing.ts` reads live React Flow node
+geometry for floating circular-perimeter endpoints and assigns deterministic
+angle-bucket lanes to nearby incident relations.
 
-`model-layout.ts` implements deterministic breadth-first Tidy layout with stable
-component ordering. Tidy saves one history snapshot and preserves verification;
-Fit changes only the React Flow viewport. Position-only history entries preserve
-the current result through undo/redo.
+`model-layout.ts` extracts weakly connected components, lays each related block
+out on compact deterministic BFS/radial rings, groups isolates in a small grid,
+and shelf-packs the resulting bounds in two dimensions. Tidy saves one history
+snapshot and preserves verification; Fit changes only the React Flow viewport.
+Position-only history entries preserve the current result through undo/redo.
+
+Collision highlighting is patched onto the current `flowNodes` array and never
+reconstructs live positions during pointer movement. The application model
+receives the final position only on drag stop, so edges follow React Flow's live
+node geometry while the drag remains one presentation-only history step.
 
 Manual map QA before release:
 
@@ -384,15 +392,17 @@ Manual map QA before release:
   mouse wheel zooms under the pointer, pinch zooms faster, and scrolling outside
   the map moves the page normally.
 - Double-click empty desktop map space creates one world at the expected flow
-  coordinate, while nodes, edges, touch input, and locked missions do not.
+  coordinate without zooming, while nodes, edges, touch input, and locked
+  missions do not create worlds.
 - Reverse pairs collapse to one relation, expand on click, preserve direction
   marker provenance, and collapse through Escape or a pane click.
 - Tidy is one undo/redo step, does not change semantics or verification, and Fit
   does not create a history entry.
-- A self-loop is visibly outside its world, can be selected through its wide
-  hit area, and Backspace/Delete removes only the edge when editing is allowed.
-- Near-vertical arrows, reverse pairs, and arrowheads remain separated while
-  dragging worlds; question tasks never mutate the model.
+- An explicit self-loop is a solid ↻ badge, a derived self-loop is dashed, no
+  ordinary loop curve is visible, and Backspace/Delete removes only an editable
+  explicit relation.
+- Perimeter endpoints, route lanes, reverse pairs, and arrowheads remain separated
+  while dragging worlds; question tasks never mutate the model.
 
 The duplicate-content audit uses `createLevelFingerprint`. It ignores layout
 coordinates and normalizes world names, valuations, edges, objectives and

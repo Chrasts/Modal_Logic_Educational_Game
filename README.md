@@ -108,12 +108,15 @@ controls provide Zoom in/out and Fit model. **Tidy model** deterministically
 repositions worlds as one undoable presentation step; Fit changes only the
 viewport. New worlds appear near the selected world or viewport centre, avoid
 immediate spawn collisions, and can also be created by double-clicking empty
-desktop map space.
+desktop map space. That double-click creates exactly one world and does not zoom.
 
 Reverse directed pairs are normally presented as one bidirectional relation.
 Clicking it temporarily expands the two directions for inspection or deletion.
 Explicit and rule-derived directions keep distinct filled/open arrowheads, while
-the table view always lists the underlying directed successors.
+floating perimeter endpoints and deterministic route lanes keep nearby relations
+separate. A self-loop is shown only as ↻ on its world: a solid badge is explicit
+and a dashed badge is derived. The table view always lists the underlying
+directed successors, including self-loops.
 
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.

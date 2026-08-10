@@ -67,14 +67,17 @@ constraints without a placeholder formula or semantic target controls.
 
 Lesson progress and next/previous navigation are local to the current chapter;
 completion stays in the mission panel while the map remains mounted and
-unchanged. A fresh section shows Start, a partial section shows Continue and
-Restart section, and every chapter card can expand to show its completed,
-current, and unfinished lessons. Restart reopens current completion while keeping attempt history; Replay
+unchanged. Learn the Controls follows the same collection contract as semantic
+chapters and expands its six existing tutorial levels inline. A fresh section
+shows Start, a partial section shows Continue and Restart section, and every
+collection card can expand to show its completed, current, and unfinished
+lessons. Restart reopens current completion while keeping attempt history; Replay
 does not clear progress. Start and Continue are primary actions, Replay is
 secondary, and View/Hide lessons is tertiary. Once every available task is
-complete, the overview shows a completion status instead of a no-op global
-Replay Learning button; replay remains granular by introduction, Controls,
-section, or lesson. When authoring a further chapter, add fully specified
+complete, the progress block is the single course-completion message; there is
+no inert completion box or no-op global Replay Learning button. Replay remains
+granular by introduction, Controls section, semantic section, or lesson. When
+authoring a further chapter, add fully specified
 `LearnLesson` objects and tests for formulas, initial models, constraints, and
 expected semantic outcomes before exposing the chapter in the browser.
 
