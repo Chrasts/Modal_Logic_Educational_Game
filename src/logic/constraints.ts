@@ -93,7 +93,7 @@ export function describeConstructionConstraints(constraints: ConstructionConstra
     if (constraints.minimumEdges !== undefined) descriptions.push(`≥ ${constraints.minimumEdges} explicit edges`)
     if (constraints.maximumEdges !== undefined) descriptions.push(`≤ ${constraints.maximumEdges} explicit edges`)
   }
-  if (constraints.maximumChanges !== undefined) descriptions.push(`â‰¤ ${constraints.maximumChanges} changes from start`)
+  if (constraints.maximumChanges !== undefined) descriptions.push(`≤ ${constraints.maximumChanges} changes from start`)
   for (const edge of constraints.requiredEdges ?? []) descriptions.push(`require ${relationLabel(edge)}`)
   for (const edge of constraints.forbiddenEdges ?? []) descriptions.push(`forbid ${relationLabel(edge)}`)
   for (const [world, atoms] of Object.entries(constraints.requiredAtoms ?? {})) for (const atom of atoms) descriptions.push(`${atom} true at ${world}`)

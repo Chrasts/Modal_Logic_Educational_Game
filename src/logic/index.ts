@@ -1,6 +1,7 @@
 export * from './evaluate'
 export * from './constraints'
 export * from './frame'
+export * from './frame-rule-conflicts'
 export * from './formula'
 export * from './model'
 export * from './objective'

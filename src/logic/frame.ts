@@ -9,10 +9,20 @@ export interface FrameProperties {
 
 export type FramePropertyName = 'reflexive' | 'symmetric' | 'transitive' | 'euclidean' | 'serial' | 'irreflexive' | 'acyclic'
 
+export type FramePropertyWitness =
+  | { readonly kind: 'missing-reflexive'; readonly world: WorldId }
+  | { readonly kind: 'irreflexive-loop'; readonly world: WorldId }
+  | { readonly kind: 'missing-successor'; readonly world: WorldId }
+  | { readonly kind: 'missing-symmetric'; readonly edge: AccessibilityEdge; readonly missing: AccessibilityEdge }
+  | { readonly kind: 'missing-transitive'; readonly first: AccessibilityEdge; readonly second: AccessibilityEdge; readonly missing: AccessibilityEdge }
+  | { readonly kind: 'missing-euclidean'; readonly first: AccessibilityEdge; readonly second: AccessibilityEdge; readonly missing: AccessibilityEdge }
+  | { readonly kind: 'cycle'; readonly worlds: readonly WorldId[] }
+
 export interface FramePropertyResult {
   readonly property: FramePropertyName
   readonly holds: boolean
   readonly violations: readonly string[]
+  readonly witnesses: readonly FramePropertyWitness[]
 }
 
 const edgeKey = (from: WorldId, to: WorldId) => `${from}\u0000${to}`
@@ -84,37 +94,42 @@ export function checkFrameProperty(
   const relation = new Set(edges.map(({ from, to }) => edgeKey(from, to)))
   const has = (from: WorldId, to: WorldId) => relation.has(edgeKey(from, to))
   const violations: string[] = []
+  const witnesses: FramePropertyWitness[] = []
 
   if (property === 'reflexive') {
-    for (const world of worldIds) if (!has(world, world)) violations.push(`${world} R ${world} is missing.`)
+    for (const world of worldIds) if (!has(world, world)) { violations.push(`${world} R ${world} is missing.`); witnesses.push({ kind: 'missing-reflexive', world }) }
   } else if (property === 'irreflexive') {
-    for (const world of worldIds) if (has(world, world)) violations.push(`${world} R ${world} violates irreflexivity.`)
+    for (const world of worldIds) if (has(world, world)) { violations.push(`${world} R ${world} violates irreflexivity.`); witnesses.push({ kind: 'irreflexive-loop', world }) }
   } else if (property === 'serial') {
-    for (const world of worldIds) if (!worldIds.some((target) => has(world, target))) violations.push(`${world} has no successor.`)
+    for (const world of worldIds) if (!worldIds.some((target) => has(world, target))) { violations.push(`${world} has no successor.`); witnesses.push({ kind: 'missing-successor', world }) }
   } else if (property === 'symmetric') {
-    for (const { from, to } of edges) if (!has(to, from)) violations.push(`${from} R ${to}, but ${to} R ${from} is missing.`)
+    for (const edge of edges) if (!has(edge.to, edge.from)) { violations.push(`${edge.from} R ${edge.to}, but ${edge.to} R ${edge.from} is missing.`); witnesses.push({ kind: 'missing-symmetric', edge, missing: { from: edge.to, to: edge.from } }) }
   } else if (property === 'transitive') {
     for (const first of edges) for (const second of edges) {
-      if (first.to === second.from && !has(first.from, second.to)) violations.push(`${first.from} R ${first.to} and ${second.from} R ${second.to}, but ${first.from} R ${second.to} is missing.`)
+      if (first.to === second.from && !has(first.from, second.to)) { violations.push(`${first.from} R ${first.to} and ${second.from} R ${second.to}, but ${first.from} R ${second.to} is missing.`); witnesses.push({ kind: 'missing-transitive', first, second, missing: { from: first.from, to: second.to } }) }
     }
   } else if (property === 'euclidean') {
     for (const first of edges) for (const second of edges) {
-      if (first.from === second.from && !has(first.to, second.to)) violations.push(`${first.from} R ${first.to} and ${first.from} R ${second.to}, but ${first.to} R ${second.to} is missing.`)
+      if (first.from === second.from && !has(first.to, second.to)) { violations.push(`${first.from} R ${first.to} and ${first.from} R ${second.to}, but ${first.to} R ${second.to} is missing.`); witnesses.push({ kind: 'missing-euclidean', first, second, missing: { from: first.to, to: second.to } }) }
     }
   } else if (property === 'acyclic') {
-    const visiting = new Set<WorldId>()
     const visited = new Set<WorldId>()
-    const visit = (world: WorldId): boolean => {
-      if (visiting.has(world)) return true
-      if (visited.has(world)) return false
-      visiting.add(world)
-      for (const target of worldIds) if (has(world, target) && visit(target)) return true
-      visiting.delete(world)
+    const path: WorldId[] = []
+    let cycle: readonly WorldId[] | null = null
+    const visit = (world: WorldId): void => {
+      if (cycle || visited.has(world)) return
+      const inPath = path.indexOf(world)
+      if (inPath >= 0) { cycle = [...path.slice(inPath), world]; return }
+      path.push(world)
+      for (const target of worldIds) if (has(world, target)) visit(target)
+      path.pop()
       visited.add(world)
-      return false
     }
-    if (worldIds.some(visit)) violations.push('The accessibility relation contains a directed cycle.')
+    for (const world of worldIds) visit(world)
+    const foundCycle = cycle as readonly WorldId[] | null
+    if (foundCycle) { violations.push(`The accessibility relation contains a directed cycle: ${foundCycle.join(' R ')}.`); witnesses.push({ kind: 'cycle', worlds: foundCycle }) }
   }
 
-  return { property, holds: violations.length === 0, violations: [...new Set(violations)] }
+  const uniqueViolations = [...new Set(violations)]
+  return { property, holds: uniqueViolations.length === 0, violations: uniqueViolations, witnesses }
 }

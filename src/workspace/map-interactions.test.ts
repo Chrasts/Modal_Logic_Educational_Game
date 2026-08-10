@@ -1,17 +1,21 @@
 import { PanOnScrollMode } from '@xyflow/react'
 import { describe, expect, it } from 'vitest'
-import { applyMapWheelGesture, classifyMapWheelGesture, MAP_MAX_ZOOM, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER } from './map-interactions'
+import { applyMapWheelGesture, classifyMapWheelGesture, MAP_MAX_ZOOM, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER, resolveMapWheelHandling } from './map-interactions'
 
 describe('model map gesture contract', () => {
   it('keeps native drag-pan and touch pinch while custom handling wheel events', () => {
     expect(modelMapInteractionProps).toEqual({
-      panOnScroll: false,
+      panOnScroll: true,
       panOnScrollMode: PanOnScrollMode.Free,
       zoomOnScroll: false,
       zoomOnDoubleClick: false,
       zoomOnPinch: true,
       panOnDrag: true,
     })
+  })
+
+  it('leaves trackpad pan to React Flow without a custom viewport mutation', () => {
+    expect(resolveMapWheelHandling({ ctrlKey: false, deltaMode: 0, deltaX: 8, deltaY: 0 }, { x: 1, y: 2, zoom: 1 }, { x: 10, y: 10 })).toEqual({ gesture: 'trackpad-pan', useNativePan: true })
   })
 
   it('classifies coarse wheel, fine 2D pan, and browser pinch gestures', () => {

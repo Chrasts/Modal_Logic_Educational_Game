@@ -25,6 +25,12 @@ export interface MapWheelApplication {
   readonly viewport: MapViewport
 }
 
+export interface MapWheelHandling {
+  readonly gesture: MapWheelGesture
+  readonly useNativePan: boolean
+  readonly application?: MapWheelApplication
+}
+
 /**
  * Browsers expose both a mouse wheel and two-finger scrolling as WheelEvent.
  * This intentionally conservative heuristic favours 2D/fine pixel deltas as
@@ -67,9 +73,15 @@ export function applyMapWheelGesture(
   }
 }
 
-/** React Flow handles drag-pan and touch pinch; WheelEvent handling is custom. */
+export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }): MapWheelHandling {
+  const gesture = classifyMapWheelGesture(event)
+  if (gesture === 'trackpad-pan') return { gesture, useNativePan: true }
+  return { gesture, useNativePan: false, application: applyMapWheelGesture(event, viewport, pointer) }
+}
+
+/** React Flow handles free two-axis touchpad pan, drag-pan and touch pinch. */
 export const modelMapInteractionProps = Object.freeze({
-  panOnScroll: false,
+  panOnScroll: true,
   panOnScrollMode: PanOnScrollMode.Free,
   zoomOnScroll: false,
   zoomOnDoubleClick: false,
