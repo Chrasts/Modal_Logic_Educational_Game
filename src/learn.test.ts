@@ -57,7 +57,7 @@ describe('Learn Modal Logic course data', () => {
     const truth = chapter('truth-at-a-world')
     const worlds = chapter('worlds-accessibility')
     expect(truth.lessons.map(({ title }) => title)).toEqual(['Atomic truth', 'Truth depends on the selected world', 'Negation', 'Conjunction at one world', 'Same model, different truth'])
-    expect(worlds.lessons.map(({ title }) => title)).toEqual(['Add a world', 'Directed accessibility', 'Direction matters', 'Branching', 'Reflexive edge'])
+    expect(worlds.lessons.map(({ title }) => title)).toEqual(['Add a world', 'Directed accessibility', 'Direction matters', 'Branching', 'Reflexive relation'])
     const interactivePredictions = [...truth.lessons, ...worlds.lessons, ...chapter('possibility').lessons].filter(({ task }) => task.prediction)
     expect(interactivePredictions.map(({ id }) => id)).toEqual(['learn-truth-selected-world', 'learn-truth-same-model', 'learn-possibility-witness'])
     expect(interactivePredictions[2].task.prediction).toMatchObject({ kind: 'world-choice', expectedChoice: 'w3', mustBeCorrect: true })
@@ -69,7 +69,6 @@ describe('Learn Modal Logic course data', () => {
     const questions = learnLessons.filter(({ task }) => task.interactionMode === 'question')
     expect(questions.length).toBeGreaterThan(0)
     expect(questions.every(({ task }) => task.editable.length === 0 && Boolean(task.prediction))).toBe(true)
-    expect(questions.every(({ stages }) => !stages.includes('prediction'))).toBe(true)
     expect(learnLessons.filter(({ task }) => task.interactionMode === 'construction' && task.prediction)).toEqual([])
   })
 

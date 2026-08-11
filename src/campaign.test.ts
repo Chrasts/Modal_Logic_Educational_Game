@@ -7,6 +7,7 @@ const correspondenceProperties: Record<string, FramePropertyName> = { t: 'reflex
 const verify = (id: string, edges: readonly AccessibilityEdge[], valuation?: Record<string, string[]>) => {
   const item = level(id)
   const worldIds = item.worlds.map((world) => world.id)
+  if (isConstructionLevel(item)) return verifyConstructionObjective(item.structuralObjective ?? {}, { evaluationWorld: item.evaluationWorld })
   return verifyObjective({
     scope: item.scope!,
     targetTruth: item.targetTruth!,

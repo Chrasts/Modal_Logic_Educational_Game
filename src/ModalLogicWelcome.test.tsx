@@ -8,14 +8,14 @@ import { ModalLogicWelcome } from './ModalLogicWelcome'
 afterEach(cleanup)
 
 describe('ModalLogicWelcome', () => {
-  it('introduces both modal operators and the finite modelling scope', () => {
+  it('introduces both modal operators in a concise introduction', () => {
     const { container } = render(<ModalLogicWelcome onBegin={vi.fn()} onSkip={vi.fn()} onBack={vi.fn()} />)
     expect(screen.getByRole('heading', { name: 'Necessity — □φ' })).toBeVisible()
     expect(screen.getByText(/every world accessible from it/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Possibility — ◇φ' })).toBeVisible()
     expect(screen.getByText(/at least one world accessible from it/)).toBeVisible()
-    expect(screen.getByText(/long-established formal tool for modelling/)).toBeVisible()
-    expect(screen.getByText(/finite Kripke semantics for basic modal logic/)).toBeVisible()
+    expect(screen.getByText('Learn Modal Logic · Introduction')).toBeVisible()
+    expect(screen.getByText(/useful foundation for reasoning about systems, information, and time/)).toBeVisible()
     const symbols = container.querySelectorAll('svg.modal-operator-symbol[aria-hidden="true"]')
     expect(symbols).toHaveLength(2)
     expect(symbols[0].getAttribute('class')).toBe(symbols[1].getAttribute('class'))

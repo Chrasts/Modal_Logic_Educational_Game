@@ -10,6 +10,8 @@ export interface WorkspacePresentation {
   readonly valuations?: boolean
   readonly edges?: boolean
   readonly evaluation?: boolean
+  /** Locks visual node placement without changing semantic world permissions. */
+  readonly lockLayout?: boolean
   /** Authored, learner-facing guardrails. Raw implementation bounds stay hidden. */
   readonly visibleConstraints?: readonly string[]
 }
@@ -130,115 +132,7 @@ export function validateLevelObjective(level: GameLevel): void {
   }
 }
 
-const legacyTutorialLevelDefinitions: readonly GameLevel[] = [
-  {
-    id: 'tutorial-evaluation', chapter: 'Tutorial', title: 'Evaluation world', concept: 'Truth at the selected world',
-    learningObjective: 'Distinguish truth at a designated world from truth elsewhere in the same model.',
-    briefing: 'The petrol outline marks the evaluation world used by a pointed objective. Select a world on the map, or use the Evaluation world control in the Verification panel.',
-    instruction: 'Make p true at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], editable: ['evaluation'],
-  },
-  {
-    id: 'tutorial-add-world', chapter: 'Tutorial', title: 'Adding a world', concept: 'World controls',
-    learningObjective: 'Construct the carrier set W by adding and positioning worlds.',
-    briefing: 'Use + World above the map or + Add world in the Worlds and valuations panel. New worlds receive a unique default name and can be repositioned on the map.',
-    instruction: 'Create a model with exactly three worlds.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3 }, editable: ['worlds'],
-  },
-  {
-    id: 'tutorial-valuation', chapter: 'Tutorial', title: 'Editing a valuation', concept: 'True atoms and ν',
-    learningObjective: 'Read and edit the valuation ν at an individual world.',
-    briefing: 'Edit the True atoms field in the Worlds and valuations panel or select a world on the map and use its inspector. Separate several atoms with spaces or commas.',
-    instruction: 'Make p true at w0.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['valuations'],
-  },
-  {
-    id: 'tutorial-add-relation', chapter: 'Tutorial', title: 'Accessibility', concept: 'R ⊆ W × W · M,w ⊨ ◇φ',
-    learningObjective: 'Use accessibility to provide a witness world for a possibility formula.',
-    briefing: 'A relation is a directed arrow between worlds. Create one by dragging between handles on the map or by using the Accessibility panel.',
-    instruction: 'Make ◇p true at w0.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 75, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 265, y: 130 } }, { id: 'w2', atoms: 'q', position: { x: 455, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-remove-relation', chapter: 'Tutorial', title: 'Necessity and valuations', concept: 'M,w ⊨ □φ',
-    learningObjective: 'Recognize that every accessible successor must satisfy the operand of □.',
-    briefing: 'The arrows are already fixed. Use the valuation editor to make p true at every world accessible from w0.',
-    instruction: 'Make □p true at w0 by changing the valuation.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }] }, editable: ['valuations'],
-  },
-  {
-    id: 'tutorial-global-model', chapter: 'Tutorial', title: 'Global truth in a model', concept: 'M ⊨ φ iff ∀w ∈ W: M,w ⊨ φ',
-    learningObjective: 'Distinguish model-global truth under a fixed valuation from pointed truth.',
-    briefing: 'In the game, “true globally in the model” checks every world while keeping the displayed valuation fixed. A single counterexample world makes the objective fail.',
-    instruction: 'Make p ∨ ◇p true globally in M.', formula: 'p ∨ ◇p', scope: 'model', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 1 }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-frame-constraint', chapter: 'Tutorial', title: 'Frames and global constraints', concept: 'F ⊨ φ iff ∀ν ∀w ∈ W: ⟨F,ν⟩,w ⊨ φ',
-    learningObjective: 'Distinguish frame validity over all valuations from truth in one displayed model.',
-    briefing: '“Valid on the frame” checks every world under every possible valuation, not only the atoms currently displayed. Constraints can validate a relational property or enforce its closure globally.',
-    instruction: 'Globally enforce reflexivity and verify □p → p on the resulting frame.', formula: '□p → p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], requiredFrameRules: { reflexive: 'enforce' }, constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['constraints'],
-  },
-  {
-    id: 'tutorial-correspondence', chapter: 'Tutorial', title: 'Formula and relation', concept: 'F ⊨ p → □◇p iff R is symmetric',
-    learningObjective: 'Compare validity of a modal axiom with its corresponding relational property on one finite frame.',
-    briefing: 'A correspondence claim compares modal frame validity with a property of R. Verification reports F ⊨ φ, the relational condition, and their agreement on the current finite frame separately.',
-    instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2 }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-recap', chapter: 'Tutorial', title: 'Model-building recap', concept: 'Worlds, valuations, relations, and pointed truth together',
-    learningObjective: 'Coordinate worlds, valuation, accessibility, and an evaluation point in one construction.',
-    briefing: 'This recap combines the editor operations from the preceding lessons. Build the required three-world model, set its valuation, and choose exactly two accessibility edges.',
-    instruction: 'Make ◇p ∧ □(p ∨ q) true at w0 using exactly three worlds and two relations.', formula: '◇p ∧ □(p ∨ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }],
-    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['worlds', 'valuations', 'edges', 'evaluation'],
-  },
-  {
-    id: 'tutorial-accessibility', chapter: 'Tutorial', title: 'Drawing accessibility', concept: 'R is a directed binary relation on W',
-    learningObjective: 'Create and read the direction of an accessibility edge independently of modal evaluation.',
-    briefing: 'Draw one directed edge by dragging between world handles or by using the Accessibility panel. The source and target order matters.',
-    instruction: 'Create exactly one accessibility edge from w0 to w1.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-nested-modalities', chapter: 'Tutorial', title: 'Nested modalities', concept: 'Modal depth follows successive accessibility steps',
-    learningObjective: 'Evaluate a nested possibility by following two successive accessibility steps.',
-    briefing: 'Before verification, predict the truth value of the completed construction. The evaluation tree will then expose both modal steps.',
-    instruction: 'Make ◇◇p true at w0 using exactly two edges.', formula: '◇◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    prediction: { kind: 'truth', prompt: 'Will ◇◇p be true at w0 in your completed model?' },
-    worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: '', position: { x: 260, y: 130 } }, { id: 'w2', atoms: 'p', position: { x: 450, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-local-countermodel', chapter: 'Tutorial', title: 'Locate a counterexample', concept: 'One failing world refutes model-global truth',
-    learningObjective: 'Construct and identify a world witnessing failure of a model-global formula.',
-    briefing: 'A model-global objective fails as soon as one world falsifies the formula. Predict that counterexample world before verification.',
-    instruction: 'Remove one edge so □p → p is false somewhere in the model.', formula: '□p → p', scope: 'model', targetTruth: false, evaluationWorld: 'w0',
-    prediction: { kind: 'counterexample-world', prompt: 'Which world will falsify □p → p?' },
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
-  },
-  {
-    id: 'tutorial-relational-property', chapter: 'Tutorial', title: 'Relational properties', concept: 'Frame constraints are properties of R',
-    learningObjective: 'Repair a relation so that it satisfies symmetry independently of the displayed valuation.',
-    briefing: 'Validate checks a property without changing the relation. A directed edge is symmetric only when its reverse edge is present.',
-    instruction: 'Make the relation symmetric while retaining the required edge.', formula: 'p → p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredEdges: [{ from: 'w0', to: 'w1' }], maximumEdges: 2 }, editable: ['edges'],
-  },
-]
-
+// Retained only for migration of pre-v2 local progress.
 export const legacyTutorialLevelIds = [
   'tutorial-valuation',
   'tutorial-evaluation',
@@ -254,12 +148,6 @@ export const legacyTutorialLevelIds = [
   'tutorial-correspondence',
   'tutorial-recap',
 ] as const
-
-const legacyTutorialLevels: readonly GameLevel[] = legacyTutorialLevelIds.map((id) => {
-  const level = legacyTutorialLevelDefinitions.find((candidate) => candidate.id === id)
-  if (!level) throw new Error(`Unknown tutorial level: ${id}`)
-  return level
-})
 
 /**
  * Version 2 of How to Play intentionally replaces the former semantic course.
@@ -288,8 +176,8 @@ export const tutorialLevels: readonly GameLevel[] = [
     taskSteps: ['Select w0.', 'Add q to True atoms.', 'Check task.'],
   },
   {
-    id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility edge', concept: 'Directed arrows',
-    learningObjective: 'Create a directed accessibility edge.',
+    id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility relation', concept: 'Directed arrows',
+    learningObjective: 'Create a directed accessibility relation.',
     briefing: 'Start dragging a relation from the world where the arrow should begin and release it on the destination world. The connection point around a world is only a convenient handle; it does not determine direction.',
     successDebrief: 'Accessibility is directional: w0 → w1 is different from w1 → w0.',
     instruction: 'Draw an arrow from w0 to w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
@@ -298,10 +186,10 @@ export const tutorialLevels: readonly GameLevel[] = [
     taskSteps: ['Start dragging from any connection point on w0.', 'Release on any connection point on w1.', 'Check task.'],
   },
   {
-    id: 'tutorial-v2-correct-edge', chapter: 'How to Play', title: 'Correct an edge', concept: 'Editing arrows',
-    learningObjective: 'Select, delete, and redraw a directed edge.',
+    id: 'tutorial-v2-correct-edge', chapter: 'How to Play', title: 'Correct a relation', concept: 'Editing arrows',
+    learningObjective: 'Select, delete, and redraw a directed relation.',
     briefing: 'Select the existing arrow and delete it. Then draw the arrow in the opposite direction.',
-    successDebrief: 'Select an edge to edit or delete it.',
+    successDebrief: 'Select a relation to edit or delete it.',
     instruction: 'Replace w1 → w0 with w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
     edges: [{ from: 'w1', to: 'w0' }], constraints: { minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenEdges: [{ from: 'w1', to: 'w0' }] },
@@ -362,7 +250,7 @@ export const campaignTracks: readonly CampaignTrack[] = [
       {
         id: 'local-one-change-repair', chapter: 'Local Models', title: 'One-change repair', concept: 'Minimal semantic repair',
         learningObjective: 'Repair a failed necessity claim while distinguishing relation edits from valuation edits.',
-        briefing: 'A semantic change is one added or removed world, explicit edge, or atom membership. Moving a world is visual only and does not count.',
+        briefing: 'A semantic change is one added or removed world, explicit relation, or atom membership. Moving a world is visual only and does not count.',
         instruction: 'Make box p true at w0 using at most one semantic change.', formula: 'box p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumChanges: 1 }, editable: ['valuations', 'edges'],
@@ -370,7 +258,7 @@ export const campaignTracks: readonly CampaignTrack[] = [
       {
         id: 'local-compare-candidates', chapter: 'Local Models', title: 'Compare candidate models', concept: 'Semantic comparison across models',
         learningObjective: 'Evaluate the same pointed modal formula on two explicitly presented candidate models.',
-        instruction: 'Choose the candidate model in which diamond p is true at w0.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        instruction: 'Choose the candidate model in which diamond p is true at w0.', objectiveKind: 'construction', structuralObjective: {}, evaluationWorld: 'w0',
         prediction: {
           kind: 'model-choice', prompt: 'In which candidate is diamond p true at w0?', expectedChoice: 'A', mustBeCorrect: true,
           modelChoices: [
@@ -482,7 +370,7 @@ export const campaignTracks: readonly CampaignTrack[] = [
       {
         id: 'frame-identify-symmetry', chapter: 'Frame Engineering', title: 'Diagnose the relation', concept: 'Identify a missing frame property',
         learningObjective: 'Distinguish symmetry from seriality and transitivity by inspecting a fixed relation.',
-        instruction: 'Inspect the fixed frame and identify the property it lacks among the listed alternatives.', formula: 'p -> p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+        instruction: 'Inspect the fixed frame and identify the property it lacks among the listed alternatives.', objectiveKind: 'construction', structuralObjective: {}, evaluationWorld: 'w0',
         prediction: { kind: 'frame-property', prompt: 'Which property fails: symmetry, transitivity, or seriality?', expectedProperty: 'symmetric', propertyChoices: ['symmetric', 'transitive', 'serial'], mustBeCorrect: true },
         worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2 }, editable: [],
