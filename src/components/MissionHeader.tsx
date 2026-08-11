@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 export type MissionHeaderMode = 'learn' | 'campaign' | 'practice' | 'custom'
 
@@ -30,8 +30,12 @@ export function MissionHeader({
   actions,
 }: MissionHeaderProps) {
   const unit = mode === 'learn' ? 'lesson' : 'mission'
+  const headerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (state === 'completed') headerRef.current?.focus()
+  }, [state])
   return (
-    <section className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
+    <section ref={headerRef} tabIndex={state === 'completed' ? -1 : undefined} className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
       <div className="mission-header-context">
         <span>{sectionTitle} · {progressLabel}</span>
         <strong>{itemTitle}</strong>

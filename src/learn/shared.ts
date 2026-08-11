@@ -24,7 +24,6 @@ export function lesson(
     chapterId,
     title,
     learningObjective,
-    stages: ['concept', ...(task.prediction && task.interactionMode !== 'question' ? ['prediction' as const] : []), 'task', 'feedback', ...(extras.transferTask ? ['transfer' as const] : [])],
     concept,
     task: {
       ...taskDefinition,
