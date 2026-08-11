@@ -26,6 +26,8 @@ test('semantic lesson opens its workspace-first concept dialog with a worked exa
   await possibilityChapter.getByRole('button', { name: 'Start', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'A possible alternative' })
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Worked example' })).toBeHidden()
+  await dialog.getByText('Show worked example').click()
   await expect(dialog.getByRole('heading', { name: 'Worked example' })).toBeVisible()
   await dialog.getByRole('button', { name: 'Start task' }).click()
   await page.getByText('Details & hints').click()

@@ -41,7 +41,7 @@ mission URLs intentionally bypass the menu and launch their validated content.
 - Keep an anonymous browser-local guest history and export it as a JSON backup.
 - Record structurally distinct successful solutions per mission up to finite
   Kripke-model isomorphism, so renaming worlds does not inflate the count.
-- Record transparent construction metrics—worlds, explicit edges, true atom
+- Record transparent construction metrics—worlds, explicit relations, true atom
   memberships, and semantic changes from the mission start—without presenting
   them as a proof of mathematical minimality.
 - Summarize local practice by mission concept and classify failures into stable
@@ -78,7 +78,7 @@ all valuations.
 
 **Learn Modal Logic** is the single recommended route for new players. It
 starts with a replayable **Welcome to Modal Logic** visual introduction, then
-the replayable six-step **Learn the Controls** workspace tutorial, followed by
+the replayable six-lesson **Learn the Controls** workspace section, followed by
 the complete 9-chapter, 50-lesson course: **Truth at a World**, **Worlds and
 Accessibility**, **Possibility**, **Necessity**, **Box and Diamond**, **Nested
 Modalities**, **Local, Global, and Frame Truth**, **Models and Countermodels**,
@@ -89,7 +89,7 @@ that defines the lessons.
 
 Learn construction tasks use **Check task** after editing the model. Read-only
 question tasks keep the question in the mission panel and use **Confirm answer**;
-world answers are selected directly on the map. Successful Learn tasks finish
+world answers are selected in the graph or synchronized Table view. Successful guided tasks finish
 inside that panel without covering or resetting the map. The same header contains
 the section/campaign, local progress, title, and a single objective; longer
 briefings, concept help, analysis, hints, and reference solutions are available
@@ -101,12 +101,12 @@ workspaces render Verification by default and only expose world, valuation, or
 accessibility panels that are useful for the current task.
 
 The first workspace visit offers a versioned four-step tour that can be reopened
-from **More** or the Guide without resetting the current mission. On the model
-map, a mouse wheel zooms under the pointer, two-finger touchpad scrolling pans
+from **Quick help**, **More**, or the Guide without resetting the current mission. Quick help is a concise workspace reference and links to the full Guide. On the model
+map, one native non-passive canvas handler owns wheel gestures: a mouse wheel zooms under the pointer, two-finger touchpad scrolling pans
 freely in both axes, pinch zooms, and dragging empty space pans. Compact toolbar
 controls provide Zoom in/out and Fit model. **Tidy model** deterministically
 repositions worlds as one undoable presentation step; Fit changes only the
-viewport. New worlds appear near the selected world or viewport centre, avoid
+viewport. React Flow's competing wheel handlers are disabled, controls do not trigger map gestures, and the minimap is a passive overview. New worlds appear near the selected world or viewport centre, avoid
 immediate spawn collisions, and can also be created by double-clicking empty
 desktop map space. That double-click creates exactly one world and does not zoom.
 
@@ -136,8 +136,8 @@ the explicit relation and never rewrites semantic data.
 
 Campaigns is a secondary place for **General Challenges** and **Practice
 Library**, with a clear link back to Learn for foundations.
-Purely structural introductory tasks use construction-only objectives: they
-check the required worlds, atoms, edges, and evaluation world without showing
+Purely structural introductory tasks and Frame Architect missions use construction-only objectives: they
+check the required worlds, atoms, relations, frame properties, and evaluation world without showing
 an artificial tautological formula. Semantic lessons still show their concise,
 read-only formula and only the workspace controls relevant to that lesson.
 

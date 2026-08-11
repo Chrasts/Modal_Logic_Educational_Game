@@ -50,17 +50,21 @@ Its normal verification path applies existing construction constraints followed
 by `verifyConstructionObjective`, without invoking the formula evaluator.
 `workspacePresentation` declares the focused Learn controls (`worlds`,
 `valuations`, `edges`, and `evaluation`) so absent panels are not merely
-disabled or keyboard-focusable. Existing semantic/custom formats remain
+disabled or keyboard-focusable. Its optional `lockLayout` is independent of
+semantic `worlds` permission: node drag and Tidy are presentation actions,
+while add/delete/rename remain semantic edits. Existing semantic/custom formats remain
 compatible because semantic fields and custom-file parsing are unchanged.
 
 Home and global navigation direct newcomers to Learn. The Home Learn button has
 one visible word and a descriptive accessible name; progress and the next lesson
 are siblings rather than button content. Campaigns keeps its selected General
-Challenges or Practice Library section in component state. `MissionHeader`
+Challenges or Practice Library section in component state; Practice has no
+separate view/browser route. `MissionHeader`
 keeps one objective and Check task visible for every guided mode, while details,
 analysis, hints, reference solutions, and authored visible constraints live in
 one on-demand popover. Historical completion is kept separately from the current
-pending/success/failure attempt.
+pending/success/failure attempt. Every guided mode uses the same inline
+completed-header contract; per-mission completion dialogs were removed.
 
 Learn overview actions are state-specific: Start when untouched, Continue plus
 Restart section when partial, and Replay section plus recap when complete.
@@ -349,17 +353,22 @@ Sandbox has no unit terminology.
 read-only `question` tasks. Do not infer this distinction from an empty
 `editable` array or from prediction metadata. Question answers remain in the
 mission panel; `world-choice` and `counterexample-world` answers are selected
-only on the map. Learn completion also stays in the mission panel so React Flow
+in either the graph or synchronized Table view. `QuestionTaskPanel` and optional
+pre-verification predictions both delegate all eight answer kinds to
+`PredictionInput`. Learn completion also stays in the mission panel so React Flow
 remains mounted and its viewport/model state is preserved.
 
 The workspace tour is stored under `logic-game:workspace-tour:v1` and can be
-reopened from More or Guide without deleting the persistence key or changing the
+reopened from Quick help, More, or Guide without deleting the persistence key or changing the
 active mission. `workspace/map-interactions.ts` classifies browser wheel events:
 Ctrl-wheel is treated as pinch, fine pixel/2D deltas as touchpad pan, and coarse
 or line/page deltas as mouse-wheel zoom. This is necessarily a heuristic because
 browsers do not expose a reliable hardware source. Both trackpad axes are always
 applied; wheel and pinch zoom are anchored under the pointer and clamped to the
-shared min/max. Native React Flow drag-pan and touch pinch remain enabled.
+shared min/max. A native non-passive capture listener on the graph canvas is the
+single wheel owner. React Flow wheel/pinch/double-click zoom handlers are
+disabled, controls are excluded, and minimap wheel/pinch is prevented as a
+local no-op. Native empty-pane drag-pan remains enabled.
 
 `world-placement.ts` provides deterministic collision-aware spawn positions.
 Toolbar creation prefers the selected world, otherwise the viewport centre;
@@ -431,8 +440,16 @@ path.
 
 `App.tsx` still coordinates navigation and shared workspace state while the
 incremental split moves independently testable pieces outward. Welcome,
-lesson-stage rendering, mission headers, content definitions, mission auditing,
+mission headers, content definitions, mission auditing,
 fingerprinting, and evaluation-trace rendering now live in dedicated modules.
+The pure-prop views in `src/app/` own Home, Learn overview, Campaigns, Guide,
+Settings, Profile, and Create presentation; navigation, persistence, and event
+handlers remain in the App controller. `WorkspaceToolbar` similarly owns only
+the grouped toolbar markup and delegates every mutation through callbacks.
+`PredictionInput` owns the exhaustive answer-control rendering used by both
+questions and predictions, while `WorkspaceQuickHelp` owns the concise in-editor
+reference. The retired lesson-stage renderer and duplicate tutorial/practice
+views are intentionally absent.
 New workspace behavior should be added to a focused module rather than growing
 the coordinator. Persistence, draft, selection, verification, guided mission,
 and dialog state must remain conceptually separate even when orchestrated by the
@@ -472,7 +489,7 @@ World deletion forms the induced submodel by removing that world and every
 incident pair. It deliberately never bridges predecessors to successors, and
 the full cascade is one history operation.
 
-Relation rows use an uncommitted draft, so opening or cancelling **+ Add edge**
+Relation rows use an uncommitted draft, so opening or cancelling **+ Add relation**
 does not alter the model or undo stack. React Flow uses loose handles: only the
 drag source world and destination world determine the ordered pair. Selection is
 exclusive across worlds and edges, and keyboard deletion is ignored while a

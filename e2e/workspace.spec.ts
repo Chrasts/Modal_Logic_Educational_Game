@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('logic-game:workspace-tour:v1', 'seen'))
@@ -43,23 +43,44 @@ test('blank-pane double click adds exactly one world without zooming', async ({ 
   expect(after?.match(/scale\([^)]*\)/)?.[0]).toBe(before?.match(/scale\([^)]*\)/)?.[0])
 })
 
-test('Tidy supports Undo/Redo, reciprocal routing survives another edge, and reflexivity uses the badge', async ({ page }) => {
+test('Tidy supports Undo/Redo, reciprocal routing survives another relation, and reflexivity uses the badge', async ({ page }) => {
   await page.getByRole('button', { name: 'Tidy model' }).click()
   await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled()
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByRole('button', { name: 'Redo' })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo' }).click()
 
-  await page.getByRole('button', { name: '+ Add edge' }).click()
+  await page.getByRole('button', { name: '+ Add relation' }).click()
   await page.getByLabel('New relation source world').selectOption('w1')
   await page.getByLabel('New relation target world').selectOption('w0')
-  await page.getByRole('button', { name: 'Add relation' }).click()
+  await page.getByRole('button', { name: 'Add relation', exact: true }).click()
   await expect(page.locator('.bidirectional-edge')).toHaveCount(1)
 
-  await page.getByRole('button', { name: '+ Add edge' }).click()
+  await page.getByRole('button', { name: '+ Add relation' }).click()
   await page.getByLabel('New relation source world').selectOption('w0')
   await page.getByLabel('New relation target world').selectOption('w0')
-  await page.getByRole('button', { name: 'Add relation' }).click()
+  await page.getByRole('button', { name: 'Add relation', exact: true }).click()
   await expect(page.locator('.bidirectional-edge')).toHaveCount(1)
   await expect(page.getByRole('button', { name: /Reflexive accessibility at w0, explicit/ })).toBeVisible()
+})
+
+test('the map exclusively owns wheel pan and pinch while controls and minimap are inert', async ({ page }) => {
+  const pane = page.locator('.react-flow__pane')
+  const viewport = page.locator('.react-flow__viewport')
+  const transform = () => viewport.evaluate((element) => (element as HTMLElement).style.transform)
+  const dispatchWheel = async (target: Locator, init: WheelEventInit) => target.evaluate((element, eventInit) => element.dispatchEvent(new WheelEvent('wheel', { ...eventInit, bubbles: true, cancelable: true })), init)
+
+  const initial = await transform()
+  await dispatchWheel(pane, { deltaX: 42, deltaY: 31 })
+  await expect.poll(transform).not.toBe(initial)
+  const afterPan = await transform()
+
+  await dispatchWheel(pane, { deltaY: -90, ctrlKey: true, clientX: 320, clientY: 240 })
+  await expect.poll(transform).not.toBe(afterPan)
+  const afterPinch = await transform()
+
+  await dispatchWheel(page.getByRole('button', { name: 'Fit model' }), { deltaY: 80 })
+  expect(await transform()).toBe(afterPinch)
+  await dispatchWheel(page.locator('.react-flow__minimap'), { deltaY: -80, ctrlKey: true })
+  expect(await transform()).toBe(afterPinch)
 })

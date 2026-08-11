@@ -12,8 +12,8 @@ the complete available path contains 56 tasks. The in-app chapter and lesson tot
 Course data lives in `src/learn.ts`. A chapter declares prerequisites, lessons,
 completion recap text, and a next-chapter preview. A lesson contains concept
 material, an optional worked example, a shared-workspace task, three progressive
-hints, feedback, and an optional transfer task. The six-step **How to Play**
-control tutorial lives separately in `src/campaign.ts`. Its optional
+hints, feedback, and an optional transfer task. The six-lesson **Learn the Controls**
+section is defined in `src/campaign.ts`. Its optional
 `taskSteps` metadata renders a short ordered action checklist in the shared
 mission header; it is not used by semantic lessons.
 
@@ -37,7 +37,7 @@ overview does not use prerequisites as hard locks.
 
 Identification lessons declare `interactionMode: 'question'`, keep the model
 fixed, and require an explicit world, truth, countervaluation, or statement
-answer. World choices happen only on the map and use **Confirm answer**.
+answer. World choices can be made in the graph or synchronized Table view and use **Confirm answer**.
 Construction lessons use **Check task** and expose only the controls needed to
 change the model. The final scope lesson uses reusable `scopeComparison`
 metadata and reports pointed truth,
@@ -53,14 +53,13 @@ all still-known course completion and attempt data. Tutorial
 progress remains under `logic-game:campaign-progress:v2`, with a separate
 content-revision marker that reopens only the revised valuation control task.
 Practice and General Challenges retain their existing IDs. Continuation checks
-Welcome first, then the first unfinished control step, then the first unfinished
+Welcome first, then the first unfinished control lesson, then the first unfinished
 lesson in each available chapter order.
 
 The workspace remains the single source of truth for model construction and formula evaluation. Course lessons supply constrained `GameLevel` tasks to that workspace rather than implementing a second modal evaluator.
 
 The internal engines are not exposed as competing routes: players enter **Learn**
-and return there after a lesson. Learn the Controls remains a separate six-step
-control engine. Truth at a World and
+and return there after a lesson. Learn the Controls remains a six-lesson section in that path. Truth at a World and
 Possibility lessons are semantic and retain their read-only formulas; Worlds
 and Accessibility lessons are construction-only and validate their structural
 constraints without a placeholder formula or semantic target controls.
@@ -84,7 +83,7 @@ expected semantic outcomes before exposing the chapter in the browser.
 ## Mechanics tutorial versus semantic lessons
 
 Learn the Controls teaches UI operations only: selection, evaluation-world
-choice, valuation editing, drawing/correcting an edge, adding a world, and a
+choice, valuation editing, drawing/correcting a relation, adding a world, and a
 small combined construction. Later lessons must add a semantic concept, a
 choice between alternatives, a more complex structure, a new error type, or a
 meaningful combination of mechanics. Repeating the same initial model, edit,
@@ -117,7 +116,7 @@ reference constructions are not claims of absolute mathematical minimality.
 
 Semantic lessons now open a compact concept dialog before mounting the existing
 task workspace. It states the objective, intuition, formal rule, key points and
-warning, and includes a stepped worked example rendered with the same static
+warning. A collapsed worked-example disclosure uses the same static
 Kripke-diagram component used by candidate-model questions. The retired parallel
 lesson view has been removed; all construction, questions, feedback and transfer
 work use the shared workspace and evaluator.

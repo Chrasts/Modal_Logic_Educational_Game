@@ -3,12 +3,13 @@
 ## Implemented and automatically checked
 
 - A skip link targets a focusable main landmark.
-- Every core model edit is available through ordinary form controls; the synchronized `World | Atoms | Successors` table is an alternative to pointer interaction with the graph.
+- Every core model edit is available through ordinary form controls; the synchronized `World | Atoms | Accessible worlds` table is an alternative to pointer interaction with the graph. World-choice questions expose a `Choose world` action in that table.
 - Model rows expose valuation editing, evaluation-world selection, and deletion; the inspector exposes keyboard-operable `Connect to…` relation creation.
 - Verification, hints, semantic-trace selection, and Previous/Next stepping are buttons or native disclosure controls.
 - Parser errors return focus to the formula input and select the reported source position.
 - Dialogs receive initial focus, trap Tab/Shift+Tab, close on Escape, and return focus to the prior control.
-- Success/failure states use text labels in addition to color. Graph roles use SELECTED, CURRENT WORLD, WITNESS, COUNTEREXAMPLE, DERIVED, CHECKED EDGE, and IRRELEVANT labels.
+- Success/failure states use text labels in addition to color. Graph roles use SELECTED, EVALUATION WORLD, WITNESS, COUNTEREXAMPLE, EXPLICIT/DERIVED RELATION, CHECKED, and IRRELEVANT labels.
+- Workspace Quick help is a short five-part dialog with keyboard guidance, a full-Guide link, and a workspace-tour replay action; it does not duplicate the reference manual.
 - Reduced motion follows both the OS preference and a saved in-app preference.
 - Mobile workspaces use MODEL/FORMULA/RESULT tabs, a sticky result action, larger controls and graph handles, and a world-inspector bottom-sheet treatment.
 
@@ -45,6 +46,7 @@ below for each browser/assistive-technology combination; leave the result as
 | Touch targets and touch-only operation | Not run | |
 | Reduced-motion OS and in-app settings | Not run | |
 | Graph/table information and operation parity | Not run | |
+| Physical Win11 / Edge mouse-wheel, precision-touchpad and pinch gestures | Not run | Requires real hardware; synthetic Playwright coverage is not a physical-device result. |
 
 Allowed result values are `Pass`, `Fail`, `Blocked`, and `Not run`. Every
 `Fail` or `Blocked` row must include an issue link before release sign-off.

@@ -1,7 +1,7 @@
 # Campaign Guide
 
 This document describes the playable campaign structure without revealing
-solutions. The in-game Tutorial should be completed first if the editor or its
+solutions. **Practice Library** lives inside the Campaigns screen; it has no separate browser route. Learn the Controls should be completed first if the editor or its
 semantic scopes are unfamiliar.
 
 ## Local Models & Countermodels
@@ -12,7 +12,7 @@ and the interaction between universal and existential modal operators.
 
 1. **Necessary, not actual** — satisfy `□p ∧ ¬p` under a seriality constraint.
 2. **Split the alternatives** — refute `□(p ∨ q) → (□p ∨ □q)` in a bounded model.
-3. **Open alternatives** — satisfy `◇p ∧ ◇¬p` using exactly two explicit edges.
+3. **Open alternatives** — satisfy `◇p ∧ ◇¬p` using exactly two explicit relations.
 4. **Uniform branching** — combine two existential witnesses with a universal
    condition on every accessible world.
 
@@ -79,11 +79,13 @@ general characteristic-class theorem.
 
 ## Constraint vocabulary
 
-Levels may restrict the number of worlds or explicit edges, require or forbid
-specific edges, constrain atoms at named worlds, require or exclude frame
+Levels may restrict the number of worlds or explicit relations, require or forbid
+specific relations, constrain atoms at named worlds, require or exclude frame
 properties, lock editor sections, or require a particular Validate/Enforce
 configuration. The in-game **Guide → Objectives & constraints** tab contains a
 compact reference.
+
+Successful missions remain in the workspace and switch the shared mission header to an inline completed state with Next, Back to overview, and Replay actions. Per-mission completion dialogs are not used.
 
 Solutions are intentionally kept out of this document. See
 [SOLUTIONS.md](SOLUTIONS.md) only when a spoiler is wanted.
