@@ -1,5 +1,3 @@
-import { PanOnScrollMode } from '@xyflow/react'
-
 export const MAP_MIN_ZOOM = 0.35
 export const MAP_MAX_ZOOM = 1.8
 export const MOUSE_WHEEL_ZOOM_SENSITIVITY = 0.0028
@@ -20,15 +18,9 @@ export interface MapViewport {
   readonly zoom: number
 }
 
-export interface MapWheelApplication {
-  readonly gesture: MapWheelGesture
-  readonly viewport: MapViewport
-}
-
 export interface MapWheelHandling {
   readonly gesture: MapWheelGesture
-  readonly useNativePan: boolean
-  readonly application?: MapWheelApplication
+  readonly viewport: MapViewport
 }
 
 /**
@@ -50,7 +42,7 @@ export function applyMapWheelGesture(
   event: MapWheelInput,
   viewport: MapViewport,
   pointer: { readonly x: number; readonly y: number },
-): MapWheelApplication {
+): MapWheelHandling {
   const gesture = classifyMapWheelGesture(event)
   if (gesture === 'trackpad-pan') {
     return { gesture, viewport: { ...viewport, x: viewport.x - event.deltaX, y: viewport.y - event.deltaY } }
@@ -74,17 +66,14 @@ export function applyMapWheelGesture(
 }
 
 export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }): MapWheelHandling {
-  const gesture = classifyMapWheelGesture(event)
-  if (gesture === 'trackpad-pan') return { gesture, useNativePan: true }
-  return { gesture, useNativePan: false, application: applyMapWheelGesture(event, viewport, pointer) }
+  return applyMapWheelGesture(event, viewport, pointer)
 }
 
-/** React Flow handles free two-axis touchpad pan, drag-pan and touch pinch. */
+/** React Flow owns pointer drag-pan only. A non-passive DOM listener owns every wheel/pinch gesture. */
 export const modelMapInteractionProps = Object.freeze({
-  panOnScroll: true,
-  panOnScrollMode: PanOnScrollMode.Free,
+  panOnScroll: false,
   zoomOnScroll: false,
   zoomOnDoubleClick: false,
-  zoomOnPinch: true,
+  zoomOnPinch: false,
   panOnDrag: true,
 })

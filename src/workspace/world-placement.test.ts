@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { applyCollisionClassNames, commitWorldPosition, findFreeWorldPosition, findOverlappingWorldKeys, shouldCreateWorldFromPaneClick, worldPositionsOverlap } from './world-placement'
+import { applyCollisionClassNames, commitWorldPosition, findFreeWorldPosition, findOverlappingWorldKeys, resolveWorldVisualCenter, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, worldPositionsOverlap } from './world-placement'
 
 describe('world placement', () => {
+  it('derives the visual centre from shared world geometry', () => {
+    expect(resolveWorldVisualCenter({ x: 20, y: 30 })).toEqual({ x: 20 + WORLD_NODE_SIZE / 2, y: 30 + WORLD_NODE_SIZE / 2 })
+  })
+
   it('uses the preferred position when it is free', () => {
     expect(findFreeWorldPosition([], { x: 120, y: 90 })).toEqual({ x: 120, y: 90 })
   })

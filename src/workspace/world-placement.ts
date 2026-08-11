@@ -9,6 +9,10 @@ export const WORLD_NODE_SIZE = 96
 export const WORLD_COLLISION_MARGIN = 22
 const WORLD_SPAWN_STEP = WORLD_NODE_SIZE + WORLD_COLLISION_MARGIN + 18
 
+export function resolveWorldVisualCenter(position: WorldPosition): WorldPosition {
+  return { x: position.x + WORLD_NODE_SIZE / 2, y: position.y + WORLD_NODE_SIZE / 2 }
+}
+
 export function worldPositionsOverlap(left: WorldPosition, right: WorldPosition, margin = WORLD_COLLISION_MARGIN): boolean {
   return Math.abs(left.x - right.x) < WORLD_NODE_SIZE + margin
     && Math.abs(left.y - right.y) < WORLD_NODE_SIZE + margin
