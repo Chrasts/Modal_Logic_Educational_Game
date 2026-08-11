@@ -21,7 +21,6 @@ function lesson(
     chapterId,
     title,
     learningObjective,
-    stages: ['concept', ...(task.prediction ? ['prediction' as const] : []), 'task', 'feedback'],
     concept,
     task: { ...task, id: `learn-${id}-task`, chapter: task.chapter ?? title, title, concept: concept.heading, learningObjective },
     hints: lessonHints,
