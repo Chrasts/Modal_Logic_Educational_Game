@@ -1,3 +1,5 @@
+import { useAnalyticsView } from '../analytics'
+
 export function HomeView({ completed, total, nextTitle, onLearn, onCampaigns, onLab, onProfile, onSettings, onData }: {
   readonly completed: number
   readonly total: number
@@ -9,6 +11,7 @@ export function HomeView({ completed, total, nextTitle, onLearn, onCampaigns, on
   readonly onSettings: () => void
   readonly onData: () => void
 }) {
+  useAnalyticsView('home')
   return <section className="content-screen home-screen" aria-labelledby="home-title">
     <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div></div>
     <div className="home-actions home-primary-actions" aria-label="Main menu">
