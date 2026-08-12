@@ -14,7 +14,7 @@ function lesson(
   task: Omit<GameLevel, 'id' | 'chapter' | 'title' | 'concept' | 'learningObjective'> & { readonly chapter?: string },
   lessonHints: readonly [string, string, string],
   successExplanation: string,
-  extras: Partial<Pick<LearnLesson, 'workedExample' | 'commonMistake' | 'diagnosticFeedback' | 'transferTask'>> = {},
+  extras: Partial<Pick<LearnLesson, 'workedExample' | 'diagnosticFeedback' | 'transferTask'>> = {},
 ): LearnLesson {
   return {
     id: `learn-${id}`,
@@ -62,7 +62,7 @@ const necessityLessons: readonly LearnLesson[] = [
   }, {
     instruction: 'Make □p true using exactly one semantic edit.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'truth', prompt: 'Is □p true before your repair?' },
     worlds: [w('w0', '', 60, 130), w('w1', '', 310, 80), w('w2', 'p', 500, 190)], edges: [edge('w0', 'w1')], constraints: { maximumChanges: 1 }, editable: ['valuations', 'edges', 'evaluation'], workspacePresentation: { valuations: true, edges: true, evaluation: true },
-  }, hints('w1 is the current counterexample.', 'Adding p to w1 repairs the valuation.', 'Removing w0→w1 or evaluating at dead-end w2 also changes the semantic reason.'), 'The repaired model has no accessible counterexample at the chosen evaluation world.', { commonMistake: 'Changing an unrelated world does not affect □p at w0.' }),
+  }, hints('w1 is the current counterexample.', 'Adding p to w1 repairs the valuation.', 'Removing w0→w1 or evaluating at dead-end w2 also changes the semantic reason.'), 'The repaired model has no accessible counterexample at the chosen evaluation world.'),
 ]
 
 const boxDiamondLessons: readonly LearnLesson[] = [
