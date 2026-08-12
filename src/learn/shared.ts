@@ -5,7 +5,7 @@ export const w = (id: string, atoms = '', x = 100, y = 130) => ({ id, atoms, pos
 export const edge = (from: string, to: string) => ({ from, to })
 export const hints = (first: string, second: string, third: string): readonly [string, string, string] => [first, second, third]
 
-type LessonExtras = Partial<Pick<LearnLesson, 'workedExample' | 'commonMistake' | 'diagnosticFeedback' | 'transferTask' | 'relatedLessonIds'>>
+type LessonExtras = Partial<Pick<LearnLesson, 'workedExample' | 'diagnosticFeedback' | 'transferTask' | 'relatedLessonIds'>>
 
 export function lesson(
   chapterId: string,
