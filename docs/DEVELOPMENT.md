@@ -331,8 +331,10 @@ reserve the brown accent. Short entrance and result transitions clarify state
 changes and are disabled by the reduced-motion preference.
 
 The initial app view is a concise home menu. The global topbar destinations are
-Home, Learn, Campaigns, Lab, and Modal Logic Guide, followed by fullscreen
-and More. More contains Create, Profile, Data, Settings, and GitHub. Learn owns
+Home, Learn, Campaigns, and Lab, followed by fullscreen and More. More contains
+Create, Modal Logic Reference, Help & Controls, Profile, Data, Settings, and
+GitHub. Reference contains mathematical lookup content; Help contains application
+operation and replay actions. Learn owns
 the Welcome, Learn the Controls, and data-driven semantic chapters; Campaigns
 owns General Challenges and the non-linear Practice Library. Lab owns the
 landing view for free experimental tools and currently exposes only the existing
@@ -347,8 +349,12 @@ settings are versioned separately from sandbox and learning data.
 Guided workspaces keep the graph tall with one mode-accented `MissionHeader`.
 There is no second campaign/context strip. Briefings, formulas, target analysis,
 hints, reference solutions, and learning objectives live in **Details & hints**.
-Desktop sidebars are deliberately narrower than the graph and can still be
-collapsed. The closed mission header keeps context, objective, navigation,
+Desktop sidebars are deliberately narrower than the graph and can be collapsed
+or resized with pointer/keyboard separators. Width allocation preserves a 520 px
+map minimum and may shrink the opposite panel to its own minimum before stopping.
+Widths persist under `logic-game:workspace-layout:v1`; collapsing preserves the
+remembered width, and Reset interface preferences restores both defaults. The
+closed mission header keeps context, objective, navigation,
 verification, and the native Details & hints disclosure in one content-sized
 row; it expands only for actual detail content. Learn navigation says lesson,
 Campaigns/Practice says mission, and Model Sandbox has no unit terminology.
@@ -363,12 +369,13 @@ pre-verification predictions both delegate all eight answer kinds to
 remains mounted and its viewport/model state is preserved.
 
 The workspace tour is stored under `logic-game:workspace-tour:v1` and can be
-reopened from Quick help, More, or Guide without deleting the persistence key or changing the
+reopened from Quick help, More, or Help without deleting the persistence key or changing the
 active mission. `workspace/map-interactions.ts` classifies browser wheel events:
 Ctrl-wheel is treated as pinch, fine pixel/2D deltas as touchpad pan, and coarse
-or line/page deltas as mouse-wheel zoom. A short gesture session keeps that
-classification stable across one physical gesture. This is necessarily a heuristic because
-browsers do not expose a reliable hardware source. Both trackpad axes are always
+or line/page deltas as mouse-wheel zoom. Each event is handled independently;
+there is no application-side gesture session or axis lock. This is necessarily a
+heuristic because browsers do not expose a reliable hardware source, and movement
+an OS/browser does not include in `WheelEvent` cannot be reconstructed. Both trackpad axes are always
 applied; usable pinch `deltaX` translation is preserved while scale-like
 `deltaY` controls zoom. Wheel and pinch zoom are anchored under the pointer and clamped to the
 shared min/max. A native non-passive capture listener on the graph canvas is the
@@ -448,8 +455,9 @@ path.
 incremental split moves independently testable pieces outward. Welcome,
 mission headers, content definitions, mission auditing,
 fingerprinting, and evaluation-trace rendering now live in dedicated modules.
-The pure-prop views in `src/app/` own Home, Learn overview, Campaigns, Lab, Guide,
-Settings, Profile, and Create presentation; navigation, persistence, and event
+The pure-prop views in `src/app/` own Home, Learn overview, Campaigns, Lab,
+Reference, Help, Settings, Profile, and Create presentation; navigation,
+persistence, and event
 handlers remain in the App controller. `WorkspaceToolbar` similarly owns only
 the grouped toolbar markup and delegates every mutation through callbacks.
 `PredictionInput` owns the exhaustive answer-control rendering used by both
@@ -513,6 +521,7 @@ model state, persistence, verification, or history.
 the focused Chromium journeys in `e2e/`. They cover a fresh Learn route, the
 workspace-first concept dialog, progressive hints, world drag, direction from
 loose handles, selection deletion and Undo, blank-pane double click, Tidy,
-explicit reflexive badges, and a narrow mobile workspace. These checks augment
+explicit reflexive badges, result disclosure, persisted desktop resizing,
+Reference/Help navigation, and the phone-class unsupported notice. These checks augment
 Vitest; they do not replace the hardware and assistive-technology checklist in
 `ACCESSIBILITY_AUDIT.md`.

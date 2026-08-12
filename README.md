@@ -104,9 +104,9 @@ workspaces render Verification by default and only expose world, valuation, or
 accessibility panels that are useful for the current task.
 
 The first workspace visit offers a versioned four-step tour that can be reopened
-from **Quick help**, **More**, or the Guide without resetting the current mission. Quick help is a concise workspace reference and links to the full Guide. On the model
+from **Quick help**, **More**, or **Help & Controls** without resetting the current mission. Quick help is a concise workspace reference and links to full Help. On the model
 map, one native non-passive canvas handler owns wheel gestures: a mouse wheel zooms under the pointer, two-finger touchpad scrolling pans
-freely in both axes, pinch zooms, and dragging empty space pans. Compact toolbar
+with every X/Y delta the browser supplies, pinch zooms without an app-side gesture lock, and dragging empty space pans. Compact toolbar
 controls provide Zoom in/out and Fit model. **Tidy model** deterministically
 repositions worlds as one undoable presentation step; Fit changes only the
 viewport. React Flow's competing wheel handlers are disabled, controls do not trigger map gestures, and the minimap is a passive overview. New worlds appear near the selected world or viewport centre, avoid
@@ -188,13 +188,13 @@ debriefs, and learning objectives. The current built-in campaigns are:
 - **Formula Laboratory** — compare modal formulas and build distinguishing
   models.
 
-### Modal Logic Guide
+### Reference and Help
 
-The in-game guide is a reference manual for formal Kripke semantics, box and
-diamond, semantic scopes, relations and modal axioms, objectives, controls, and
-the glossary. The dedicated Welcome and Learn the Controls experiences remain
-replayable from its overview; the Guide does not duplicate them as a second
-course.
+Primary navigation contains **Home**, **Learn**, **Campaigns**, and **Lab**.
+**Modal Logic Reference** and **Help & Controls** are grouped in **More**:
+Reference is a compact mathematical lookup, while Help covers workspace controls,
+objectives, results, and local data. Welcome, Learn the Controls, and the workspace
+tour remain replayable from Help without duplicating the Learn course.
 
 Create keeps authored custom missions and custom campaign packages separate
 from all built-in content.
@@ -213,9 +213,17 @@ from all built-in content.
 Browser-local settings control workspace density, minimap visibility, derived
 edge visibility, reduced interface motion, and optional sound effects. Sound is
 off by default, uses only short local Web Audio cues, and never includes music.
+At desktop widths, both workspace side panels have keyboard-operable drag
+separators; their bounded widths persist locally and Reset interface preferences
+restores the defaults. Verification shows a concise, unmistakable result first;
+truth-by-world evidence and the semantic debugger remain under **Semantic details**.
 Fullscreen is available directly
 in the global toolbar when supported. Settings affect presentation only and
 never change formulas, semantics, or mission constraints.
+
+Public use currently targets desktop and laptop browsers. A small viewport with a
+coarse primary pointer receives a **Desktop required** notice; the retained mobile
+workspace code is not presented as a supported phone experience yet.
 
 ## Modal semantics
 

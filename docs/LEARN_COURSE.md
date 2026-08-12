@@ -132,3 +132,8 @@ may offer an optional transfer task after the main success, and transfer
 completion is stored separately from required lesson completion. Prerequisites
 remain visible recommendations rather than locks, and the Home/Continue route
 resumes the current in-memory task before selecting another lesson.
+
+Successful completion stays clean: it shows the lesson's positive explanation
+without a post-success “Common mistake” warning. Check task produces an immediate
+text-and-icon success or not-yet state; optional truth-by-world evidence and the
+semantic debugger remain available through **Semantic details**.

@@ -1,13 +1,10 @@
 import { expect, test } from '@playwright/test'
 
-test.use({ viewport: { width: 390, height: 844 } })
+test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
 
-test('mobile workspace keeps tabs and verification reachable', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('logic-game:workspace-tour:v1', 'seen'))
+test('phone-class public use displays the unsupported notice', async ({ page }) => {
   await page.goto('./')
-  await page.getByRole('button', { name: /Lab: experiment/i }).click()
-  await page.getByRole('button', { name: 'Open Model Sandbox' }).click()
-  await expect(page.getByRole('tab', { name: 'model' })).toBeVisible()
-  await page.getByRole('tab', { name: 'result' }).click()
-  await expect(page.getByRole('button', { name: 'Verify objective' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Desktop required' })).toBeVisible()
+  await expect(page.getByText(/Mobile devices are not supported yet/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Learn', exact: true })).toHaveCount(0)
 })

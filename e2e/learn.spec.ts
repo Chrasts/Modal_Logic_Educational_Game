@@ -54,5 +54,6 @@ test('semantic lesson opens its workspace-first concept dialog with a worked exa
   await page.getByRole('textbox', { name: 'True atoms' }).nth(1).fill('p')
   await page.getByRole('button', { name: 'Check task' }).click()
   await expect(page.getByText('Task complete', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/Common mistake/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Next lesson' })).toBeVisible()
 })

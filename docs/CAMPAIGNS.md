@@ -82,7 +82,7 @@ general characteristic-class theorem.
 Levels may restrict the number of worlds or explicit relations, require or forbid
 specific relations, constrain atoms at named worlds, require or exclude frame
 properties, lock editor sections, or require a particular Validate/Enforce
-configuration. The in-game **Guide → Objectives & constraints** tab contains a
+configuration. The in-game **More → Help & Controls → Objectives & constraints** tab contains a
 compact reference.
 
 Successful missions remain in the workspace and switch the shared mission header to an inline completed state with Next, Back to overview, and Replay actions. Per-mission completion dialogs are not used.

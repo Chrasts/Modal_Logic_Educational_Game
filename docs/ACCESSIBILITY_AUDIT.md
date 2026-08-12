@@ -5,15 +5,16 @@
 - A skip link targets a focusable main landmark.
 - Every core model edit is available through ordinary form controls; the synchronized `World | Atoms | Accessible worlds` table is an alternative to pointer interaction with the graph. World-choice questions expose a `Choose world` action in that table.
 - Model rows expose valuation editing, evaluation-world selection, and deletion; the inspector exposes keyboard-operable `Connect to…` relation creation.
-- Verification, hints, semantic-trace selection, and Previous/Next stepping are buttons or native disclosure controls.
+- Verification presents an atomic text-and-icon success, failure, or error live region. Deep semantic evidence and trace controls remain in a native disclosure collapsed by default.
 - Parser errors return focus to the formula input and select the reported source position.
 - Dialogs receive initial focus, trap Tab/Shift+Tab, close on Escape, and return focus to the prior control.
 - Success/failure states use text labels in addition to color. Graph roles use SELECTED, EVALUATION WORLD, WITNESS, COUNTEREXAMPLE, EXPLICIT/DERIVED RELATION, CHECKED, and IRRELEVANT labels.
-- Workspace Quick help is a short five-part dialog with keyboard guidance, a full-Guide link, and a workspace-tour replay action; it does not duplicate the reference manual.
+- Workspace Quick help is a short five-part dialog with keyboard guidance, a full-Help link, and a workspace-tour replay action; it does not duplicate the mathematical Reference.
+- Desktop split-pane separators are focusable, expose vertical separator/value semantics, support ArrowLeft/ArrowRight (and larger Shift steps), and disappear with their collapsed pane.
 - Reduced motion follows both the OS preference and a saved in-app preference.
-- Mobile workspaces use MODEL/FORMULA/RESULT tabs, a sticky result action, larger controls and graph handles, and a world-inspector bottom-sheet treatment.
+- Phone-class public use (small viewport plus coarse primary pointer) receives a clear **Desktop required** notice. Responsive workspace and author-preview code remains for future development but is not currently a supported mobile product.
 
-The Vitest UI suite checks landmark/focus behavior, formula-error focus, table synchronization, mobile-section controls, result announcements, trace stepping, draft validation, selection deletion, and essential keyboard-operable controls. Playwright additionally exercises focused desktop and 390 px Chromium journeys, including map drag, loose-handle relation creation, Undo, Learn dialogs, progressive hints, and mobile verification reachability.
+The Vitest UI suite checks landmark/focus behavior, formula-error focus, table synchronization, result announcements/disclosure, resize separators and allocation, mobile guarding, trace stepping, draft validation, selection deletion, and essential keyboard-operable controls. Playwright additionally exercises focused desktop and phone-class Chromium journeys, including map drag, loose-handle relation creation, Undo, Learn dialogs, progressive hints, persisted resizing, support navigation, and the unsupported notice.
 
 ## Manual WCAG 2.2 AA pass
 
