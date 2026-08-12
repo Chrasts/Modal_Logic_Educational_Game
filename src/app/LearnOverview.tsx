@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAnalyticsView } from '../analytics'
 import type { GameLevel } from '../campaign'
 import type { ConceptQuestion, LearnCourse, LearnLesson } from '../learn'
 import type { LearnProgress } from '../learn-progress'
@@ -33,6 +34,7 @@ interface LearnOverviewProps {
 }
 
 export function LearnOverview({ completed, total, progress, tutorialLevels, tutorialCompleted, nextTutorialIndex, expandedChapterId, completedLevelIds, course, lessons, onContinue, onWelcome, onOpenControl, onRestartControls, onOpenLesson, onRestartChapter, onToggleChapter }: LearnOverviewProps) {
+  useAnalyticsView('learn')
   return <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
     <div className="screen-hero compact"><div><p className="eyebrow">Your recommended learning path</p><h1 id="learn-course-title">Learn Modal Logic</h1><p>Welcome, learn the controls, then work through finite Kripke semantics one section at a time.</p>{completed < total && <button type="button" className="primary-action" onClick={onContinue}>{completed === 0 ? 'Start Learning' : 'Continue Learning'}</button>}</div><div className="collection-progress" role="status"><strong>{completed}/{total}</strong><span>{completed === total ? 'course complete' : 'available tasks complete'}</span><div className="progress-meter"><i style={{ width: `${completed / total * 100}%` }} /></div></div></div>
     <div className="learn-chapter-list">
