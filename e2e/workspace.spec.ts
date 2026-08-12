@@ -3,7 +3,8 @@ import { expect, test, type Locator } from '@playwright/test'
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('logic-game:workspace-tour:v1', 'seen'))
   await page.goto('./')
-  await page.getByRole('button', { name: /Sandbox: build/i }).click()
+  await page.getByRole('button', { name: /Lab: experiment/i }).click()
+  await page.getByRole('button', { name: 'Open Model Sandbox' }).click()
 })
 
 test('world drag, loose-handle relation, selection delete and undo remain stable', async ({ page }) => {
@@ -41,6 +42,13 @@ test('blank-pane double click adds exactly one world without zooming', async ({ 
   await expect(nodes).toHaveCount(3)
   const after = await viewport.getAttribute('style')
   expect(after?.match(/scale\([^)]*\)/)?.[0]).toBe(before?.match(/scale\([^)]*\)/)?.[0])
+})
+
+test('selecting a world and typing starts editing its valuation', async ({ page }) => {
+  await page.getByLabel(/World w0, atoms/).click()
+  await page.keyboard.type('q')
+  await expect(page.getByRole('textbox', { name: 'True atoms' }).first()).toBeFocused()
+  await expect(page.getByRole('textbox', { name: 'True atoms' }).first()).toHaveValue(/q/)
 })
 
 test('Tidy supports Undo/Redo, reciprocal routing survives another relation, and reflexivity uses the badge', async ({ page }) => {

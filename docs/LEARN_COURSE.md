@@ -64,7 +64,10 @@ Possibility lessons are semantic and retain their read-only formulas; Worlds
 and Accessibility lessons are construction-only and validate their structural
 constraints without a placeholder formula or semantic target controls.
 
-Lesson progress and next/previous navigation are local to the current chapter;
+Lesson progress remains section-aware, while one global navigation resolver
+orders all six Controls lessons followed by every semantic Learn lesson. Next
+and Previous therefore cross Controls and chapter boundaries identically for a
+fresh completion or a replay;
 completion stays in the mission panel while the map remains mounted and
 unchanged. Learn the Controls follows the same collection contract as semantic
 chapters and expands its six existing tutorial levels inline. A fresh section
@@ -104,7 +107,7 @@ allowlisted in the test with a pedagogical justification; the current allowlist
 is empty.
 
 User-facing terminology is mode-specific: Learn uses **lesson**, Campaigns and
-Practice use **mission**, and Sandbox uses neither. Individual successful checks
+Practice use **mission**, and Model Sandbox uses neither. Individual successful checks
 use **Task complete**.
 
 Frame-validity and correspondence displays are exhaustive checks of the finite

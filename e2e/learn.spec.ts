@@ -13,6 +13,24 @@ test('fresh learner reaches the controls workspace and sees direction-by-drag co
   await expect(page.getByRole('region', { name: 'Kripke model editor' }).getByText(/handle position.*does not set direction/i)).toBeVisible()
 })
 
+test('replayed final controls lesson continues into the first modal lesson', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(['tutorial-v2-evaluation-world', 'tutorial-v2-valuation', 'tutorial-v2-draw-edge', 'tutorial-v2-correct-edge', 'tutorial-v2-add-world', 'tutorial-v2-build-model']))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+  })
+  await page.goto('./')
+  await page.getByRole('button', { name: 'Learn', exact: true }).click()
+  const controls = page.getByRole('heading', { name: 'Learn the Controls' }).locator('xpath=ancestor::article')
+  await controls.getByRole('button', { name: 'View lessons' }).click()
+  const finalControl = controls.getByText('Build a small model').locator('xpath=ancestor::li')
+  await finalControl.getByRole('button', { name: 'Replay' }).click()
+  await expect(page.getByRole('region', { name: 'Current lesson' })).toContainText('Build a small model')
+  await expect(page.getByRole('button', { name: 'Next lesson' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Next lesson' }).click()
+  await expect(page.getByRole('dialog', { name: 'Atomic truth' })).toBeVisible()
+})
+
 test('semantic lesson opens its workspace-first concept dialog with a worked example', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('logic-game:workspace-tour:v1', 'seen')

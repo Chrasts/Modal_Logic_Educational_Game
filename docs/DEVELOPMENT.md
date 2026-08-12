@@ -73,7 +73,7 @@ attempt counters; Replay never clears historical progress.
 
 Guided workspaces open Verification by default. Formula controls are omitted,
 and `workspacePresentation` plus edit permissions determine whether Worlds,
-Valuations, Accessibility, and their toggle are rendered at all. Sandbox omits
+Valuations, Accessibility, and their toggle are rendered at all. Model Sandbox omits
 `MissionHeader`, retains the full panels, and uses Verify objective.
 
 ## Verification scopes
@@ -331,10 +331,12 @@ reserve the brown accent. Short entrance and result transitions clarify state
 changes and are disabled by the reduced-motion preference.
 
 The initial app view is a concise home menu. The global topbar destinations are
-Home, Learn, Campaigns, Sandbox, and Modal Logic Guide, followed by fullscreen
+Home, Learn, Campaigns, Lab, and Modal Logic Guide, followed by fullscreen
 and More. More contains Create, Profile, Data, Settings, and GitHub. Learn owns
 the Welcome, Learn the Controls, and data-driven semantic chapters; Campaigns
-owns General Challenges and the non-linear Practice Library. Introductory
+owns General Challenges and the non-linear Practice Library. Lab owns the
+landing view for free experimental tools and currently exposes only the existing
+shared Model Sandbox; it does not duplicate workspace or evaluator state. Introductory
 structural lessons use ordinary `GameLevel`
 constraints (exact worlds and required/forbidden edges) together with the same
 deterministic evaluator as semantic missions; no second workspace exists. Shared
@@ -346,8 +348,10 @@ Guided workspaces keep the graph tall with one mode-accented `MissionHeader`.
 There is no second campaign/context strip. Briefings, formulas, target analysis,
 hints, reference solutions, and learning objectives live in **Details & hints**.
 Desktop sidebars are deliberately narrower than the graph and can still be
-collapsed. Learn navigation says lesson, Campaigns/Practice says mission, and
-Sandbox has no unit terminology.
+collapsed. The closed mission header keeps context, objective, navigation,
+verification, and the native Details & hints disclosure in one content-sized
+row; it expands only for actual detail content. Learn navigation says lesson,
+Campaigns/Practice says mission, and Model Sandbox has no unit terminology.
 
 `GameLevel.interactionMode` explicitly separates `construction` tasks from
 read-only `question` tasks. Do not infer this distinction from an empty
@@ -362,9 +366,11 @@ The workspace tour is stored under `logic-game:workspace-tour:v1` and can be
 reopened from Quick help, More, or Guide without deleting the persistence key or changing the
 active mission. `workspace/map-interactions.ts` classifies browser wheel events:
 Ctrl-wheel is treated as pinch, fine pixel/2D deltas as touchpad pan, and coarse
-or line/page deltas as mouse-wheel zoom. This is necessarily a heuristic because
+or line/page deltas as mouse-wheel zoom. A short gesture session keeps that
+classification stable across one physical gesture. This is necessarily a heuristic because
 browsers do not expose a reliable hardware source. Both trackpad axes are always
-applied; wheel and pinch zoom are anchored under the pointer and clamped to the
+applied; usable pinch `deltaX` translation is preserved while scale-like
+`deltaY` controls zoom. Wheel and pinch zoom are anchored under the pointer and clamped to the
 shared min/max. A native non-passive capture listener on the graph canvas is the
 single wheel owner. React Flow wheel/pinch/double-click zoom handlers are
 disabled, controls are excluded, and minimap wheel/pinch is prevented as a
@@ -431,7 +437,7 @@ the CI `test-and-build` check required. That setting lives on GitHub and cannot
 be enforced by files in this repository alone.
 
 For a local release run the same three commands from a clean install. Smoke
-coverage must keep the homepage, Learn, Sandbox, a simple formula evaluation,
+coverage must keep the homepage, Learn, Lab/Model Sandbox, a simple formula evaluation,
 and relative asset/base-path behavior exercised. `vite.config.ts` deliberately
 uses `base: './'` so built asset URLs work under the GitHub Pages repository
 path.
@@ -442,7 +448,7 @@ path.
 incremental split moves independently testable pieces outward. Welcome,
 mission headers, content definitions, mission auditing,
 fingerprinting, and evaluation-trace rendering now live in dedicated modules.
-The pure-prop views in `src/app/` own Home, Learn overview, Campaigns, Guide,
+The pure-prop views in `src/app/` own Home, Learn overview, Campaigns, Lab, Guide,
 Settings, Profile, and Create presentation; navigation, persistence, and event
 handlers remain in the App controller. `WorkspaceToolbar` similarly owns only
 the grouped toolbar markup and delegates every mutation through callbacks.

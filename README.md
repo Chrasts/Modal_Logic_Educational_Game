@@ -7,9 +7,9 @@ connection between modal axioms and relational properties.
 ## [Play online](https://chrasts.github.io/Modal_Logic_Educational_Game/)
 
 The browser version is the primary way to play. It requires no installation,
-and sandbox models and completed missions are saved locally in the browser.
+and Model Sandbox drafts and completed missions are saved locally in the browser.
 The application opens on a home menu with a one-word **LEARN** button, followed
-by a compact progress/next-lesson status, plus **CAMPAIGNS** and **SANDBOX**.
+by a compact progress/next-lesson status, plus **CAMPAIGNS** and **LAB**.
 Create, Profile, settings, local data tools, and GitHub remain available in the
 secondary More menu. Fullscreen is a direct topbar action rather than a More
 menu item. Shared
@@ -49,7 +49,7 @@ mission URLs intentionally bypass the menu and launch their validated content.
   including modal witnesses, box counterexamples, scope, and frame validity.
 - Preview the exponential number of valuations required by frame validity and
   stop searches above the documented finite-browser limit before execution.
-- Turn the current sandbox into a versioned custom mission, choose which editor
+- Turn the current Model Sandbox into a versioned custom mission, choose which editor
   parts remain unlocked, add size and frame-property constraints, predictions,
   required or forbidden edges and atoms, and an optional edge bonus, then share
   or launch the mission as JSON. Authors can capture a separate starting state
@@ -68,11 +68,14 @@ alternatives `!`, `&`, `|`, `->`, `box`, and `diamond`.
 
 ## Ways to play
 
-### Sandbox
+### Lab and Model Sandbox
 
-Build and inspect models freely. Choose whether a formula should hold at one
-world, globally under the displayed valuation, or on the underlying frame under
-all valuations.
+Lab is the free experimentation area. Its first active tool, **Model Sandbox**,
+uses the same finite Kripke workspace to build and inspect models, compare
+formulas, explore frame properties and traces, and evaluate whether a formula
+holds at one world, throughout the displayed model, or on the underlying frame
+under all valuations. Opening and leaving Lab preserves the existing local
+Model Sandbox draft.
 
 ### Learn Modal Logic
 
@@ -96,7 +99,7 @@ briefings, concept help, analysis, hints, and reference solutions are available
 under **Details & hints** instead of a second persistent strip.
 
 Learn calls each guided unit a **lesson**, Campaigns and Practice call it a
-**mission**, and Sandbox has no guided progress or mission header. Guided
+**mission**, and Model Sandbox has no guided progress or mission header. Guided
 workspaces render Verification by default and only expose world, valuation, or
 accessibility panels that are useful for the current task.
 
