@@ -134,6 +134,8 @@ describe('campaign level solvability', () => {
     check('tutorial-v2-correct-edge', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: [] })
     check('tutorial-v2-add-world', ['w0', 'w1'], [], { w0: [], w1: ['p'] })
     check('tutorial-v2-build-model', ['w0', 'w1'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: ['p'] })
+    check('tutorial-v2-build-model', ['w0', 'w1', 'w2'], [{ from: 'w0', to: 'w1' }], { w0: [], w1: ['p'], w2: [] })
+    expect(tutorial('tutorial-v2-build-model').constraints?.maximumWorlds).toBeUndefined()
     expect(checkConstructionConstraints({ worldIds: ['w0', 'w1'], explicitEdges: [{ from: 'w1', to: 'w0' }], effectiveEdges: [{ from: 'w1', to: 'w0' }], valuation: { w0: [], w1: [] } }, tutorial('tutorial-v2-draw-edge').constraints!)).not.toEqual([])
   })
 

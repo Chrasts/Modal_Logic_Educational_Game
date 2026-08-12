@@ -19,7 +19,7 @@ describe('sandbox user interface', () => {
     expect((learnButton.textContent ?? '').trim().split(/\s+/u)).toHaveLength(1)
     expect(learnButton).not.toContainElement(screen.getByText(/0\/\d+ complete/))
     expect(screen.getByRole('button', { name: /Campaigns: longer challenges/ })).toHaveTextContent(/^CAMPAIGNS$/)
-    expect(screen.getByRole('button', { name: /Sandbox: build and test/ })).toHaveTextContent(/^SANDBOX$/)
+    expect(screen.getByRole('button', { name: /Lab: experiment with models and formulas/ })).toHaveTextContent(/^LAB$/)
     expect(screen.queryByLabelText('Kripke model editor')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Open settings from home' }))
     expect(screen.getByRole('checkbox', { name: 'Sound effects' })).not.toBeChecked()
@@ -27,7 +27,9 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Show minimap' }))
     expect(JSON.parse(localStorage.getItem('logic-game:interface-settings:v1') ?? '{}')).toMatchObject({ showMinimap: false, soundEffects: true })
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
+    await user.click(screen.getByRole('button', { name: 'Lab' }))
+    expect(screen.getByRole('heading', { name: 'Model Sandbox' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Open Model Sandbox' }))
     expect(screen.getByLabelText('Kripke model editor')).toBeVisible()
     expect(screen.queryByLabelText('Model overview')).not.toBeInTheDocument()
   })
@@ -173,6 +175,17 @@ describe('sandbox user interface', () => {
     await user.click(screen.getAllByRole('button', { name: 'Delete relation' }).at(-1)!)
     expect(screen.getAllByLabelText('Relation source world')).toHaveLength(1)
     expect(screen.getAllByLabelText('World')).toHaveLength(2)
+  })
+
+  it('starts valuation editing when a selected world receives a printable atom key', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+
+    fireEvent.click(screen.getByLabelText(/World w0, atoms/))
+    await user.keyboard('q')
+    const selectedValuation = screen.getAllByLabelText('True atoms')[0]
+    expect(selectedValuation).toHaveFocus()
+    expect(selectedValuation).toHaveValue('q')
   })
 
   it('keeps self-loop directed semantics in the keyboard-accessible table view', async () => {
@@ -598,7 +611,7 @@ describe('sandbox user interface', () => {
     const header = screen.getByRole('region', { name: 'Current lesson' })
     expect(within(header).getByText(/Course complete/)).toBeVisible()
     expect(within(header).getByRole('button', { name: 'Campaigns' })).toBeVisible()
-    expect(within(header).getByRole('button', { name: 'Sandbox' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Model Sandbox' })).toBeVisible()
     expect(within(header).getByRole('button', { name: 'Guide' })).toBeVisible()
     expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
   })
@@ -622,6 +635,22 @@ describe('sandbox user interface', () => {
     await user.click(within(controls).getByRole('button', { name: 'View lessons' }))
     expect(within(controls).getAllByRole('button', { name: 'Open' })).toHaveLength(tutorialLevels.length)
     expect(within(controls).getByRole('button', { name: 'Hide lessons' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('continues from a replayed final controls lesson into the first modal lesson', async () => {
+    localStorage.setItem('logic-game:campaign-progress:v2', JSON.stringify(tutorialLevels.map(({ id }) => id)))
+    localStorage.setItem('logic-game:campaign-content-revision:v1', '2')
+    const user = userEvent.setup()
+    render(<App initialView="learn" />)
+
+    const controls = screen.getByRole('heading', { name: 'Learn the Controls' }).closest('article')!
+    await user.click(within(controls).getByRole('button', { name: 'View lessons' }))
+    await user.click(within(controls).getAllByRole('button', { name: 'Replay' }).at(-1)!)
+    const header = screen.getByRole('region', { name: 'Current lesson' })
+    const next = within(header).getByRole('button', { name: 'Next lesson' })
+    expect(next).toBeEnabled()
+    await user.click(next)
+    expect(screen.getByRole('dialog', { name: learnLessons[0].title })).toBeVisible()
   })
 
   it('continues from the completed Possibility chapter into Necessity', async () => {
@@ -796,7 +825,9 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('tab', { name: 'Practice Library' }))
     await user.click(screen.getByRole('button', { name: 'Start practice' }))
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
+    await user.click(screen.getByRole('button', { name: 'Lab' }))
+    expect(screen.getByRole('heading', { name: 'Model Sandbox' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Open Model Sandbox' }))
 
     expect(screen.getByLabelText('Modal formula')).toHaveValue('box q')
   })
@@ -899,7 +930,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Profile' }))
-    expect(screen.getByText('Sandbox verification')).toBeVisible()
+    expect(screen.getByText('Model Sandbox verification')).toBeVisible()
     expect(screen.getByText('1 successful verifications')).toBeVisible()
     expect(screen.getByRole('button', { name: 'Download results CSV' })).toBeEnabled()
     expect(screen.getByText(/never leaves this browser unless you share it/i)).toBeVisible()
@@ -908,7 +939,7 @@ describe('sandbox user interface', () => {
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Profile' }))
-    expect(screen.getByText('Sandbox verification')).toBeVisible()
+    expect(screen.getByText('Model Sandbox verification')).toBeVisible()
     expect(screen.getByText('1 successful verifications')).toBeVisible()
   })
 
@@ -1160,7 +1191,8 @@ describe('sandbox user interface', () => {
     expect(screen.getByText('Satisfy the configured objective.')).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
+    await user.click(screen.getByRole('button', { name: 'Lab' }))
+    await user.click(screen.getByRole('button', { name: 'Open Model Sandbox' }))
     expect(screen.getByLabelText('Modal formula')).toBeEnabled()
   })
 

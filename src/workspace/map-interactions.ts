@@ -23,6 +23,13 @@ export interface MapWheelHandling {
   readonly viewport: MapViewport
 }
 
+export interface MapWheelGestureSession {
+  readonly gesture: MapWheelGesture
+  readonly lastEventTime: number
+}
+
+export const MAP_WHEEL_SESSION_TIMEOUT_MS = 180
+
 /**
  * Browsers expose both a mouse wheel and two-finger scrolling as WheelEvent.
  * This intentionally conservative heuristic favours 2D/fine pixel deltas as
@@ -36,14 +43,30 @@ export function classifyMapWheelGesture(event: MapWheelInput): MapWheelGesture {
   return 'mouse-wheel-zoom'
 }
 
+export function classifyMapWheelGestureSession(
+  event: MapWheelInput,
+  previous: MapWheelGestureSession | null,
+  eventTime: number,
+): MapWheelGestureSession {
+  const classified = classifyMapWheelGesture(event)
+  const active = previous && eventTime - previous.lastEventTime <= MAP_WHEEL_SESSION_TIMEOUT_MS
+  const gesture = event.ctrlKey
+    ? 'pinch-zoom'
+    : active && previous.gesture !== 'pinch-zoom'
+      ? previous.gesture
+      : classified
+  return { gesture, lastEventTime: eventTime }
+}
+
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
 
 export function applyMapWheelGesture(
   event: MapWheelInput,
   viewport: MapViewport,
   pointer: { readonly x: number; readonly y: number },
+  gestureOverride?: MapWheelGesture,
 ): MapWheelHandling {
-  const gesture = classifyMapWheelGesture(event)
+  const gesture = gestureOverride ?? classifyMapWheelGesture(event)
   if (gesture === 'trackpad-pan') {
     return { gesture, viewport: { ...viewport, x: viewport.x - event.deltaX, y: viewport.y - event.deltaY } }
   }
@@ -58,15 +81,15 @@ export function applyMapWheelGesture(
   return {
     gesture,
     viewport: {
-      x: pointer.x - flowX * nextZoom,
+      x: pointer.x - flowX * nextZoom - (gesture === 'pinch-zoom' ? event.deltaX : 0),
       y: pointer.y - flowY * nextZoom,
       zoom: nextZoom,
     },
   }
 }
 
-export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }): MapWheelHandling {
-  return applyMapWheelGesture(event, viewport, pointer)
+export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }, gestureOverride?: MapWheelGesture): MapWheelHandling {
+  return applyMapWheelGesture(event, viewport, pointer, gestureOverride)
 }
 
 /** React Flow owns pointer drag-pan only. A non-passive DOM listener owns every wheel/pinch gesture. */

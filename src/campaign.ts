@@ -212,7 +212,7 @@ export const tutorialLevels: readonly GameLevel[] = [
     briefing: 'Add a second world, make p true there, then draw w0 → w1. Undo and redo are available from the map toolbar.',
     successDebrief: 'You can now build the basic parts of a Kripke model: worlds, valuations, and accessibility relations.',
     instruction: 'Create a second world, make p true there, and draw w0 → w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredAtoms: { w1: ['p'] }, requiredEdges: [{ from: 'w0', to: 'w1' }] },
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }], edges: [], constraints: { minimumWorlds: 2, requiredAtoms: { w1: ['p'] }, requiredEdges: [{ from: 'w0', to: 'w1' }] },
     editable: ['worlds', 'valuations', 'edges'], structuralObjective: {}, workspacePresentation: { worlds: true, valuations: true, edges: true }, tutorialControls: ['worlds', 'valuations', 'edges', 'history'], atomVocabulary: ['p'],
     taskSteps: ['Add w1 and make p true there.', 'Draw w0 → w1.', 'Check task.'],
   },

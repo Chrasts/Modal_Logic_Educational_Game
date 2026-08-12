@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyMapWheelGesture, classifyMapWheelGesture, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER, resolveMapWheelHandling } from './map-interactions'
+import { applyMapWheelGesture, classifyMapWheelGesture, classifyMapWheelGestureSession, MAP_MAX_ZOOM, MAP_MIN_ZOOM, MAP_WHEEL_SESSION_TIMEOUT_MS, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER, resolveMapWheelHandling } from './map-interactions'
 
 describe('model map gesture contract', () => {
   it('leaves pointer drag-pan to React Flow and disables every competing wheel path', () => {
@@ -26,6 +26,14 @@ describe('model map gesture contract', () => {
     expect(classifyMapWheelGesture({ ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: -12 })).toBe('pinch-zoom')
   })
 
+  it('keeps one non-pinch gesture classification stable until the short session expires', () => {
+    const first = classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 8.5 }, null, 100)
+    expect(first.gesture).toBe('trackpad-pan')
+    expect(classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 100 }, first, 120).gesture).toBe('trackpad-pan')
+    expect(classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 100 }, first, 100 + MAP_WHEEL_SESSION_TIMEOUT_MS + 1).gesture).toBe('mouse-wheel-zoom')
+    expect(classifyMapWheelGestureSession({ ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: -4 }, first, 130).gesture).toBe('pinch-zoom')
+  })
+
   it('applies both trackpad axes and anchors zoom under the pointer', () => {
     expect(applyMapWheelGesture(
       { ctrlKey: false, deltaMode: 0, deltaX: 9, deltaY: 7 },
@@ -50,6 +58,14 @@ describe('model map gesture contract', () => {
       { ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: 1000 },
       { x: 0, y: 0, zoom: 1 }, { x: 0, y: 0 },
     ).viewport.zoom).toBe(MAP_MIN_ZOOM)
+  })
+
+  it('preserves horizontal translation supplied alongside pinch zoom', () => {
+    const withoutPan = applyMapWheelGesture({ ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: -10 }, { x: 0, y: 0, zoom: 1 }, { x: 100, y: 100 })
+    const withPan = applyMapWheelGesture({ ctrlKey: true, deltaMode: 0, deltaX: 7, deltaY: -10 }, { x: 0, y: 0, zoom: 1 }, { x: 100, y: 100 })
+    expect(withPan.viewport.x).toBeCloseTo(withoutPan.viewport.x - 7)
+    expect(withPan.viewport.y).toBeCloseTo(withoutPan.viewport.y)
+    expect(withPan.viewport.zoom).toBeCloseTo(withoutPan.viewport.zoom)
   })
 
   it('is deterministic for the same wheel input', () => {

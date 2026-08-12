@@ -138,6 +138,12 @@ a { color: inherit; }
 .home-secondary button:hover { border-color: rgba(20,100,122,.25); background: rgba(220,235,239,.35); }
 .home-secondary strong { color: var(--petrol-dark); font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: .75rem; }
 .home-secondary span { font-size: .65rem; }
+.lab-tool-grid { display: grid; grid-template-columns: minmax(0, 720px); }
+.lab-tool-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, .55fr); gap: 1rem 1.4rem; align-items: center; border: 1px solid rgba(20,100,122,.24); border-left: 4px solid var(--petrol); border-radius: 12px; background: linear-gradient(145deg, rgba(220,235,239,.62), rgba(255,255,255,.58)); padding: 1.2rem; }
+.lab-tool-card h2 { margin: 0 0 .35rem; color: var(--petrol-dark); font: 700 1.55rem "Source Serif 4", Georgia, serif; }
+.lab-tool-card p:not(.eyebrow) { margin: 0; color: #596159; font-size: .78rem; line-height: 1.6; }
+.lab-tool-card ul { margin: 0; padding-left: 1.1rem; color: #4f5a53; font-size: .72rem; line-height: 1.7; }
+.lab-tool-card .primary-action { grid-column: 1 / -1; width: max-content; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
 .settings-grid article { display: grid; align-content: start; gap: .65rem; border: 1px solid rgba(92,96,87,.14); border-radius: 10px; background: rgba(255,255,255,.5); padding: 1rem; }
 .settings-grid h2 { margin: 0; color: var(--petrol-dark); font: 700 1.05rem "Source Serif 4", Georgia, serif; }
@@ -250,7 +256,7 @@ a { color: inherit; }
 .profile-empty strong { color: var(--petrol-dark); font: 700 1rem "Source Serif 4", Georgia, serif; }
 .profile-empty span { font-size: .7rem; }
 
-.mission-header { position: relative; z-index: var(--z-mission-hud); display: grid; grid-template-columns: minmax(170px, 235px) minmax(240px, 1fr) auto; gap: .3rem .65rem; align-items: center; margin: 0 0 .4rem; border: 1px solid rgba(20, 100, 122, .24); border-left: 4px solid var(--petrol); border-radius: 10px; background: linear-gradient(100deg, rgba(220, 235, 239, .58), rgba(248, 247, 241, .97) 34%); padding: .4rem .55rem; box-shadow: 0 4px 14px rgba(30, 48, 42, .05); animation: screen-arrive .2s ease-out; }
+.mission-header { position: relative; z-index: var(--z-mission-hud); display: grid; grid-template-columns: minmax(170px, 235px) minmax(240px, 1fr) minmax(250px, auto); gap: .3rem .65rem; align-items: center; margin: 0 0 .4rem; border: 1px solid rgba(20, 100, 122, .24); border-left: 4px solid var(--petrol); border-radius: 10px; background: linear-gradient(100deg, rgba(220, 235, 239, .58), rgba(248, 247, 241, .97) 34%); padding: .4rem .55rem; box-shadow: 0 4px 14px rgba(30, 48, 42, .05); animation: screen-arrive .2s ease-out; }
 .mission-header-campaign { border-left-color: var(--brown); }
 .mission-header-practice { border-left-color: #6b756a; }
 .mission-header-custom { border-left-color: #6e5d86; }
@@ -265,12 +271,13 @@ a { color: inherit; }
 .mission-header-objective ol { display: flex; flex-wrap: wrap; gap: .15rem .75rem; margin: .18rem 0 0; padding-left: 1.1rem; color: #596159; font-size: .58rem; line-height: 1.35; }
 .mission-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
 .mission-header-actions button { flex: 0 0 auto; border: 1px solid rgba(20, 100, 122, .28); border-radius: 6px; background: rgba(248, 247, 241, .82); color: var(--petrol-dark); padding: .36rem .48rem; font-size: .6rem; font-weight: 700; }
-.mission-header-actions .verify-button { border-color: var(--petrol-dark); background: var(--petrol); color: #fff; }
+.mission-header-actions .verify-button { width: auto; margin: 0; border-color: var(--petrol-dark); background: var(--petrol); color: #fff; box-shadow: none; }
 .mission-header-actions button:disabled { cursor: not-allowed; opacity: .38; }
-.mission-header-details { grid-column: 1 / -1; position: relative; justify-self: end; color: var(--petrol-dark); font-size: .62rem; }
+.mission-header-controls { min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: .35rem; }
+.mission-header-details { position: relative; flex: 0 0 auto; color: var(--petrol-dark); font-size: .62rem; }
 .mission-header-details > summary { cursor: pointer; font-weight: 700; list-style-position: inside; }
 .mission-header-details > div { position: absolute; z-index: var(--z-popover); top: calc(100% + .4rem); right: 0; width: min(560px, calc(100vw - 2rem)); max-height: min(520px, 70vh); overflow: auto; border: 1px solid rgba(20,100,122,.24); border-radius: 9px; background: var(--paper); padding: .8rem; box-shadow: 0 15px 38px rgba(30,48,42,.2); }
-.mission-header-rich { grid-template-columns: minmax(170px, 235px) minmax(360px, 1fr) auto; align-items: start; }
+.mission-header-rich { grid-template-columns: minmax(170px, 235px) minmax(360px, 1fr) minmax(250px, auto); align-items: start; }
 .mission-header-rich .mission-header-objective { gap: .3rem; }
 .mission-question-content > p, .mission-complete-content > p { margin: 0; color: #303832; font-size: .72rem; line-height: 1.45; }
 .question-task-panel { display: grid; gap: .35rem; }
@@ -889,7 +896,7 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
   .brand { align-items: center; flex-wrap: wrap; }
   .product-nav { width: 100%; max-width: 100%; order: 3; overflow-x: auto; }
   .mission-header { position: sticky; top: 0; grid-template-columns: 1fr; align-items: stretch; background: var(--paper); }
-  .mission-header-actions, .mission-header-details { grid-column: 1; }
+  .mission-header-controls { grid-column: 1; align-items: stretch; flex-direction: column; }
   .mission-header-actions { justify-content: stretch; }
   .mission-header-actions button { flex: 1 1 auto; }
   .mission-header-actions .verify-button { min-height: 2.75rem; }
@@ -958,6 +965,8 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
   .learn-home-status { display: grid; gap: .1rem; }
   .learn-home-status span::before { content: none; }
   .home-actions, .home-secondary, .settings-grid { grid-template-columns: 1fr; }
+  .lab-tool-card { grid-template-columns: 1fr; }
+  .lab-tool-card .primary-action { grid-column: 1; width: 100%; }
   .home-hero h1 { font-size: clamp(2.4rem, 14vw, 4.2rem); }
 }
 .main-content { min-height: 0; flex: 1; display: flex; flex-direction: column; }

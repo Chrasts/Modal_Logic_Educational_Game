@@ -46,8 +46,10 @@ export function MissionHeader({
         {content ?? <p>{objective}</p>}
         {taskSteps && taskSteps.length > 0 && <ol aria-label="Action checklist">{taskSteps.map((step) => <li key={step}>{step}</li>)}</ol>}
       </div>
-      <div className="mission-header-actions">{actions}</div>
-      {details && <details className="mission-header-details"><summary>Details &amp; hints</summary><div>{details}</div></details>}
+      <div className="mission-header-controls">
+        <div className="mission-header-actions">{actions}</div>
+        {details && <details className="mission-header-details"><summary>Details &amp; hints</summary><div>{details}</div></details>}
+      </div>
     </section>
   )
 }
