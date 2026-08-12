@@ -1,6 +1,6 @@
 interface WorkspaceQuickHelpProps {
   readonly onClose: () => void
-  readonly onOpenGuide: () => void
+  readonly onOpenHelp: () => void
   readonly onReplayTour: () => void
 }
 
@@ -12,13 +12,13 @@ const quickHelpSections = [
   ['Keyboard', 'Tab reaches every control. Enter or Space chooses a focused world in a question. Delete removes a selected editable item; Ctrl+Z and Ctrl+Y undo and redo.'],
 ] as const
 
-export function WorkspaceQuickHelp({ onClose, onOpenGuide, onReplayTour }: WorkspaceQuickHelpProps) {
+export function WorkspaceQuickHelp({ onClose, onOpenHelp, onReplayTour }: WorkspaceQuickHelpProps) {
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="help-dialog workspace-quick-help" role="dialog" aria-modal="true" aria-labelledby="quick-help-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="dialog-heading"><div><p className="eyebrow">Workspace reference</p><h2 id="quick-help-title">Quick help</h2></div><button type="button" className="dialog-close" onClick={onClose} aria-label="Close quick help">×</button></div>
         <div className="quick-help-grid">{quickHelpSections.map(([title, body]) => <article key={title}><h3>{title}</h3><p>{body}</p></article>)}</div>
-        <div className="quick-help-actions"><button type="button" className="primary-action" onClick={onOpenGuide}>Open full guide</button><button type="button" className="secondary-button" onClick={onReplayTour}>Replay workspace tour</button></div>
+        <div className="quick-help-actions"><button type="button" className="primary-action" onClick={onOpenHelp}>Open full Help</button><button type="button" className="secondary-button" onClick={onReplayTour}>Replay workspace tour</button></div>
       </section>
     </div>
   )

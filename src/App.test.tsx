@@ -56,6 +56,17 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('menuitem', { name: 'GitHub' })).toHaveAttribute('href', 'https://github.com/Chrasts/Modal_Logic_Educational_Game')
   })
 
+  it('keeps four activity destinations in primary navigation and support destinations in More', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    const navigation = screen.getByRole('navigation', { name: 'Global navigation' })
+    expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual(['Home', 'Learn', 'Campaigns', 'Lab'])
+    expect(within(navigation).queryByText(/Guide|Reference|Help/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('menuitem', { name: 'Modal Logic Reference' })).toBeVisible()
+    expect(screen.getByRole('menuitem', { name: 'Help & Controls' })).toBeVisible()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem('logic-game:workspace-tour:v1', 'seen')
@@ -97,6 +108,41 @@ describe('sandbox user interface', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Reflexive rule mode' }), 'enforce')
     expect(screen.getByRole('combobox', { name: 'Reflexive rule mode' })).toHaveValue('enforce')
     expect(screen.getByText(/2 relations derived from frame properties/)).toBeVisible()
+  })
+
+  it('restores, resizes, collapses, and resets persisted desktop panel widths', async () => {
+    localStorage.setItem('logic-game:workspace-layout:v1', JSON.stringify({ left: 300, right: 280 }))
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    const left = screen.getByRole('separator', { name: 'Resize left workspace panel' })
+    expect(left).toHaveAttribute('aria-valuenow', '300')
+    expect(screen.getByRole('separator', { name: 'Resize right workspace panel' })).toHaveAttribute('aria-valuenow', '280')
+    fireEvent.keyDown(left, { key: 'ArrowRight' })
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('logic-game:workspace-layout:v1') ?? '{}')).toMatchObject({ left: 312, right: 280 }))
+    await user.click(screen.getByRole('button', { name: 'Toggle Evaluation panel' }))
+    expect(screen.queryByRole('separator', { name: 'Resize left workspace panel' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Toggle Evaluation panel' }))
+    expect(screen.getByRole('separator', { name: 'Resize left workspace panel' })).toHaveAttribute('aria-valuenow', '312')
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Settings' }))
+    await user.click(screen.getByRole('button', { name: 'Reset interface preferences' }))
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('logic-game:workspace-layout:v1') ?? '{}')).toEqual({ left: 242, right: 242 }))
+  })
+
+  it('redistributes oversized persisted panels when the desktop workspace narrows', async () => {
+    localStorage.setItem('logic-game:workspace-layout:v1', JSON.stringify({ left: 440, right: 440 }))
+    render(<App initialView="workspace" />)
+    const workspace = screen.getByLabelText('Kripke model editor')
+    Object.defineProperty(workspace, 'clientWidth', { configurable: true, value: 1000 })
+    fireEvent(window, new Event('resize'))
+    await waitFor(() => {
+      expect(screen.getByRole('separator', { name: 'Resize left workspace panel' })).toHaveAttribute('aria-valuenow', '240')
+      expect(screen.getByRole('separator', { name: 'Resize right workspace panel' })).toHaveAttribute('aria-valuenow', '200')
+    })
+  })
+
+  it('does not expose legacy Common mistake lesson data', () => {
+    expect(learnLessons.some((lesson) => 'commonMistake' in lesson)).toBe(false)
   })
 
   it('turns a failed frame-property witness into a non-semantic map overlay', async () => {
@@ -254,7 +300,7 @@ describe('sandbox user interface', () => {
     fireEvent.keyDown(window, { key: 'Delete' })
     expect(screen.queryByLabelText('World w1')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Relation source world')).not.toBeInTheDocument()
-    expect(screen.getByText(/Deleted w1 and 1 incident explicit relation/)).toBeVisible()
+    expect(screen.queryByText(/Deleted .*Undo is available/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(screen.getByLabelText('World w1')).toBeInTheDocument()
     expect(screen.getByLabelText('Relation source world')).toHaveValue('w0')
@@ -338,6 +384,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByText('Semantic details'))
     expect(screen.getByText('Step 1 of 2')).toBeVisible()
     expect(document.querySelector('.trace-witness-node')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next step' }))
@@ -350,7 +397,9 @@ describe('sandbox user interface', () => {
 
     await user.selectOptions(screen.getByLabelText('Semantic target'), 'frame')
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
-    expect(screen.getByText('Not valid on this frame.')).toBeVisible()
+    const result = screen.getByText('Not yet').closest('.result') as HTMLElement
+    expect(within(result).getAllByText('Not valid on this frame.')).toHaveLength(2)
+    await user.click(screen.getByText('Semantic details'))
     expect(screen.getByText(/Countervaluation at/)).toBeVisible()
     expect(screen.getByText(/Evaluation tree/)).toBeVisible()
   })
@@ -370,8 +419,9 @@ describe('sandbox user interface', () => {
     await user.type(screen.getByLabelText('Comparison formula'), 'p')
     await user.click(screen.getByLabelText('Make formulas differ'))
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByText('Semantic details'))
     expect(screen.getByText('Pointed equivalence')).toBeVisible()
-    expect(screen.getByText(/are different at w0/i)).toBeVisible()
+    expect(screen.getAllByText(/are different at w0/i)).toHaveLength(2)
   })
 
   it('classifies failures and summarizes practice by concept in the local profile', async () => {
@@ -414,7 +464,7 @@ describe('sandbox user interface', () => {
 
     await user.selectOptions(screen.getByLabelText('Correspondence lab'), 't')
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
-    expect(screen.getByText('Formula and relation agree on this frame')).toBeVisible()
+    await user.click(screen.getByText('Semantic details'))
     expect(screen.getByText('Frame validity')).toBeVisible()
     expect(screen.getByText('Relational property')).toBeVisible()
     expect(screen.getByText('Instance comparison')).toBeVisible()
@@ -436,7 +486,7 @@ describe('sandbox user interface', () => {
     const quickHelp = screen.getByRole('dialog', { name: 'Quick help' })
     expect(quickHelp).toBeVisible()
     expect(within(quickHelp).getAllByRole('heading', { level: 3 })).toHaveLength(5)
-    expect(within(quickHelp).getByRole('button', { name: 'Open full guide' })).toBeVisible()
+    expect(within(quickHelp).getByRole('button', { name: 'Open full Help' })).toBeVisible()
     expect(within(quickHelp).getByRole('button', { name: 'Replay workspace tour' })).toBeVisible()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Quick help' })).not.toBeInTheDocument()
@@ -612,7 +662,7 @@ describe('sandbox user interface', () => {
     expect(within(header).getByText(/Course complete/)).toBeVisible()
     expect(within(header).getByRole('button', { name: 'Campaigns' })).toBeVisible()
     expect(within(header).getByRole('button', { name: 'Model Sandbox' })).toBeVisible()
-    expect(within(header).getByRole('button', { name: 'Guide' })).toBeVisible()
+    expect(within(header).getByRole('button', { name: 'Reference' })).toBeVisible()
     expect(screen.queryByRole('dialog', { name: 'Task complete' })).not.toBeInTheDocument()
   })
 
@@ -782,7 +832,7 @@ describe('sandbox user interface', () => {
     await user.type(atoms, 'p')
     expect(atoms).toHaveValue('p')
     await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getAllByText(/Construction constraint not met/).length).toBeGreaterThan(0)
+    expect(screen.getByText('Not yet')).toBeVisible()
     await user.clear(atoms)
     await user.type(atoms, 'p q')
     expect(atoms).toHaveValue('p q')
@@ -844,7 +894,7 @@ describe('sandbox user interface', () => {
     expect(screen.getByText('Persistence of truth')).toBeVisible()
   })
 
-  it('preserves the active campaign while browsing another track and the guide', async () => {
+  it('preserves the active campaign while browsing another track and Help', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
@@ -856,7 +906,8 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Campaigns' }))
     await user.click(screen.getByRole('tab', { name: 'Practice Library' }))
     await user.click(screen.getByRole('button', { name: /Global Model Building/ }))
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Help & Controls' }))
     await user.click(screen.getByRole('button', { name: 'Return to current mission' }))
 
     expect(screen.getByText('Necessary, not actual')).toBeVisible()
@@ -917,6 +968,7 @@ describe('sandbox user interface', () => {
 
     await user.selectOptions(screen.getByLabelText('Semantic target'), 'frame')
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByText('Semantic details'))
     expect(screen.getByText('Countervaluation')).toBeVisible()
     expect(screen.getByText('Truth under countervaluation')).toBeVisible()
     expect(screen.getByText('Key diagnostics')).toBeVisible()
@@ -1044,7 +1096,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Import JSON' }))
     await user.selectOptions(screen.getByLabelText('Relational property answer'), 'transitive')
     await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    expect(screen.getByText(/transitive is not the required relational property/)).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Relational property answer'), 'symmetric')
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByRole('region', { name: 'Current mission' })).toHaveTextContent('Task complete')
@@ -1070,7 +1122,7 @@ describe('sandbox user interface', () => {
     expect(answers).toHaveTextContent('w0: ∅')
     await user.click(within(answers).getByRole('radio', { name: /B/ }))
     await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    expect(screen.getByText(/B is not the countervaluation/)).toBeInTheDocument()
     await user.click(within(answers).getByRole('radio', { name: /A/ }))
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByRole('region', { name: 'Current mission' })).toHaveTextContent('Task complete')
@@ -1099,7 +1151,7 @@ describe('sandbox user interface', () => {
     expect(answers).toHaveTextContent('R = w0 to w1')
     await user.click(within(answers).getByRole('radio', { name: /Model B/ }))
     await user.click(screen.getByRole('button', { name: 'Check task' }))
-    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    expect(screen.getByText(/B is not the required candidate model/)).toBeInTheDocument()
     await user.click(within(answers).getByRole('radio', { name: /Model A/ }))
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByRole('region', { name: 'Current mission' })).toHaveTextContent('Task complete')
@@ -1223,13 +1275,13 @@ describe('sandbox user interface', () => {
     expect(screen.queryByText('Frames and global constraints')).not.toBeInTheDocument()
   })
 
-  it('opens the formal modal logic introduction', async () => {
+  it('opens the mathematical modal logic reference from More', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
-    await user.click(screen.getByRole('button', { name: /Formal Modal Semantics/ }))
-    expect(screen.getByRole('heading', { name: 'Modal Logic Guide' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Modal Logic Reference' }))
+    expect(screen.getByRole('heading', { name: 'Modal Logic Reference' })).toBeVisible()
     expect(screen.getByText(/M = ⟨W,R,ν⟩/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Satisfaction' })).toBeVisible()
   })
@@ -1258,33 +1310,35 @@ describe('sandbox user interface', () => {
     expect(JSON.parse(localStorage.getItem('logic-game:learn-progress:v1') ?? '{}').completedLessonIds).toEqual(expect.arrayContaining(learnLessons.map(({ id }) => id)))
   })
 
-  it('replays the workspace tour from Guide without losing the active mission', async () => {
+  it('replays the workspace tour from Help without losing the active mission', async () => {
     const user = userEvent.setup()
     render(<App initialView="learn" />)
     await user.click(screen.getAllByRole('button', { name: 'Start' })[0])
     expect(screen.getByText('Choose the evaluation world')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Help & Controls' }))
     await user.click(screen.getByRole('button', { name: 'Replay workspace tour' }))
     expect(screen.getByText('Workspace tour · 1 of 4')).toBeVisible()
     expect(screen.getByText('Choose the evaluation world')).toBeVisible()
   })
 
-  it('keeps the guide as a reference and replays the dedicated welcome instead of duplicating it', async () => {
+  it('keeps Help operational and replays the dedicated welcome instead of duplicating it', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Help & Controls' }))
     expect(screen.queryByRole('button', { name: /Modal Logic: Intuitive Introduction/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Replay Welcome to Modal Logic' }))
+    await user.click(screen.getByRole('button', { name: 'Replay Welcome' }))
     expect(screen.getByRole('heading', { name: 'Welcome to Modal Logic' })).toBeVisible()
   })
 
-  it('documents objective and constraint types in the guide', async () => {
+  it('documents objective and constraint types in Help', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
 
-    await user.click(screen.getByRole('button', { name: 'Modal Logic Guide' }))
-    await user.click(screen.getByText('Open controls reference →'))
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Help & Controls' }))
     await user.click(screen.getByRole('tab', { name: 'Objectives & constraints' }))
     expect(screen.getByText('Objective scopes')).toBeVisible()
     expect(screen.getByText('Construction constraints')).toBeVisible()

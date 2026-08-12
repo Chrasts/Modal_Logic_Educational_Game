@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   Background,
   ConnectionMode,
@@ -25,11 +25,13 @@ import { QuestionTaskPanel } from './components/QuestionTaskPanel'
 import { PredictionInput } from './components/PredictionInput'
 import { WorkspaceQuickHelp } from './components/WorkspaceQuickHelp'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
+import { VerificationSummary } from './components/VerificationSummary'
+import { MobileUnsupportedGuard } from './components/MobileUnsupportedGuard'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
 import { ReflexiveRelationBadge } from './workspace/ReflexiveRelationBadge'
 import { modalEdgeTypes, resolveModalEdgeEndpoints } from './workspace/ModalEdge'
-import { classifyMapWheelGestureSession, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps, resolveMapWheelHandling, type MapWheelGestureSession } from './workspace/map-interactions'
+import { MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps, resolveMapWheelHandling } from './workspace/map-interactions'
 import { buildReflexiveRelationPresentations, buildRelationPresentations, describeRelationPresentation, type RelationDirectionPresentation, type RelationPresentation } from './workspace/relation-presentation'
 import { applyCollisionClassNames, commitWorldPosition, findFreeWorldPosition, findOverlappingWorldKeys, resolveWorldVisualCenter, shouldCreateWorldFromPaneClick, WORLD_NODE_SIZE, type WorldPosition } from './workspace/world-placement'
 import { createTidyModelLayout } from './workspace/model-layout'
@@ -38,6 +40,8 @@ import { isTextEntryTarget, resolveDeleteSelection, shouldBeginValuationEdit } f
 import { deleteWorldFromEditableModel, validateEditableModel, validateExplicitEdgeCandidate, validateWorldIdCandidate } from './workspace/model-integrity'
 import { WorldIdInput } from './workspace/WorldIdInput'
 import { worldNodeTypes } from './workspace/WorldNode'
+import { WorkspaceResizeHandle } from './workspace/WorkspaceResizeHandle'
+import { defaultWorkspaceLayout, normalizeWorkspaceLayout, resizeWorkspaceSide, type WorkspaceLayout } from './workspace/workspace-layout'
 import { insertAtSelection } from './formula-input'
 import { findFrameRuleConflicts } from './logic/frame-rule-conflicts'
 import { ProgressiveHints } from './components/ProgressiveHints'
@@ -57,7 +61,8 @@ import { LearnOverview } from './app/LearnOverview'
 import { CampaignsView, type CampaignSection } from './app/CampaignsView'
 import { SettingsView } from './app/SettingsView'
 import { CreateView } from './app/CreateView'
-import { GuideView, type GuideTab } from './app/GuideView'
+import { ReferenceView } from './app/ReferenceView'
+import { HelpView } from './app/HelpView'
 import { ProfileView } from './app/ProfileView'
 import { LabView } from './app/LabView'
 import { LearnRecoveryActions } from './components/LearnRecoveryActions'
@@ -110,7 +115,7 @@ type VerificationResult =
 
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom'
-type AppView = 'home' | 'workspace' | 'learn' | 'welcome' | 'campaigns' | 'lab' | 'create' | 'guide' | 'profile' | 'settings'
+type AppView = 'home' | 'workspace' | 'learn' | 'welcome' | 'campaigns' | 'lab' | 'create' | 'reference' | 'help' | 'profile' | 'settings'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
@@ -172,6 +177,7 @@ const currentCampaignContentRevision = 2
 const revisedCampaignLevelIds = new Set(['tutorial-v2-valuation'])
 const campaignAssistanceKey = 'logic-game:campaign-assistance:v1'
 const interfaceSettingsKey = 'logic-game:interface-settings:v1'
+const workspaceLayoutKey = 'logic-game:workspace-layout:v1'
 const workspaceTourKey = 'logic-game:workspace-tour:v1'
 const workspaceTourSteps = [
   { title: 'Model map', body: 'The map shows worlds, their true atoms, and directed accessibility. This is where you inspect or build the Kripke model.' },
@@ -195,6 +201,10 @@ const loadInterfaceSettings = (): InterfaceSettings => {
       rightPanelOpen: stored.rightPanelOpen !== false,
     } : defaultInterfaceSettings
   } catch { return defaultInterfaceSettings }
+}
+const loadWorkspaceLayout = (): WorkspaceLayout => {
+  try { return normalizeWorkspaceLayout(JSON.parse(localStorage.getItem(workspaceLayoutKey) ?? 'null')) }
+  catch { return defaultWorkspaceLayout }
 }
 const explicitKeyFromFlowEdgeId = (id: string) => id.startsWith('explicit:') ? Number(id.slice(9)) : null
 const defaultFrameRules: FrameRules = {
@@ -370,9 +380,10 @@ function loadCampaignAssistance(): ReadonlySet<string> {
   } catch { return new Set() }
 }
 
-export function App({ initialView = 'home' }: { readonly initialView?: AppView } = {}) {
+function AppContent({ initialView = 'home' }: { readonly initialView?: AppView } = {}) {
   const [initialDraft] = useState(loadDraft)
   const [initialInterfaceSettings] = useState(loadInterfaceSettings)
+  const [workspaceLayout, setWorkspaceLayout] = useState(loadWorkspaceLayout)
   const [gameMode, setGameMode] = useState<GameMode>('sandbox')
   const [learnProgress, setLearnProgress] = useState<LearnProgress>(loadLearnProgress)
   const [learnHintLevel, setLearnHintLevel] = useState(0)
@@ -385,6 +396,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const selectedValuationInputRef = useRef<HTMLInputElement>(null)
   const verificationResultRef = useRef<HTMLDivElement>(null)
+  const workspaceRef = useRef<HTMLElement>(null)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
@@ -467,7 +479,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [importSource, setImportSource] = useState('')
   const [dataMessage, setDataMessage] = useState('')
   const [shareLink, setShareLink] = useState('')
-  const [guideTab, setGuideTab] = useState<GuideTab>('overview')
   const [showFrameRules, setShowFrameRules] = useState(false)
   const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
   const [editorMode, setEditorMode] = useState<EditorMode>('edit')
@@ -488,20 +499,20 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setSoundEffects(defaultInterfaceSettings.soundEffects)
     setLeftPanelOpen(defaultInterfaceSettings.leftPanelOpen)
     setRightPanelOpen(defaultInterfaceSettings.rightPanelOpen)
+    setWorkspaceLayout(defaultWorkspaceLayout)
     try { localStorage.removeItem(interfaceSettingsKey) } catch { /* Preferences remain reset in memory. */ }
+    try { localStorage.removeItem(workspaceLayoutKey) } catch { /* Layout remains reset in memory. */ }
   }
   const [showWorkspaceTour, setShowWorkspaceTour] = useState(() => initialView === 'workspace' && localStorage.getItem(workspaceTourKey) !== 'seen')
   const [workspaceTourStep, setWorkspaceTourStep] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
-  const [workspaceStatus, setWorkspaceStatus] = useState('')
   const [activeFrameWitness, setActiveFrameWitness] = useState<FramePropertyWitness | null>(null)
   const [hoveredWorldKey, setHoveredWorldKey] = useState<number | null>(null)
   const [collidingWorldKeys, setCollidingWorldKeys] = useState<ReadonlySet<number>>(new Set())
   const [expandedRelationPairKey, setExpandedRelationPairKey] = useState<string | null>(null)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null)
   const graphCanvasRef = useRef<HTMLDivElement>(null)
-  const mapWheelSessionRef = useRef<MapWheelGestureSession | null>(null)
   const historyPast = useRef<ModelHistoryEntry[]>([])
   const historyFuture = useRef<ModelHistoryEntry[]>([])
   const sandboxBeforeCampaign = useRef<SandboxDraft | null>(null)
@@ -533,7 +544,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setEdgeDraft(null)
     setEdgeEditErrors({})
     setActiveFrameWitness(null)
-    setWorkspaceStatus('')
     setEdgeDraft(null)
     if (!preserveResult) setResult(null)
   }
@@ -600,6 +610,30 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, soundEffects, leftPanelOpen, rightPanelOpen }
     try { localStorage.setItem(interfaceSettingsKey, JSON.stringify(settings)) } catch { /* Preferences remain available for this session. */ }
   }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion, soundEffects, leftPanelOpen, rightPanelOpen, gameMode])
+
+  useEffect(() => {
+    try { localStorage.setItem(workspaceLayoutKey, JSON.stringify(workspaceLayout)) } catch { /* Layout remains available for this session. */ }
+  }, [workspaceLayout])
+
+  useEffect(() => {
+    if (appView !== 'workspace') return
+    const reconcileWorkspaceWidth = () => {
+      const width = workspaceRef.current?.clientWidth
+      if (!width || width <= 0) return
+      setWorkspaceLayout((current) => {
+        const next = resizeWorkspaceSide(current, 'left', current.left, Math.max(0, width - 40))
+        return next.left === current.left && next.right === current.right ? current : next
+      })
+    }
+    reconcileWorkspaceWidth()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reconcileWorkspaceWidth)
+    if (workspaceRef.current) observer?.observe(workspaceRef.current)
+    window.addEventListener('resize', reconcileWorkspaceWidth)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', reconcileWorkspaceWidth)
+    }
+  }, [appView])
 
   useEffect(() => {
     if (!showHelp && !showFrameRules && !showDataManager) return
@@ -1064,7 +1098,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     previousSoundResultRef.current = result
   }, [result, soundEffects])
   useEffect(() => {
-    if (result && result.kind !== 'error' && !isQuestionTask) verificationResultRef.current?.focus()
+    if (result && !isQuestionTask) verificationResultRef.current?.focus()
   }, [isQuestionTask, result])
   useEffect(() => {
     if (!isQuestionTask) return
@@ -1075,6 +1109,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const activeLevelFailureCount = activeLevel ? guestProfile.history.filter((entry) => entry.levelId === activeLevel.id && !entry.success).length : 0
   const relatedLearnLesson = courseLesson?.relatedLessonIds?.map((id) => learnLessons.find((lesson) => lesson.id === id)).find(Boolean)
   const semanticFeedbackLevel = result?.kind === 'failure' && activeLevel ? Math.max(1, Math.min(3, activeLevelFailureCount)) : 3
+  const hasSemanticResultDetails = Boolean(result && 'verdict' in result && (result.verdict || result.bonus || result.prediction))
+  const resizeWorkspacePanel = (side: 'left' | 'right', desiredWidth: number) => {
+    const measuredWidth = workspaceRef.current?.clientWidth
+    const totalWidth = measuredWidth && measuredWidth > 0 ? measuredWidth : 1280
+    setWorkspaceLayout((current) => resizeWorkspaceSide(current, side, desiredWidth, Math.max(0, totalWidth - 40)))
+  }
+  const workspaceGridStyle = {
+    '--workspace-left-width': `${workspaceLayout.left}px`,
+    '--workspace-right-width': `${workspaceLayout.right}px`,
+  } as CSSProperties
   const anyDialogOpen = showHelp || showFrameRules || showDataManager || learnConceptOpen || showWorkspaceTour
   useDialogFocus(anyDialogOpen, () => {
     if (showWorkspaceTour) { try { localStorage.setItem(workspaceTourKey, 'seen') } catch { /* Optional persistence. */ }; setShowWorkspaceTour(false) }
@@ -1252,17 +1296,19 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         event.stopPropagation()
         return
       }
-      if (event.target.closest('.react-flow__panel, button, input, select, textarea, [role="button"], [role="slider"]')) return
+      if (event.target.closest('.react-flow__panel, button, input, select, textarea, [role="button"], [role="slider"]')) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       if (!flowInstance) return
       const bounds = canvas.getBoundingClientRect()
       event.preventDefault()
       event.stopPropagation()
-      const session = classifyMapWheelGestureSession(event, mapWheelSessionRef.current, event.timeStamp)
-      mapWheelSessionRef.current = session
       const handling = resolveMapWheelHandling(event, flowInstance.getViewport(), {
         x: event.clientX - bounds.left,
         y: event.clientY - bounds.top,
-      }, session.gesture)
+      })
       if (import.meta.env.DEV && localStorage.getItem('logic-game:debug-map-wheel') === '1') {
         const now = performance.now()
         console.debug('[map-wheel]', { dt: Math.round(now - previousDebugTime), deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, gesture: handling.gesture })
@@ -1287,7 +1333,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setCollidingWorldKeys(new Set())
     setEdgeDraft(null)
     setResult(null)
-    setWorkspaceStatus(`Deleted ${deletion.removedWorldId}${deletion.incidentRelationCount ? ` and ${deletion.incidentRelationCount} incident explicit relation${deletion.incidentRelationCount === 1 ? '' : 's'}` : ''}. Undo is available.`)
   }
 
   const addEdge = () => {
@@ -1337,13 +1382,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const deleteEdge = (key: number) => {
     if (!canEditEdges) return
-    const removed = edges.find((edge) => edge.key === key)
-    if (!removed) return
+    if (!edges.some((edge) => edge.key === key)) return
     saveHistoryPoint()
     setEdges((current) => current.filter((edge) => edge.key !== key))
     clearGraphSelection()
     setResult(null)
-    setWorkspaceStatus(`Deleted explicit relation ${removed.from} to ${removed.to}. Undo is available.`)
   }
 
   const selectEvaluationWorld = (worldId: string) => {
@@ -2319,12 +2362,12 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''} ${gameMode === 'custom' && authorPreview === 'mobile' ? 'author-preview-mobile' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
-        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label={backLabel === 'Back' ? 'Go back' : backLabel}>← <span>{backLabel}</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || (appView === 'workspace' && (gameMode === 'learn' || gameMode === 'tutorial')) ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || (appView === 'workspace' && (gameMode === 'guidedCampaign' || gameMode === 'campaign')) ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'lab' || (appView === 'workspace' && gameMode === 'sandbox') ? 'active' : ''} type="button" onClick={() => setAppView('lab')}>Lab</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Modal Logic Guide</button></nav></div>
+        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label={backLabel === 'Back' ? 'Go back' : backLabel}>← <span>{backLabel}</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || (appView === 'workspace' && (gameMode === 'learn' || gameMode === 'tutorial')) ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || (appView === 'workspace' && (gameMode === 'guidedCampaign' || gameMode === 'campaign')) ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'lab' || (appView === 'workspace' && gameMode === 'sandbox') ? 'active' : ''} type="button" onClick={() => setAppView('lab')}>Lab</button></nav></div>
         <div className="topbar-actions">
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? `Restart ${missionNavigationUnit}` : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open workspace quick help" onClick={() => setShowHelp(true)}>Quick help</button>}
           {document.fullscreenEnabled && <button type="button" className="icon-button fullscreen-button" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={() => void toggleFullscreen()}>⛶</button>}
-          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover" onKeyDown={(event) => { const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')]; const index = items.indexOf(document.activeElement as HTMLElement); if (event.key === 'Escape') { event.preventDefault(); setUtilityMenuOpen(false); requestAnimationFrame(() => utilityMenuButtonRef.current?.focus()); return } if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length; items[next]?.focus() }}>{appView === 'workspace' && <button type="button" role="menuitem" onClick={openWorkspaceTour}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
+          <div className="utility-menu" ref={utilityMenuRef}><button ref={utilityMenuButtonRef} type="button" className="text-button" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded={utilityMenuOpen} onClick={() => setUtilityMenuOpen((open) => !open)}>More</button>{utilityMenuOpen && <div id="utility-menu" role="menu" className="utility-menu-popover" onKeyDown={(event) => { const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')]; const index = items.indexOf(document.activeElement as HTMLElement); if (event.key === 'Escape') { event.preventDefault(); setUtilityMenuOpen(false); requestAnimationFrame(() => utilityMenuButtonRef.current?.focus()); return } if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return; event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length; items[next]?.focus() }}>{appView === 'workspace' && <button type="button" role="menuitem" onClick={openWorkspaceTour}>Workspace tour</button>}<button type="button" role="menuitem" onClick={() => { setAppView('create'); setUtilityMenuOpen(false) }}>Create</button><button type="button" role="menuitem" onClick={() => { setAppView('reference'); setUtilityMenuOpen(false) }}>Modal Logic Reference</button><button type="button" role="menuitem" onClick={() => { setAppView('help'); setUtilityMenuOpen(false) }}>Help &amp; Controls</button><button type="button" role="menuitem" onClick={() => { setAppView('profile'); setUtilityMenuOpen(false) }}>Profile</button><button type="button" role="menuitem" onClick={() => { openDataManager(); setUtilityMenuOpen(false) }}>Data</button><button type="button" role="menuitem" onClick={() => { setAppView('settings'); setUtilityMenuOpen(false) }}>Settings</button><a role="menuitem" href="https://github.com/Chrasts/Modal_Logic_Educational_Game" target="_blank" rel="noreferrer">GitHub</a></div>}</div>
         </div>
       </header>
 
@@ -2354,9 +2397,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <CreateView templates={[...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)]} selectedTemplateId={authorTemplateId} onSelectedTemplateChange={setAuthorTemplateId} onOpenStudio={openDataManager} onDuplicateTemplate={duplicateBuiltInMission} />
       )}
 
-      {appView === 'guide' && (
-        <GuideView tab={guideTab} hasCurrentMission={isGuidedMode} onTabChange={setGuideTab} onReturnToMission={() => setAppView('workspace')} onReplayWelcome={() => setAppView('welcome')} onReplayControls={() => startGuidedLevel('tutorial', 0)} onReplayTour={openWorkspaceTour} onOpenLearn={() => setAppView('learn')} onOpenModelSandbox={returnToSandbox} />
-      )}
+      {appView === 'reference' && <ReferenceView onOpenLearn={() => setAppView('learn')} onOpenLab={() => setAppView('lab')} />}
+      {appView === 'help' && <HelpView hasCurrentMission={isGuidedMode} onReturnToMission={() => setAppView('workspace')} onReplayWelcome={() => setAppView('welcome')} onReplayControls={() => startGuidedLevel('tutorial', 0)} onReplayTour={openWorkspaceTour} />}
 
       {appView === 'profile' && (
         <ProfileView guestId={guestProfile.id} createdAt={guestProfile.createdAt} history={guestProfile.history} successfulAttempts={successfulAttempts} completedHistoryLevels={completedHistoryLevels} savedCompletedLevels={completedLevelIds.size} distinctSolutions={distinctSolutions} conceptSummary={conceptSummary} failureSummary={failureSummary} failureLabel={(category) => failureCategoryLabels[category as AttemptFailureCategory]} onDownloadProfile={() => downloadJson(serializedProfile(), 'logic-model-builder-profile.json')} onImportBackup={openDataManager} onDownloadResults={downloadEducatorResults} onClearHistory={clearLocalHistory} />
@@ -2370,7 +2412,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           progressLabel={missionProgressLabel}
           objective={activeLevel.instruction}
           state={completedGuidedTask ? 'completed' : isQuestionTask ? 'question' : 'active'}
-          content={completedGuidedTask && courseLesson ? <div className="mission-complete-content" role="status"><strong>{learnTransferActive ? 'Transfer complete' : courseLesson.title}</strong><p>{courseLesson.successExplanation}</p>{courseLesson.commonMistake && <small><b>Common mistake:</b> {courseLesson.commonMistake}</small>}{!learningNavigation.next && <div className="course-next-links"><span>Course complete. Continue with:</span><button type="button" onClick={() => { setCampaignSection('challenges'); setAppView('campaigns') }}>Campaigns</button><button type="button" onClick={returnToSandbox}>Model Sandbox</button><button type="button" onClick={() => setAppView('guide')}>Guide</button></div>}</div>
+          content={completedGuidedTask && courseLesson ? <div className="mission-complete-content" role="status"><strong>{learnTransferActive ? 'Transfer complete' : courseLesson.title}</strong><p>{courseLesson.successExplanation}</p>{!learningNavigation.next && <div className="course-next-links"><span>Course complete. Continue with:</span><button type="button" onClick={() => { setCampaignSection('challenges'); setAppView('campaigns') }}>Campaigns</button><button type="button" onClick={returnToSandbox}>Model Sandbox</button><button type="button" onClick={() => setAppView('reference')}>Reference</button></div>}</div>
             : completedGuidedTask ? <div className="mission-complete-content" role="status"><strong>{campaignLevelIndex === activeLevels.length - 1 ? (isHowToPlay ? 'Controls complete' : gameMode === 'guidedCampaign' ? 'Campaign complete' : gameMode === 'campaign' ? 'Practice collection complete' : 'Task complete') : 'Task complete'}</strong><p>{activeLevel.successDebrief ?? (result && 'detail' in result ? result.detail : 'The objective is satisfied.')}</p>{!focusedIntroWorkspace && <><small>Distinct solutions recorded for this mission: <b>{activeDistinctSolutionCount}</b>.</small><div className="mission-completion-metrics" aria-label="Construction metrics"><span>{worlds.length} worlds</span><span>{new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size} explicit relations</span><span>{currentTrueAtomCount} true atoms</span>{currentSemanticChanges !== undefined && <span>{currentSemanticChanges} changes from start</span>}</div></>}{gameMode === 'guidedCampaign' && referenceSolutionViewed.has(activeLevel.id) && <small><b>Assisted completion:</b> You viewed a reference construction before completing this mission.</small>}{result && 'prediction' in result && result.prediction && <small><b>{result.prediction.correct ? 'Prediction correct.' : 'Prediction incorrect.'}</b> {result.prediction.detail}</small>}{result && 'bonus' in result && result.bonus && <small><b>{result.bonus.achieved ? 'Bonus achieved.' : 'Optional bonus.'}</b> {result.bonus.detail}</small>}</div>
             : isQuestionTask ? <div className="mission-question-content"><QuestionTaskPanel level={activeLevel} answer={predictionAnswer} feedback={questionFeedback} onAnswer={choosePredictionAnswer} /></div>
               : undefined}
@@ -2413,8 +2455,10 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         />
       )}
 
-      {appView === 'workspace' && <section className={`workspace mobile-tab-${mobileWorkspaceTab} ${isGuidedMode ? 'guided-workspace' : ''} ${evaluationScope === 'frame' ? 'frame-scope' : ''} ${showWorldPanel && !showEdgePanel ? 'world-panel-only' : ''} ${showEdgePanel && !showWorldPanel ? 'edge-panel-only' : ''} ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
+      {appView === 'workspace' && <section ref={workspaceRef} style={workspaceGridStyle} className={`workspace mobile-tab-${mobileWorkspaceTab} ${isGuidedMode ? 'guided-workspace' : ''} ${evaluationScope === 'frame' ? 'frame-scope' : ''} ${showWorldPanel && !showEdgePanel ? 'world-panel-only' : ''} ${showEdgePanel && !showWorldPanel ? 'edge-panel-only' : ''} ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
         <MobileWorkspaceTabs activeTab={mobileWorkspaceTab} showFormula={showFormulaPanel} onChange={setMobileWorkspaceTab} />
+        {leftPanelOpen && <WorkspaceResizeHandle side="left" value={workspaceLayout.left} onResize={(value) => resizeWorkspacePanel('left', value)} />}
+        {rightPanelOpen && (showWorldPanel || showEdgePanel) && <WorkspaceResizeHandle side="right" value={workspaceLayout.right} onResize={(value) => resizeWorkspacePanel('right', value)} />}
         {showFormulaPanel && <div className="panel formula-panel">
           <div className="panel-heading">
             <div><h2>Formula and goal</h2><p>Unicode and text notation</p></div>
@@ -2531,7 +2575,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><details><summary>Legend</summary><div><span><i className="selected" />SELECTED</span><span><i className="current" />EVALUATION WORLD</span>{traceWitnessWorld && <span><i className="witness" />WITNESS</span>}{traceCounterexampleWorld && <span><i className="counterexample" />COUNTEREXAMPLE</span>}<span><i className="explicit-edge" />EXPLICIT RELATION</span>{derivedPairKeys.size > 0 && <span><i className="derived" />DERIVED RELATION</span>}{relationPresentations.some(({ kind }) => kind === 'bidirectional') && <span><i className="two-way" />TWO-WAY</span>}<span><i className="reflexive" />EXPLICIT ↻</span>{[...reflexiveRelations.values()].some(({ derived }) => derived) && <span><i className="reflexive derived-reflexive" />DERIVED ↻</span>}{activeTrace && <><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></>}</div></details></Panel>
               {!showDerivedEdges && derivedPairKeys.size > 0 && <Panel position="bottom-right" className="derived-hidden-note">{derivedPairKeys.size} derived relation{derivedPairKeys.size === 1 ? '' : 's'} hidden. <span>Display only — verification still uses enforced relations.</span></Panel>}
               {traceForcedDerivedPairKeys.size > 0 && <Panel position="top-center" className="trace-derived-note">A hidden derived relation is temporarily shown because the current trace uses it.</Panel>}
-              {workspaceStatus && <Panel position="top-center" className="workspace-live-status"><span aria-live="polite">{workspaceStatus}</span></Panel>}
               {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
               {worlds.length === 0 && (
                 <Panel position="top-center" className="empty-graph-state">
@@ -2647,11 +2690,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             </div>
           )}
           {!isGuidedMode && <button type="button" className="verify-button" onClick={verify} disabled={!isConstructionObjective && frameValuationLimitExceeded}>Verify objective</button>}
-          {!isQuestionTask ? <div ref={verificationResultRef} tabIndex={-1} className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
-            <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
-            {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
-            {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Lesson note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => setLearnConceptOpen(true)}>Review concept</button>}</p>}
-            {result?.kind === 'failure' && courseLesson && activeLevelFailureCount >= 3 && <LearnRecoveryActions relatedTitle={relatedLearnLesson?.title} onReview={() => setLearnConceptOpen(true)} onHint={() => revealLearnHint(Math.min(learnHintLevel + 1, 3))} onRelated={relatedLearnLesson ? () => startLearnLesson(learnLessons.findIndex(({ id }) => id === relatedLearnLesson.id)) : undefined} />}
+          {!isQuestionTask ? <VerificationSummary
+            ref={verificationResultRef}
+            state={result?.kind ?? 'idle'}
+            summary={result?.kind === 'error' ? result.message : result ? result.diagnostic ?? result.detail : undefined}
+            actions={result?.kind === 'failure' && courseLesson && activeLevelFailureCount >= 3 ? <LearnRecoveryActions relatedTitle={relatedLearnLesson?.title} onReview={() => setLearnConceptOpen(true)} onHint={() => revealLearnHint(Math.min(learnHintLevel + 1, 3))} onRelated={relatedLearnLesson ? () => startLearnLesson(learnLessons.findIndex(({ id }) => id === relatedLearnLesson.id)) : undefined} /> : undefined}
+          >
+            {hasSemanticResultDetails && <>
             {result && 'verdict' in result && result.verdict && (
               <div className="verdict-sections">
                 {semanticFeedbackLevel === 1 && <p className="feedback-disclosure"><strong>Feedback level 1 · Try again.</strong> The objective is not met. Recheck the target scope and the part of the model relevant to the formula.</p>}
@@ -2670,7 +2715,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             )}
             {result && 'bonus' in result && result.bonus && <div className={`bonus-result ${result.bonus.achieved ? 'achieved' : ''}`}><strong>{result.bonus.achieved ? 'Bonus achieved' : 'Optional bonus'}</strong><span>{result.bonus.detail}</span></div>}
             {result && 'prediction' in result && result.prediction && <div className={`prediction-result ${result.prediction.correct ? 'correct' : 'incorrect'}`}><strong>{result.prediction.correct ? 'Prediction correct' : 'Prediction incorrect'}</strong><span>{result.prediction.detail}</span></div>}
-          </div> : <p className="question-result-note">Answer feedback appears in the Question panel above.</p>}
+            </>}
+          </VerificationSummary> : <p className="question-result-note">Answer feedback appears in the Question panel above.</p>}
         </div>
       </section>}
 
@@ -2794,8 +2840,12 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         </div>
       )}
 
-      {showHelp && <WorkspaceQuickHelp onClose={() => setShowHelp(false)} onOpenGuide={() => { setShowHelp(false); setAppView('guide') }} onReplayTour={() => { setShowHelp(false); openWorkspaceTour() }} />}
+      {showHelp && <WorkspaceQuickHelp onClose={() => setShowHelp(false)} onOpenHelp={() => { setShowHelp(false); setAppView('help') }} onReplayTour={() => { setShowHelp(false); openWorkspaceTour() }} />}
       </main>
     </div>
   )
+}
+
+export function App(props: { readonly initialView?: AppView } = {}) {
+  return <MobileUnsupportedGuard><AppContent {...props} /></MobileUnsupportedGuard>
 }

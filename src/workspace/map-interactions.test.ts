@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyMapWheelGesture, classifyMapWheelGesture, classifyMapWheelGestureSession, MAP_MAX_ZOOM, MAP_MIN_ZOOM, MAP_WHEEL_SESSION_TIMEOUT_MS, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER, resolveMapWheelHandling } from './map-interactions'
+import { applyMapWheelGesture, classifyMapWheelGesture, MAP_MAX_ZOOM, MAP_MIN_ZOOM, modelMapInteractionProps, PINCH_ZOOM_MULTIPLIER, resolveMapWheelHandling } from './map-interactions'
 
 describe('model map gesture contract', () => {
   it('leaves pointer drag-pan to React Flow and disables every competing wheel path', () => {
@@ -26,12 +26,20 @@ describe('model map gesture contract', () => {
     expect(classifyMapWheelGesture({ ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: -12 })).toBe('pinch-zoom')
   })
 
-  it('keeps one non-pinch gesture classification stable until the short session expires', () => {
-    const first = classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 8.5 }, null, 100)
-    expect(first.gesture).toBe('trackpad-pan')
-    expect(classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 100 }, first, 120).gesture).toBe('trackpad-pan')
-    expect(classifyMapWheelGestureSession({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 100 }, first, 100 + MAP_WHEEL_SESSION_TIMEOUT_MS + 1).gesture).toBe('mouse-wheel-zoom')
-    expect(classifyMapWheelGestureSession({ ctrlKey: true, deltaMode: 0, deltaX: 0, deltaY: -4 }, first, 130).gesture).toBe('pinch-zoom')
+  it('classifies every event independently without retaining an application gesture mode', () => {
+    const events = [
+      { ctrlKey: false, deltaMode: 0, deltaX: 7, deltaY: 5 },
+      { ctrlKey: true, deltaMode: 0, deltaX: 2, deltaY: -9 },
+      { ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 100 },
+      { ctrlKey: false, deltaMode: 0, deltaX: -4, deltaY: 8 },
+    ]
+    expect(events.map(classifyMapWheelGesture)).toEqual(['trackpad-pan', 'pinch-zoom', 'mouse-wheel-zoom', 'trackpad-pan'])
+  })
+
+  it('does not mistake a fast non-notch vertical trackpad event for a mouse wheel', () => {
+    expect(classifyMapWheelGesture({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: 73 })).toBe('trackpad-pan')
+    expect(classifyMapWheelGesture({ ctrlKey: false, deltaMode: 0, deltaX: 0, deltaY: -187 })).toBe('trackpad-pan')
+    expect(classifyMapWheelGesture({ ctrlKey: false, deltaMode: 1, deltaX: 0, deltaY: 3 })).toBe('mouse-wheel-zoom')
   })
 
   it('applies both trackpad axes and anchors zoom under the pointer', () => {

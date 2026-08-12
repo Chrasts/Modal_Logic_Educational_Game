@@ -23,39 +23,22 @@ export interface MapWheelHandling {
   readonly viewport: MapViewport
 }
 
-export interface MapWheelGestureSession {
-  readonly gesture: MapWheelGesture
-  readonly lastEventTime: number
-}
-
-export const MAP_WHEEL_SESSION_TIMEOUT_MS = 180
-
 /**
  * Browsers expose both a mouse wheel and two-finger scrolling as WheelEvent.
- * This intentionally conservative heuristic favours 2D/fine pixel deltas as
- * trackpad pan and coarse/discrete deltas as mouse-wheel zoom.
+ * This intentionally conservative heuristic favours 2D/fine pixel deltas and
+ * non-notch pixel deltas as trackpad pan. A pixel-mode vertical delta matching
+ * the common 100/120 mouse-wheel notches remains zoom. Hardware classification
+ * cannot be perfect because browsers do not expose the source device.
  */
 export function classifyMapWheelGesture(event: MapWheelInput): MapWheelGesture {
   if (event.ctrlKey) return 'pinch-zoom'
   if (event.deltaMode !== 0) return 'mouse-wheel-zoom'
   const magnitude = Math.max(Math.abs(event.deltaX), Math.abs(event.deltaY))
-  if (Math.abs(event.deltaX) > 0.5 || magnitude < 48 || !Number.isInteger(event.deltaY)) return 'trackpad-pan'
-  return 'mouse-wheel-zoom'
-}
-
-export function classifyMapWheelGestureSession(
-  event: MapWheelInput,
-  previous: MapWheelGestureSession | null,
-  eventTime: number,
-): MapWheelGestureSession {
-  const classified = classifyMapWheelGesture(event)
-  const active = previous && eventTime - previous.lastEventTime <= MAP_WHEEL_SESSION_TIMEOUT_MS
-  const gesture = event.ctrlKey
-    ? 'pinch-zoom'
-    : active && previous.gesture !== 'pinch-zoom'
-      ? previous.gesture
-      : classified
-  return { gesture, lastEventTime: eventTime }
+  const commonMouseNotch = Math.abs(event.deltaX) < 0.5
+    && Number.isInteger(event.deltaY)
+    && (Math.abs(event.deltaY) % 100 === 0 || Math.abs(event.deltaY) % 120 === 0)
+  if (commonMouseNotch && magnitude >= 100) return 'mouse-wheel-zoom'
+  return 'trackpad-pan'
 }
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
@@ -64,9 +47,8 @@ export function applyMapWheelGesture(
   event: MapWheelInput,
   viewport: MapViewport,
   pointer: { readonly x: number; readonly y: number },
-  gestureOverride?: MapWheelGesture,
 ): MapWheelHandling {
-  const gesture = gestureOverride ?? classifyMapWheelGesture(event)
+  const gesture = classifyMapWheelGesture(event)
   if (gesture === 'trackpad-pan') {
     return { gesture, viewport: { ...viewport, x: viewport.x - event.deltaX, y: viewport.y - event.deltaY } }
   }
@@ -88,8 +70,8 @@ export function applyMapWheelGesture(
   }
 }
 
-export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }, gestureOverride?: MapWheelGesture): MapWheelHandling {
-  return applyMapWheelGesture(event, viewport, pointer, gestureOverride)
+export function resolveMapWheelHandling(event: MapWheelInput, viewport: MapViewport, pointer: { readonly x: number; readonly y: number }): MapWheelHandling {
+  return applyMapWheelGesture(event, viewport, pointer)
 }
 
 /** React Flow owns pointer drag-pan only. A non-passive DOM listener owns every wheel/pinch gesture. */

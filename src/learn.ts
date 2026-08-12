@@ -33,7 +33,6 @@ export interface LearnLesson {
   readonly task: GameLevel
   readonly hints: readonly [string, string, string]
   readonly successExplanation: string
-  readonly commonMistake?: string
   readonly diagnosticFeedback?: Readonly<Record<string, string>>
   readonly transferTask?: GameLevel
   readonly relatedLessonIds?: readonly string[]
@@ -88,7 +87,7 @@ const possibilityLessonDefinitions: readonly LearnLesson[] = [
     concept: { heading: 'A witness satisfies the whole operand', intuitive: 'For ◇(p ∧ q), one accessible world must make both p and q true.', formal: 'The same successor must satisfy every part of p ∧ q.', formula: '◇(p ∧ q)', keyPoints: ['Only one witness is needed.', 'A world satisfying only p or only q is not enough.'] },
     task: { id: 'learn-possibility-witness-task', chapter: 'Possibility', title: 'Finding a witness', concept: 'Witness identification', learningObjective: 'Select the accessible witness for ◇(p ∧ q).', interactionMode: 'question', instruction: 'Select the world that witnesses ◇(p ∧ q) at w0.', formula: '◇(p ∧ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', prediction: { kind: 'world-choice', prompt: 'Which accessible world witnesses ◇(p ∧ q) at w0?', expectedChoice: 'w3', worldChoices: ['w1', 'w2', 'w3'], mustBeCorrect: true }, worlds: [w('w0', '', 60, 130), w('w1', 'p', 270, 45), w('w2', 'q', 270, 130), w('w3', 'p q', 270, 215)], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], constraints: { minimumWorlds: 4, maximumWorlds: 4, minimumEdges: 3, maximumEdges: 3 }, editable: [] },
     hints: ['A witness for a conjunction must satisfy both conjuncts.', 'Compare the valuations of w1, w2, and w3.', 'Select w3: it is the accessible world where both p and q hold.'],
-    successExplanation: 'w3 is an accessible witness because it satisfies both p and q. The other successors each satisfy only one conjunct.', commonMistake: 'Selecting a world that satisfies only one conjunct.',
+    successExplanation: 'w3 is an accessible witness because it satisfies both p and q. The other successors each satisfy only one conjunct.',
   },
   {
     id: 'learn-possibility-accessibility', chapterId: 'possibility', title: 'Accessibility is required',
