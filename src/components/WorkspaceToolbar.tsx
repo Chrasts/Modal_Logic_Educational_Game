@@ -1,4 +1,5 @@
 import type { ReactFlowInstance } from '@xyflow/react'
+import { trackEvent } from '../analytics'
 
 interface WorkspaceToolbarProps {
   readonly sandbox: boolean
@@ -44,6 +45,10 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps) {
     onToggleModelPanel, onUndo, onRedo, onTidy, onToggleDerived,
     onOpenFrameRules, onVerify,
   } = props
+  const verify = () => {
+    trackEvent('verification_attempt', { area: sandbox ? 'lab' : 'guided' })
+    onVerify()
+  }
 
   return <>
     {sandbox && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => onApplyPreset('build')}>◇ Model · Build</button><button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => onApplyPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" onClick={() => onApplyPreset('frame')}>R Frame rules</button></div>}
@@ -65,7 +70,7 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps) {
     <div className="map-toolbar-group" aria-label="Analysis actions">
       {!focusedIntro && <button type="button" aria-label={`${showDerivedRelations ? 'Hide' : 'Show'} derived`} className={!showDerivedRelations ? 'muted' : ''} onClick={onToggleDerived}>{showDerivedRelations ? 'Hide' : 'Show'} derived ({derivedRelationCount})</button>}
       {!focusedIntro && <button type="button" className="frame-rules-button" onClick={onOpenFrameRules}>Frame rules{frameRuleCount ? ` (${frameRuleCount})` : ''}</button>}
-      {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={onVerify}>Verify</button>}
+      {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
     </div>
   </>
 }
