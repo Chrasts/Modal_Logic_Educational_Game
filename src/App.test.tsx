@@ -12,7 +12,7 @@ describe('sandbox user interface', () => {
   it('opens on a home menu and persists functional interface settings', async () => {
     const user = userEvent.setup()
     render(<App />)
-    expect(screen.getByRole('heading', { name: 'Logic Model Builder' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Modal Logic Lab - Interactive Kripke Models' })).toBeVisible()
     const learnButton = screen.getByRole('button', { name: 'Start or continue Learn Modal Logic' })
     expect(learnButton).toBeVisible()
     expect(learnButton).toHaveTextContent(/^LEARN$/)
@@ -47,7 +47,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Campaigns' }))
     expect(screen.getByRole('heading', { name: 'Campaigns' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Go back' }))
-    expect(screen.getByRole('heading', { name: 'Logic Model Builder' })).toBeVisible()
+    expect().toBeVisible()
   })
 
   it('links to the game repository', async () => {
