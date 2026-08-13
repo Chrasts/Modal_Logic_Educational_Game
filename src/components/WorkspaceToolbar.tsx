@@ -46,26 +46,26 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps) {
   } = props
 
   return <>
-    {sandbox && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => onApplyPreset('build')}>◇ Model · Build</button><button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => onApplyPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" onClick={() => onApplyPreset('frame')}>R Frame rules</button></div>}
+    {sandbox && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" data-umami-event="workspace-action" data-umami-event-action="preset-build" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => onApplyPreset('build')}>◇ Model · Build</button><button type="button" data-umami-event="workspace-action" data-umami-event-action="preset-evaluate" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => onApplyPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" data-umami-event="workspace-action" data-umami-event-action="preset-frame" onClick={() => onApplyPreset('frame')}>R Frame rules</button></div>}
     <div className="map-toolbar-group" aria-label="Model actions">
-      {canAddWorld && <button type="button" onClick={onAddWorld} disabled={!canEditWorlds}>+ World</button>}
-      {selectedRelation && <button type="button" className="delete-edge-button" disabled={!canEditRelations} onClick={onDeleteRelation}>Delete relation</button>}
+      {canAddWorld && <button type="button" data-umami-event="workspace-action" data-umami-event-action="add-world" onClick={onAddWorld} disabled={!canEditWorlds}>+ World</button>}
+      {selectedRelation && <button type="button" className="delete-edge-button" data-umami-event="workspace-action" data-umami-event-action="delete-relation" disabled={!canEditRelations} onClick={onDeleteRelation}>Delete relation</button>}
     </div>
     <div className="map-toolbar-group" aria-label="Panels and history">
       <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={onToggleEvaluationPanel} aria-label="Toggle Evaluation panel" aria-pressed={leftPanelOpen} title="Toggle Evaluation panel">◧ Evaluation</button>
       {(showWorldPanel || showEdgePanel) && <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={onToggleModelPanel} aria-label="Toggle Model panel" aria-pressed={rightPanelOpen} title="Toggle Model panel">◨ Model</button>}
-      {canUseHistory && <><button type="button" onClick={onUndo} disabled={!undoAvailable} aria-label="Undo" title="Undo">↶</button><button type="button" onClick={onRedo} disabled={!redoAvailable} aria-label="Redo" title="Redo">↷</button></>}
+      {canUseHistory && <><button type="button" data-umami-event="workspace-action" data-umami-event-action="undo" onClick={onUndo} disabled={!undoAvailable} aria-label="Undo" title="Undo">↶</button><button type="button" data-umami-event="workspace-action" data-umami-event-action="redo" onClick={onRedo} disabled={!redoAvailable} aria-label="Redo" title="Redo">↷</button></>}
     </div>
     <div className="map-toolbar-group" aria-label="Viewport actions">
       <button type="button" onClick={() => void flowInstance?.zoomIn()} disabled={!flowInstance} aria-label="Zoom in" title="Zoom in">+</button>
       <button type="button" onClick={() => void flowInstance?.zoomOut()} disabled={!flowInstance} aria-label="Zoom out" title="Zoom out">−</button>
       <button type="button" onClick={() => void flowInstance?.fitView({ padding: 0.25 })} disabled={!flowInstance || worldCount === 0}>Fit model</button>
-      <button type="button" onClick={onTidy} disabled={worldCount < 2 || (!sandbox && !canRepositionWorlds)}>Tidy model</button>
+      <button type="button" data-umami-event="workspace-action" data-umami-event-action="tidy-model" onClick={onTidy} disabled={worldCount < 2 || (!sandbox && !canRepositionWorlds)}>Tidy model</button>
     </div>
     <div className="map-toolbar-group" aria-label="Analysis actions">
-      {!focusedIntro && <button type="button" aria-label={`${showDerivedRelations ? 'Hide' : 'Show'} derived`} className={!showDerivedRelations ? 'muted' : ''} onClick={onToggleDerived}>{showDerivedRelations ? 'Hide' : 'Show'} derived ({derivedRelationCount})</button>}
-      {!focusedIntro && <button type="button" className="frame-rules-button" onClick={onOpenFrameRules}>Frame rules{frameRuleCount ? ` (${frameRuleCount})` : ''}</button>}
-      {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={onVerify}>Verify</button>}
+      {!focusedIntro && <button type="button" data-umami-event="workspace-action" data-umami-event-action="toggle-derived" aria-label={`${showDerivedRelations ? 'Hide' : 'Show'} derived`} className={!showDerivedRelations ? 'muted' : ''} onClick={onToggleDerived}>{showDerivedRelations ? 'Hide' : 'Show'} derived ({derivedRelationCount})</button>}
+      {!focusedIntro && <button type="button" data-umami-event="workspace-action" data-umami-event-action="frame-rules" className="frame-rules-button" onClick={onOpenFrameRules}>Frame rules{frameRuleCount ? ` (${frameRuleCount})` : ''}</button>}
+      {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" data-umami-event="task-check" data-umami-event-source="toolbar" onClick={onVerify}>Verify</button>}
     </div>
   </>
 }
