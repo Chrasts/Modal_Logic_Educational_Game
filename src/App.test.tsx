@@ -47,7 +47,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Campaigns' }))
     expect(screen.getByRole('heading', { name: 'Campaigns' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Go back' }))
-    expect().toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Modal Logic Lab - Interactive Kripke Models' })).toBeVisible()
   })
 
   it('links to the game repository', async () => {
