@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { trackEvent } from '../analytics'
 
 export type MissionHeaderMode = 'learn' | 'campaign' | 'practice' | 'custom'
 
@@ -31,9 +32,37 @@ export function MissionHeader({
 }: MissionHeaderProps) {
   const unit = mode === 'learn' ? 'lesson' : 'mission'
   const headerRef = useRef<HTMLElement>(null)
+  const taskKey = `${mode}\u0000${sectionTitle}\u0000${itemTitle}`
+  const trackedTaskRef = useRef<string | null>(null)
+  const completionStateRef = useRef({ key: taskKey, state })
+
   useEffect(() => {
     if (state === 'completed') headerRef.current?.focus()
   }, [state])
+
+  useEffect(() => {
+    if (trackedTaskRef.current === taskKey) return
+    trackedTaskRef.current = taskKey
+    trackEvent('guided-task-view', {
+      mode,
+      section: sectionTitle,
+      item: itemTitle,
+      previously_completed: previouslyCompleted,
+    })
+  }, [itemTitle, mode, previouslyCompleted, sectionTitle, taskKey])
+
+  useEffect(() => {
+    const previous = completionStateRef.current
+    if (previous.key === taskKey && previous.state !== 'completed' && state === 'completed') {
+      trackEvent('guided-task-complete', {
+        mode,
+        section: sectionTitle,
+        item: itemTitle,
+      })
+    }
+    completionStateRef.current = { key: taskKey, state }
+  }, [itemTitle, mode, sectionTitle, state, taskKey])
+
   return (
     <section ref={headerRef} tabIndex={state === 'completed' ? -1 : undefined} className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
       <div className="mission-header-context">
@@ -48,7 +77,7 @@ export function MissionHeader({
       </div>
       <div className="mission-header-controls">
         <div className="mission-header-actions">{actions}</div>
-        {details && <details className="mission-header-details"><summary>Details &amp; hints</summary><div>{details}</div></details>}
+        {details && <details className="mission-header-details"><summary data-umami-event="guided-task-details" data-umami-event-mode={mode} data-umami-event-section={sectionTitle} data-umami-event-item={itemTitle}>Details &amp; hints</summary><div>{details}</div></details>}
       </div>
     </section>
   )
