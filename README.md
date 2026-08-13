@@ -1,6 +1,6 @@
-# Logic Model Builder
+# Modal Logic Lab - Interactive Kripke Models
 
-Logic Model Builder is an interactive modal-logic laboratory and puzzle game
+Modal Logic Lab is an interactive modal-logic laboratory and puzzle game
 for constructing finite Kripke models, testing formulas, and exploring the
 connection between modal axioms and relational properties.
 
