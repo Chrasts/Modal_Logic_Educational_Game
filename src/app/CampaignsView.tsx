@@ -1,4 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useAnalyticsView } from '../analytics'
 import type { CampaignTrack } from '../campaign'
 import type { GuidedCampaign } from '../guided-campaigns'
 
@@ -34,6 +35,7 @@ interface CampaignsViewProps {
 }
 
 export function CampaignsView({ section, guidedCampaigns, practiceTracks, selectedTrackIndex, completedLevelIds, overallPracticeCompleted, overallPracticeLevels, activePracticeTrackIndex, activePracticeLevelIndex, practiceSessionActive, onSectionChange, onOpenLearn, onStartCampaign, onSelectPracticeTrack, onStartPractice, onResumePractice }: CampaignsViewProps) {
+  useAnalyticsView('campaigns')
   const selectedTrack = practiceTracks[selectedTrackIndex] ?? practiceTracks[0]
   const selectedCompleted = selectedTrack.levels.filter((level) => completedLevelIds.has(level.id)).length
   const nextLevelIndex = selectedTrack.levels.findIndex((level) => !completedLevelIds.has(level.id))

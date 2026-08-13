@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { trackEvent } from '../analytics'
 
 export type MissionHeaderMode = 'learn' | 'campaign' | 'practice' | 'custom'
 
@@ -31,9 +32,20 @@ export function MissionHeader({
 }: MissionHeaderProps) {
   const unit = mode === 'learn' ? 'lesson' : 'mission'
   const headerRef = useRef<HTMLElement>(null)
+  const previousStateRef = useRef(state)
+
+  useEffect(() => {
+    trackEvent('activity_start', { area: mode })
+  }, [itemTitle, mode])
+
   useEffect(() => {
     if (state === 'completed') headerRef.current?.focus()
-  }, [state])
+    if (state === 'completed' && previousStateRef.current !== 'completed') {
+      trackEvent('activity_complete', { area: mode })
+    }
+    previousStateRef.current = state
+  }, [mode, state])
+
   return (
     <section ref={headerRef} tabIndex={state === 'completed' ? -1 : undefined} className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
       <div className="mission-header-context">
