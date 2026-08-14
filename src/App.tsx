@@ -26,6 +26,7 @@ import { PredictionInput } from './components/PredictionInput'
 import { WorkspaceQuickHelp } from './components/WorkspaceQuickHelp'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
 import { VerificationSummary } from './components/VerificationSummary'
+import { WorkspaceTour } from './components/WorkspaceTour'
 import { MobileUnsupportedGuard } from './components/MobileUnsupportedGuard'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
@@ -61,6 +62,8 @@ import { LearnOverview } from './app/LearnOverview'
 import { CampaignsView, type CampaignSection } from './app/CampaignsView'
 import { SettingsView } from './app/SettingsView'
 import { CreateView } from './app/CreateView'
+import { DataManagerDialog } from './app/DataManagerDialog'
+import { MissionAuthoringView } from './app/MissionAuthoringView'
 import { ReferenceView } from './app/ReferenceView'
 import { HelpView } from './app/HelpView'
 import { ProfileView } from './app/ProfileView'
@@ -68,6 +71,7 @@ import { LabView } from './app/LabView'
 import { LearnRecoveryActions } from './components/LearnRecoveryActions'
 import { resolveLearningNavigation, type LearningDestination } from './learn/navigation'
 import { assertValidReferenceSolution, parseCustomLevelFile, parseCustomLevelPackage, serializeCustomLevel, type ParsedCustomLevelFile, type ReferenceSolution } from './level-format'
+import { parseProgressBackup, parseSandboxModel, serializeProgressBackup } from './local-data'
 import {
   applyFrameProperties,
   checkConstructionConstraints,
@@ -114,7 +118,7 @@ type VerificationResult =
   | null
 
 type EditorMode = 'edit' | 'evaluate'
-type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom'
+type GameMode = 'sandbox' | 'tutorial' | 'learn' | 'campaign' | 'guidedCampaign' | 'custom' | 'author'
 type AppView = 'home' | 'workspace' | 'learn' | 'welcome' | 'campaigns' | 'lab' | 'create' | 'reference' | 'help' | 'profile' | 'settings'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
@@ -179,12 +183,6 @@ const campaignAssistanceKey = 'logic-game:campaign-assistance:v1'
 const interfaceSettingsKey = 'logic-game:interface-settings:v1'
 const workspaceLayoutKey = 'logic-game:workspace-layout:v1'
 const workspaceTourKey = 'logic-game:workspace-tour:v1'
-const workspaceTourSteps = [
-  { title: 'Model map', body: 'The map shows worlds, their true atoms, and directed accessibility. This is where you inspect or build the Kripke model.' },
-  { title: 'Task and editing panel', body: 'The task stays above the workspace. Available editing panels expose only the controls needed for the current task.' },
-  { title: 'Evaluation and results', body: 'Evaluation explains whether the target is met and can reveal world-by-world semantic evidence.' },
-  { title: 'Navigating the map', body: 'Drag empty map space to pan. Double-click it to create one world without zooming. A mouse wheel zooms under the pointer; two-finger touchpad scrolling pans in both directions; pinch zooms. Tidy creates a compact structural layout; Fit changes only the viewport.', mobileBody: 'Drag empty map space or use a two-finger gesture to pan, and pinch to zoom. Zoom and Fit model remain available in the map toolbar. On mobile, switch between the Model, Formula, and Result tabs.' },
-] as const
 type InterfaceDensity = 'comfortable' | 'compact'
 interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean; readonly soundEffects: boolean; readonly leftPanelOpen: boolean; readonly rightPanelOpen: boolean }
 const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false, soundEffects: false, leftPanelOpen: true, rightPanelOpen: true }
@@ -224,14 +222,20 @@ interface AuthorStartSnapshot extends ModelSnapshot {
   readonly evaluationScope: EvaluationScope
   readonly selectedCorrespondence: string
 }
+interface AuthorWorkspaceSession {
+  readonly purpose: 'starting-model' | 'reference-solution'
+  readonly returnStep: number
+  readonly previousWorkspace: SandboxDraft
+  readonly previousGameMode: GameMode
+}
 const levelPropertyNames = Object.keys(defaultFrameRules) as FramePropertyName[]
 
 const correspondencePresets = [
-  { id: 't', name: 'T — Reflexivity', formula: '□p → p', property: 'reflexive' as const },
-  { id: 'd', name: 'D — Seriality', formula: '□p → ◇p', property: 'serial' as const },
-  { id: 'b', name: 'B — Symmetry', formula: 'p → □◇p', property: 'symmetric' as const },
-  { id: '4', name: '4 — Transitivity', formula: '□p → □□p', property: 'transitive' as const },
-  { id: '5', name: '5 — Euclidean', formula: '◇p → □◇p', property: 'euclidean' as const },
+  { id: 't', name: 'T: Reflexivity', formula: '□p → p', property: 'reflexive' as const },
+  { id: 'd', name: 'D: Seriality', formula: '□p → ◇p', property: 'serial' as const },
+  { id: 'b', name: 'B: Symmetry', formula: 'p → □◇p', property: 'symmetric' as const },
+  { id: '4', name: '4: Transitivity', formula: '□p → □□p', property: 'transitive' as const },
+  { id: '5', name: '5: Euclidean', formula: '◇p → □◇p', property: 'euclidean' as const },
 ]
 
 interface SandboxDraft {
@@ -457,26 +461,32 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const [levelForbiddenAtoms, setLevelForbiddenAtoms] = useState('')
   const [levelStartSnapshot, setLevelStartSnapshot] = useState<AuthorStartSnapshot | null>(null)
   const [levelReferenceSolution, setLevelReferenceSolution] = useState<ReferenceSolution | null>(null)
+  const [importedAuthorFile, setImportedAuthorFile] = useState<ParsedCustomLevelFile | null>(null)
   const [missionAuditFindings, setMissionAuditFindings] = useState<readonly MissionAuditFinding[]>([])
   const [authorStep, setAuthorStep] = useState(1)
   const [visitedAuthorSteps, setVisitedAuthorSteps] = useState<ReadonlySet<number>>(new Set([1]))
   const [authorStepErrors, setAuthorStepErrors] = useState<readonly string[]>([])
+  const [authorStudioOpen, setAuthorStudioOpen] = useState(false)
+  const [authorWorkspaceSession, setAuthorWorkspaceSession] = useState<AuthorWorkspaceSession | null>(null)
+  const [authorPlaytest, setAuthorPlaytest] = useState(false)
 
   useEffect(() => {
-    if (evaluationScope !== 'model' && levelPredictionKind === 'counterexample-world') setLevelPredictionKind('none')
-  }, [evaluationScope, levelPredictionKind])
+    if (levelStartSnapshot?.evaluationScope !== 'model' && levelPredictionKind === 'counterexample-world') setLevelPredictionKind('none')
+  }, [levelStartSnapshot?.evaluationScope, levelPredictionKind])
   useEffect(() => {
-    if (appView === 'workspace' && !learnConceptOpen && localStorage.getItem(workspaceTourKey) !== 'seen') {
+    if (appView === 'workspace' && gameMode !== 'author' && !learnConceptOpen && localStorage.getItem(workspaceTourKey) !== 'seen') {
       setWorkspaceTourStep(0)
       setShowWorkspaceTour(true)
     }
-  }, [appView, learnConceptOpen])
+  }, [appView, gameMode, learnConceptOpen])
   const [nextWorldKey, setNextWorldKey] = useState(() => Math.max(-1, ...worlds.map(({ key }) => key)) + 1)
   const [nextEdgeKey, setNextEdgeKey] = useState(() => Math.max(-1, ...edges.map(({ key }) => key)) + 1)
   const [selectedEdgeKey, setSelectedEdgeKey] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [showDataManager, setShowDataManager] = useState(false)
   const [importSource, setImportSource] = useState('')
+  const [backupImportSource, setBackupImportSource] = useState('')
+  const [customImportSource, setCustomImportSource] = useState('')
   const [dataMessage, setDataMessage] = useState('')
   const [shareLink, setShareLink] = useState('')
   const [showFrameRules, setShowFrameRules] = useState(false)
@@ -516,6 +526,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const historyPast = useRef<ModelHistoryEntry[]>([])
   const historyFuture = useRef<ModelHistoryEntry[]>([])
   const sandboxBeforeCampaign = useRef<SandboxDraft | null>(null)
+  const authorPlaytestReturnMode = useRef<GameMode>('sandbox')
   const [historyVersion, setHistoryVersion] = useState(0)
 
   const currentSnapshot = (): ModelSnapshot => ({
@@ -585,10 +596,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   }
 
   useEffect(() => {
-    if (gameMode !== 'sandbox') return
+    if (gameMode !== 'sandbox' || authorWorkspaceSession) return
     const draft: SandboxDraft = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     try { localStorage.setItem(storageKey, JSON.stringify(draft)) } catch { /* Persistence is optional in restricted browsers. */ }
-  }, [formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode])
+  }, [formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode, authorWorkspaceSession])
 
   useEffect(() => {
     try { localStorage.setItem(campaignProgressKey, JSON.stringify([...completedLevelIds])) } catch { /* Progress remains available for this session. */ }
@@ -1041,7 +1052,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
             ? `${configuredWorld} ${verdict.holds ? 'satisfies' : 'does not satisfy'} the formula under the shown valuation.`
             : scope === 'model'
               ? verdict.holds ? 'Every world satisfies the formula under the shown valuation.' : 'At least one world fails under the shown valuation.'
-              : verdict.holds ? 'Every world satisfies the formula under every valuation.' : 'Frame validity checks every valuation; a world and countervaluation refute it.',
+              : verdict.holds ? 'Every world satisfies the formula under every valuation.' : 'Frame validity checks every valuation. A world and countervaluation refute it.',
         }
       })
     } catch {
@@ -1127,7 +1138,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   })
   const activeLearnChapter = courseLesson ? learnCourse.chapters.find((chapter) => chapter.id === courseLesson.chapterId) : undefined
   const activeLearnChapterIndex = activeLearnChapter && courseLesson ? activeLearnChapter.lessons.findIndex((lesson) => lesson.id === courseLesson.id) : -1
-  const isGuidedMode = gameMode !== 'sandbox'
+  const isGuidedMode = gameMode !== 'sandbox' && gameMode !== 'author'
   const isHowToPlay = gameMode === 'tutorial'
   const isConstructionObjective = activeLevel?.objectiveKind === 'construction'
   const focusedIntroWorkspace = isHowToPlay || gameMode === 'learn'
@@ -1544,6 +1555,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const openWorkspaceTour = () => {
     setWorkspaceTourStep(0)
+    setLearnConceptOpen(false)
     setAppView('workspace')
     setShowWorkspaceTour(true)
     setUtilityMenuOpen(false)
@@ -1635,6 +1647,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   }
 
   const recordAttempt = (success: boolean, bonusAchieved?: boolean, failureCategory?: AttemptFailureCategory) => {
+    if (authorWorkspaceSession || authorPlaytest || gameMode === 'author') return
     const entry: HistoryEntry = {
       id: createLocalId(), timestamp: new Date().toISOString(), mode: gameMode,
       levelId: activeLevel?.id, title: activeLevel?.title ?? 'Model Sandbox verification',
@@ -1801,7 +1814,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined,
         objectiveFailure,
       )
-      if (overallSuccess && activeLevel) {
+      if (overallSuccess && activeLevel && !authorPlaytest) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
         try {
           const signature = canonicalModelSignature({ worldIds: ids, edges: normalizedEdges, valuation: valuations, evaluationWorld }, {
@@ -1847,6 +1860,68 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const currentAuthorSnapshot = (): AuthorStartSnapshot => ({
     ...currentSnapshot(), formulaSource, comparisonFormulaSource, targetTruth, evaluationScope, selectedCorrespondence,
   })
+
+  const currentWorkspaceDraft = (): SandboxDraft => ({ formulaSource, comparisonFormulaSource, worlds: structuredClone(worlds), edges: structuredClone(edges), evaluationWorld, targetTruth, frameRules: { ...frameRules }, evaluationScope })
+
+  const restoreWorkspaceDraft = (draft: SandboxDraft) => {
+    setFormulaSource(draft.formulaSource)
+    setComparisonFormulaSource(draft.comparisonFormulaSource ?? '')
+    setWorlds(structuredClone(draft.worlds))
+    setEdges(structuredClone(draft.edges))
+    setEvaluationWorld(draft.evaluationWorld)
+    setTargetTruth(draft.targetTruth)
+    setFrameRules({ ...defaultFrameRules, ...draft.frameRules })
+    setEvaluationScope(draft.evaluationScope === 'world' ? 'pointed' : draft.evaluationScope ?? 'pointed')
+    setNextWorldKey(Math.max(-1, ...draft.worlds.map(({ key }) => key)) + 1)
+    setNextEdgeKey(Math.max(-1, ...draft.edges.map(({ key }) => key)) + 1)
+    setResult(null)
+  }
+
+  const openAuthorWorkspace = (purpose: AuthorWorkspaceSession['purpose']) => {
+    if (purpose === 'reference-solution' && !levelStartSnapshot) { setDataMessage('Capture the starting model before building a reference solution.'); return }
+    const previousWorkspace = currentWorkspaceDraft()
+    const previousGameMode = gameMode
+    const source = levelStartSnapshot ?? currentAuthorSnapshot()
+    setFormulaSource(source.formulaSource)
+    setComparisonFormulaSource(source.comparisonFormulaSource)
+    setTargetTruth(source.targetTruth)
+    setEvaluationScope(source.evaluationScope)
+    setSelectedCorrespondence(source.selectedCorrespondence)
+    restoreSnapshot(source)
+    setNextWorldKey(Math.max(-1, ...source.worlds.map(({ key }) => key)) + 1)
+    setNextEdgeKey(Math.max(-1, ...source.edges.map(({ key }) => key)) + 1)
+    setAuthorWorkspaceSession({ purpose, returnStep: purpose === 'starting-model' ? 2 : 7, previousWorkspace, previousGameMode })
+    setGameMode('author')
+    setAppView('workspace')
+  }
+
+  const leaveAuthorWorkspace = (save: boolean) => {
+    const session = authorWorkspaceSession
+    if (!session) return
+    if (save && session.purpose === 'starting-model') {
+      setImportedAuthorFile(null)
+      setLevelStartSnapshot(currentAuthorSnapshot())
+      setLevelReferenceSolution(null)
+      setDataMessage('Starting model saved. The previous workspace remains unchanged.')
+    }
+    if (save && session.purpose === 'reference-solution') {
+      try {
+        const solution: ReferenceSolution = { worlds: worlds.map(({ id, atoms, position }) => ({ id: id.trim(), atoms, position })), edges: edges.map(({ from, to }) => ({ from, to })), evaluationWorld, frameRules }
+        assertValidReferenceSolution(customLevelFromSandbox(), solution)
+        setLevelReferenceSolution(solution)
+        setDataMessage('Reference solution verified and saved.')
+      } catch (error) {
+        setResult({ kind: 'error', message: error instanceof Error ? error.message : 'The reference solution is not valid.' })
+        return
+      }
+    }
+    restoreWorkspaceDraft(session.previousWorkspace)
+    setGameMode(session.previousGameMode)
+    setAuthorStep(session.returnStep)
+    setAuthorWorkspaceSession(null)
+    setAuthorStudioOpen(true)
+    setAppView('create')
+  }
 
   const customLevelFromSandbox = (): GameLevel => {
     const start = levelStartSnapshot ?? currentAuthorSnapshot()
@@ -1934,9 +2009,15 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const playtestCustomMission = () => {
     try {
       if (!levelStartSnapshot) throw new Error('Capture the mission start before playtesting.')
-      const contents = serializedCustomLevel()
+      // Imported packages may contain prediction variants that the form does
+      // not edit yet. Keep the complete package intact for direct playtests.
+      const contents = importedAuthorFile
+        ? serializeCustomLevel(importedAuthorFile.level, importedAuthorFile.referenceSolution)
+        : serializedCustomLevel()
       const level = parseCustomLevelFile(JSON.parse(contents))
       sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+      authorPlaytestReturnMode.current = gameMode
+      setAuthorPlaytest(true)
       setCustomLevels([level])
       setGameMode('custom')
       loadLevel(0, [level])
@@ -1954,8 +2035,18 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     completedLevelIds: [...completedLevelIds],
   }, null, 2)
 
+  const serializedProgressBackup = () => serializeProgressBackup({
+    contentRevision: currentCampaignContentRevision,
+    guest: guestProfile,
+    completedLevelIds: [...completedLevelIds],
+    learnProgress,
+    referenceSolutionViewed: [...referenceSolutionViewed],
+    sandbox: JSON.parse(serializedModel()),
+  })
+
   const openDataManager = () => {
     setImportSource(serializedModel())
+    setBackupImportSource(serializedProgressBackup())
     setDataMessage('')
     setShowDataManager(true)
   }
@@ -1986,95 +2077,66 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     setDataMessage('The sandbox was reset.')
   }
 
+  const normalizedGuestProfile = (value: unknown): GuestProfile => {
+    const guest = value as Partial<GuestProfile> | undefined
+    if (!guest || typeof guest.id !== 'string' || typeof guest.createdAt !== 'string' || !Array.isArray(guest.history)) throw new Error('Invalid guest profile backup.')
+    const history = guest.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250)
+    const rawSolutions = guest.solutionSignatures && typeof guest.solutionSignatures === 'object' ? guest.solutionSignatures : {}
+    const solutionSignatures = Object.fromEntries(Object.entries(rawSolutions).filter(([, signatures]) => Array.isArray(signatures)).map(([levelId, signatures]) => [levelId, [...new Set((signatures as unknown[]).filter((signature): signature is string => typeof signature === 'string'))].slice(0, 25)]))
+    return { id: guest.id, createdAt: guest.createdAt, history, solutionSignatures }
+  }
+
+  const knownProgressIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)].map((level) => level.id))
+  const filteredProgressIds = (ids: readonly string[], contentRevision = 1) => ids.filter((id) => knownProgressIds.has(id) && (contentRevision >= currentCampaignContentRevision || !revisedCampaignLevelIds.has(id)))
+
+  const applyParsedSandbox = (imported: ReturnType<typeof parseSandboxModel>) => {
+    parseFormula(imported.formula)
+    if (imported.comparisonFormula) parseFormula(imported.comparisonFormula)
+    const importedWorlds = imported.worlds.map((world, key) => ({ ...world, key }))
+    const importedEdges = imported.edges.map((edge, key) => ({ ...edge, key }))
+    setGameMode('sandbox')
+    setFormulaSource(imported.formula)
+    setComparisonFormulaSource(imported.comparisonFormula)
+    setWorlds(importedWorlds)
+    setEdges(importedEdges)
+    setEvaluationWorld(imported.evaluationWorld)
+    setEvaluationScope(imported.scope)
+    setTargetTruth(imported.targetTruth)
+    setFrameRules(imported.frameRules as FrameRules)
+    setSelectedCorrespondence(correspondencePresets.some(({ id }) => id === imported.correspondencePreset) ? imported.correspondencePreset : '')
+    setNextWorldKey(importedWorlds.length)
+    setNextEdgeKey(importedEdges.length)
+    setResult(null)
+  }
+
+  const importProgress = () => {
+    try {
+      const imported = parseProgressBackup(backupImportSource)
+      const guest = normalizedGuestProfile(imported.guest)
+      const progress = filteredProgressIds(imported.completedLevelIds, imported.contentRevision)
+      const sandbox = imported.format === 'logic-model-builder-progress-backup' && imported.sandbox ? parseSandboxModel(imported.sandbox) : null
+      if (!window.confirm('Replace the local progress and history with this validated backup?')) return
+      setGuestProfile(guest)
+      setCompletedLevelIds(new Set(progress))
+      if (imported.format === 'logic-model-builder-progress-backup') {
+        setLearnProgress(imported.learnProgress)
+        setReferenceSolutionViewed(new Set(imported.referenceSolutionViewed.filter((id) => knownProgressIds.has(id))))
+        if (sandbox) applyParsedSandbox(sandbox)
+      }
+      setDataMessage(imported.format === 'logic-model-builder-profile' ? 'Legacy profile and Campaign progress imported. Existing Learn and sandbox data were preserved.' : 'Progress backup imported successfully.')
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not import the progress backup.')
+    }
+  }
+
   const importModel = () => {
     try {
-      const imported = JSON.parse(importSource) as Record<string, unknown>
-      if (imported.format === 'logic-model-builder-profile' && imported.version === 1) {
-        const guest = imported.guest as Partial<GuestProfile> | undefined
-        if (!guest || typeof guest.id !== 'string' || typeof guest.createdAt !== 'string' || !Array.isArray(guest.history)) throw new Error('Invalid guest profile backup.')
-        const history = guest.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250)
-        const knownIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)].map((level) => level.id))
-        const importedContentRevision = typeof imported.contentRevision === 'number' ? imported.contentRevision : 1
-        const progress = Array.isArray(imported.completedLevelIds) ? imported.completedLevelIds.filter((id): id is string => typeof id === 'string'
-          && knownIds.has(id)
-          && (importedContentRevision >= currentCampaignContentRevision || !revisedCampaignLevelIds.has(id))) : []
-        const rawSolutions = guest.solutionSignatures && typeof guest.solutionSignatures === 'object' ? guest.solutionSignatures : {}
-        const solutionSignatures = Object.fromEntries(Object.entries(rawSolutions).filter(([, signatures]) => Array.isArray(signatures)).map(([levelId, signatures]) => [levelId, [...new Set((signatures as unknown[]).filter((signature): signature is string => typeof signature === 'string'))].slice(0, 25)]))
-        setGuestProfile({ id: guest.id, createdAt: guest.createdAt, history, solutionSignatures })
-        setCompletedLevelIds(new Set(progress))
-        setShowDataManager(false)
-        return
-      }
-      if (imported.format === 'logic-model-builder-campaign') {
-        const campaign = parseCustomCampaign(imported)
-        const levels = campaign.missions.map(({ level }) => level)
-        if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
-        setCustomLevels(levels)
-        setCustomCampaignTitle(campaign.title)
-        setGameMode('custom')
-        setAppView('workspace')
-        loadLevel(0, levels)
-        setShowDataManager(false)
-        return
-      }
-      if (imported.format === 'logic-model-builder-level') {
-        const importedLevel = parseCustomLevelFile(imported)
-        if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
-        setCustomLevels([importedLevel])
-        setGameMode('custom')
-        setAppView('workspace')
-        loadLevel(0, [importedLevel])
-        setShowDataManager(false)
-        return
-      }
-      if (imported.format !== 'logic-model-builder' || imported.version !== 1) throw new Error('Unsupported model format or version.')
-      if (typeof imported.formula !== 'string') throw new Error('The imported formula is missing.')
+      const imported = parseSandboxModel(importSource)
       parseFormula(imported.formula)
-      if (!Array.isArray(imported.worlds) || imported.worlds.length === 0) throw new Error('The imported model must contain at least one world.')
-      const importedWorlds = imported.worlds.map((item, key) => {
-        if (!item || typeof item !== 'object') throw new Error('Invalid world data.')
-        const world = item as Record<string, unknown>
-        if (typeof world.id !== 'string' || !world.id.trim() || typeof world.atoms !== 'string') throw new Error('Every imported world needs a name and atom list.')
-        if (world.atoms.split(/[\s,]+/u).filter(Boolean).some((atom) => !/^[A-Za-z][A-Za-z0-9_]*$/u.test(atom))) throw new Error(`Invalid atom list at ${world.id}.`)
-        const position = world.position as { x?: unknown; y?: unknown } | undefined
-        return { key, id: world.id.trim(), atoms: world.atoms, position: {
-          x: typeof position?.x === 'number' ? position.x : 90 + (key % 3) * 240,
-          y: typeof position?.y === 'number' ? position.y : 90 + Math.floor(key / 3) * 150,
-        } }
-      })
-      const ids = importedWorlds.map(({ id }) => id)
-      if (new Set(ids).size !== ids.length) throw new Error('Imported world names must be unique.')
-      if (!Array.isArray(imported.edges)) throw new Error('Invalid relation data.')
-      const importedEdges = imported.edges.map((item, key) => {
-        if (!item || typeof item !== 'object') throw new Error('Invalid relation data.')
-        const edge = item as Record<string, unknown>
-        if (typeof edge.from !== 'string' || typeof edge.to !== 'string' || !ids.includes(edge.from) || !ids.includes(edge.to)) throw new Error('An imported relation references an unknown world.')
-        return { key, from: edge.from, to: edge.to }
-      })
-      const scope = ['pointed', 'model', 'frame', 'correspondence'].includes(String(imported.scope)) ? imported.scope as EvaluationScope : 'pointed'
-      const importedEvaluationWorld = typeof imported.evaluationWorld === 'string' && ids.includes(imported.evaluationWorld) ? imported.evaluationWorld : ids[0]
-      const rawRules = imported.frameRules && typeof imported.frameRules === 'object' ? imported.frameRules as Record<string, unknown> : {}
-      const importedRules = Object.fromEntries(Object.keys(defaultFrameRules).map((property) => {
-        const mode = rawRules[property]
-        const canEnforce = ['reflexive', 'symmetric', 'transitive', 'euclidean'].includes(property)
-        return [property, mode === 'validate' || (mode === 'enforce' && canEnforce) ? mode : 'off']
-      })) as FrameRules
-      setGameMode('sandbox')
+      if (imported.comparisonFormula) parseFormula(imported.comparisonFormula)
+      if (!window.confirm('Replace the saved Model Sandbox with this validated model?')) return
+      applyParsedSandbox(imported)
       setAppView('workspace')
-      setFormulaSource(imported.formula)
-      const importedComparison = typeof imported.comparisonFormula === 'string' ? imported.comparisonFormula.trim() : ''
-      if (importedComparison) parseFormula(importedComparison)
-      setComparisonFormulaSource(importedComparison)
-      setWorlds(importedWorlds)
-      setEdges(importedEdges)
-      setEvaluationWorld(importedEvaluationWorld)
-      setEvaluationScope(scope)
-      setTargetTruth(typeof imported.targetTruth === 'boolean' ? imported.targetTruth : true)
-      setFrameRules(importedRules)
-      setSelectedCorrespondence(typeof imported.correspondencePreset === 'string' && correspondencePresets.some(({ id }) => id === imported.correspondencePreset) ? imported.correspondencePreset : '')
-      setNextWorldKey(importedWorlds.length)
-      setNextEdgeKey(importedEdges.length)
-      setResult(null)
       setShowDataManager(false)
     } catch (error) {
       setDataMessage(error instanceof Error ? error.message : 'Could not import the model.')
@@ -2092,14 +2154,6 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     const duplicatedWorlds = source.worlds.map((world, key) => ({ ...world, key }))
     const duplicatedEdges = source.edges.map((edge, key) => ({ ...edge, key }))
     const duplicatedRules = { ...defaultFrameRules, ...source.frameRules }
-    setFormulaSource(source.formula ?? '')
-    setComparisonFormulaSource(source.comparisonFormula ?? '')
-    setWorlds(duplicatedWorlds)
-    setEdges(duplicatedEdges)
-    setEvaluationWorld(source.evaluationWorld)
-    setEvaluationScope(source.scope ?? 'pointed')
-    setTargetTruth(source.targetTruth ?? true)
-    setFrameRules(duplicatedRules)
     setLevelTitle(`${source.title} copy`)
     setLevelInstruction(source.instruction)
     setLevelLearningObjective(source.learningObjective ?? '')
@@ -2115,14 +2169,67 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     setLevelForbiddenProperties(new Set(source.constraints?.forbiddenProperties ?? []))
     setLevelRequiredEdges(source.constraints?.requiredEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
     setLevelForbiddenEdges(source.constraints?.forbiddenEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
-    const atomText = (values?: Readonly<Record<string, readonly string[]>>) => values ? Object.entries(values).map(([world, atoms]) => `${world}: ${atoms.join(' ')}`).join('; ') : ''
+    const atomText = (values?: Readonly<Record<string, readonly string[]>>) => values ? Object.entries(values).map(([world, atoms]) => `${world}: ${atoms.join(' ')}`).join('\n') : ''
     setLevelRequiredAtoms(atomText(source.constraints?.requiredAtoms))
     setLevelForbiddenAtoms(atomText(source.constraints?.forbiddenAtoms))
     setLevelStartSnapshot({ worlds: duplicatedWorlds, edges: duplicatedEdges, evaluationWorld: source.evaluationWorld, frameRules: duplicatedRules, formulaSource: source.formula ?? '', comparisonFormulaSource: source.comparisonFormula ?? '', targetTruth: source.targetTruth ?? true, evaluationScope: source.scope ?? 'pointed', selectedCorrespondence: source.correspondencePreset ?? '' })
     setLevelReferenceSolution(null)
     setMissionAuditFindings([])
-    setDataMessage(`Duplicated “${source.title}”. Capture a new reference solution before export.`)
-    setShowDataManager(true)
+    setImportedAuthorFile(null)
+    setDataMessage(`Duplicated “${source.title}”. Build and verify a new reference solution before export.`)
+    setAuthorStep(1)
+    setVisitedAuthorSteps(new Set([1]))
+    setAuthorStudioOpen(true)
+    setAppView('create')
+  }
+
+  const importCustomContent = () => {
+    try {
+      const parsed = JSON.parse(customImportSource) as Record<string, unknown>
+      if (parsed.format === 'logic-model-builder-campaign') {
+        const campaign = parseCustomCampaign(parsed)
+        setCustomCampaignTitle(campaign.title)
+        setCustomCampaignDescription(campaign.description)
+        setAuthoredCampaignMissions(campaign.missions)
+        setAuthorStep(9)
+        setVisitedAuthorSteps(new Set([1, 9]))
+        setAuthorStudioOpen(true)
+        setDataMessage(`Imported campaign package “${campaign.title}”.`)
+        return
+      }
+      const imported = parseCustomLevelPackage(parsed)
+      const source = imported.level
+      const draftWorlds = source.worlds.map((world, key) => ({ ...world, key }))
+      const draftEdges = source.edges.map((edge, key) => ({ ...edge, key }))
+      const draftRules = { ...defaultFrameRules, ...source.frameRules }
+      setLevelTitle(source.title)
+      setLevelInstruction(source.instruction)
+      setLevelLearningObjective(source.learningObjective ?? '')
+      setLevelConcept(source.conceptTags?.join(', ') || source.concept)
+      setLevelPrerequisites(source.prerequisites?.join(', ') ?? '')
+      setLevelDifficulty(source.estimatedDifficulty ?? 'intermediate')
+      setLevelEditable(new Set(source.editable))
+      setLevelBounds({ minimumWorlds: source.constraints?.minimumWorlds?.toString() ?? '', maximumWorlds: source.constraints?.maximumWorlds?.toString() ?? '', minimumEdges: source.constraints?.minimumEdges?.toString() ?? '', maximumEdges: source.constraints?.maximumEdges?.toString() ?? '', maximumChanges: source.constraints?.maximumChanges?.toString() ?? '' })
+      setLevelRequiredProperties(new Set(source.constraints?.requiredProperties ?? []))
+      setLevelForbiddenProperties(new Set(source.constraints?.forbiddenProperties ?? []))
+      setLevelRequiredEdges(source.constraints?.requiredEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
+      setLevelForbiddenEdges(source.constraints?.forbiddenEdges?.map(({ from, to }) => `${from} -> ${to}`).join(', ') ?? '')
+      const importedAtomText = (values?: Readonly<Record<string, readonly string[]>>) => values ? Object.entries(values).map(([world, atoms]) => `${world}: ${atoms.join(' ')}`).join('\n') : ''
+      setLevelRequiredAtoms(importedAtomText(source.constraints?.requiredAtoms))
+      setLevelForbiddenAtoms(importedAtomText(source.constraints?.forbiddenAtoms))
+      setLevelBonusMaximumEdges(source.bonusConstraints?.maximumEdges?.toString() ?? '')
+      setLevelPredictionKind(source.prediction?.kind === 'truth' || source.prediction?.kind === 'counterexample-world' || source.prediction?.kind === 'frame-property' ? source.prediction.kind : 'none')
+      if (source.prediction?.kind === 'frame-property' && source.prediction.expectedProperty) setLevelPredictionProperty(source.prediction.expectedProperty)
+      setLevelStartSnapshot({ worlds: draftWorlds, edges: draftEdges, evaluationWorld: source.evaluationWorld, frameRules: draftRules, formulaSource: source.formula ?? '', comparisonFormulaSource: source.comparisonFormula ?? '', targetTruth: source.targetTruth ?? true, evaluationScope: source.scope ?? 'pointed', selectedCorrespondence: source.correspondencePreset ?? '' })
+      setLevelReferenceSolution(imported.referenceSolution ?? null)
+      setImportedAuthorFile(imported)
+      setAuthorStep(7)
+      setVisitedAuthorSteps(new Set([1, 2, 3, 4, 5, 6, 7]))
+      setAuthorStudioOpen(true)
+      setDataMessage(`Imported “${source.title}” into the creation studio.`)
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not import custom content.')
+    }
   }
 
   const runMissionAudit = (): boolean => {
@@ -2186,7 +2293,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const downloadCustomLevel = () => {
     try {
       if (!runMissionAudit()) return
-      const contents = serializedCustomLevel()
+      const contents = importedAuthorFile ? serializeCustomLevel(importedAuthorFile.level, importedAuthorFile.referenceSolution) : serializedCustomLevel()
       parseCustomLevelFile(JSON.parse(contents))
       downloadJson(contents, `${customLevelFromSandbox().id}.json`)
       setDataMessage('Custom mission exported.')
@@ -2277,7 +2384,12 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     else if (gameMode === 'guidedCampaign') { setCampaignSection('challenges'); setAppView('campaigns') }
     else if (gameMode === 'custom') {
       exitCampaign()
-      setAppView('workspace')
+      if (authorPlaytest) {
+        setGameMode(authorPlaytestReturnMode.current)
+        setAuthorPlaytest(false)
+        setAuthorStudioOpen(true)
+        setAppView('create')
+      } else setAppView('workspace')
     }
     else {
       setCampaignTrackIndex(playingTrackIndex ?? campaignTrackIndex)
@@ -2288,11 +2400,13 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const goBack = () => {
     if (appView === 'workspace') {
+      if (authorWorkspaceSession) { leaveAuthorWorkspace(false); return }
       if (isGuidedMode) returnToGuidedBrowser()
       else setAppView('lab')
       return
     }
     if (appView === 'welcome') setAppView('learn')
+    else if (appView === 'create' && authorStudioOpen) setAuthorStudioOpen(false)
     else if (appView === 'campaigns' || appView === 'create') setAppView('home')
     else setAppView('home')
   }
@@ -2347,7 +2461,9 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
     || activeLevel.formula
   ))
   const backLabel = appView !== 'workspace'
-    ? 'Back'
+    ? appView === 'create' && authorStudioOpen ? 'Back to Create' : 'Back'
+    : authorWorkspaceSession
+      ? 'Cancel and return to authoring'
     : gameMode === 'learn' || gameMode === 'tutorial'
       ? 'Back to Learn'
       : gameMode === 'guidedCampaign'
@@ -2364,6 +2480,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       <header className="topbar">
         <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label={backLabel === 'Back' ? 'Go back' : backLabel}>← <span>{backLabel}</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'welcome' || (appView === 'workspace' && (gameMode === 'learn' || gameMode === 'tutorial')) ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || (appView === 'workspace' && (gameMode === 'guidedCampaign' || gameMode === 'campaign')) ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'lab' || (appView === 'workspace' && gameMode === 'sandbox') ? 'active' : ''} type="button" onClick={() => setAppView('lab')}>Lab</button></nav></div>
         <div className="topbar-actions">
+          {appView !== 'home' && appView !== 'workspace' && isGuidedMode && activeLevel && <button type="button" className="topbar-resume" onClick={() => setAppView('workspace')}>Resume {gameMode === 'learn' || gameMode === 'tutorial' ? 'lesson' : 'mission'}</button>}
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? `Restart ${missionNavigationUnit}` : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" aria-label="Open workspace quick help" onClick={() => setShowHelp(true)}>Quick help</button>}
           {document.fullscreenEnabled && <button type="button" className="icon-button fullscreen-button" aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} aria-pressed={isFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} onClick={() => void toggleFullscreen()}>⛶</button>}
@@ -2373,10 +2490,8 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
 
       <main id="main-content" className="main-content" tabIndex={-1}>
 
-      {appView !== 'workspace' && gameMode !== 'sandbox' && activeLevel && <aside className="resume-session-banner" aria-label="Current guided session"><span>Current {gameMode === 'learn' || gameMode === 'tutorial' ? 'lesson' : 'mission'} in progress: <strong>{activeLevel.title}</strong></span><button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Resume</button></aside>}
-
       {appView === 'home' && (
-        <HomeView completed={playableLearningCompleted} total={availableLearningTotal} nextTitle={nextLearningTitle} onLearn={continueLearningPath} onCampaigns={() => setAppView('campaigns')} onLab={() => setAppView('lab')} onProfile={() => setAppView('profile')} onSettings={() => setAppView('settings')} onData={openDataManager} />
+        <HomeView completed={playableLearningCompleted} total={availableLearningTotal} nextTitle={nextLearningTitle} currentSession={isGuidedMode && activeLevel ? { kind: gameMode === 'learn' || gameMode === 'tutorial' ? 'lesson' : 'mission', title: activeLevel.title, context: activeLevel.chapter } : undefined} onResume={() => setAppView('workspace')} onLearn={continueLearningPath} onCampaigns={() => setAppView('campaigns')} onLab={() => setAppView('lab')} />
       )}
 
       {appView === 'lab' && <LabView onOpenModelSandbox={returnToSandbox} />}
@@ -2393,9 +2508,43 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         <CampaignsView section={campaignSection} guidedCampaigns={guidedCampaigns} practiceTracks={campaignTracks} selectedTrackIndex={campaignTrackIndex} completedLevelIds={completedLevelIds} overallPracticeCompleted={overallCampaignCompleted} overallPracticeLevels={overallCampaignLevels} activePracticeTrackIndex={playingTrackIndex ?? campaignTrackIndex} activePracticeLevelIndex={campaignLevelIndex} practiceSessionActive={gameMode === 'campaign'} onSectionChange={setCampaignSection} onOpenLearn={() => setAppView('learn')} onStartCampaign={startGuidedCampaign} onSelectPracticeTrack={setCampaignTrackIndex} onStartPractice={(levelIndex, trackIndex) => startGuidedLevel('campaign', levelIndex, trackIndex)} onResumePractice={() => setAppView('workspace')} />
       )}
 
-      {appView === 'create' && (
-        <CreateView templates={[...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)]} selectedTemplateId={authorTemplateId} onSelectedTemplateChange={setAuthorTemplateId} onOpenStudio={openDataManager} onDuplicateTemplate={duplicateBuiltInMission} />
+      {appView === 'create' && !authorStudioOpen && (
+        <CreateView templates={[...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels), ...guidedCampaigns.flatMap((campaign) => campaign.levels)]} selectedTemplateId={authorTemplateId} onSelectedTemplateChange={setAuthorTemplateId} onOpenStudio={() => { setDataMessage(''); setImportedAuthorFile(null); setLevelTitle('My custom mission'); setLevelInstruction('Satisfy the configured objective.'); setLevelLearningObjective('Explore this modal construction.'); setLevelConcept('User-authored modal logic objective'); setLevelPrerequisites('propositional connectives'); setLevelDifficulty('introductory'); setLevelEditable(new Set(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'])); setLevelBounds({ minimumWorlds: '', maximumWorlds: '', minimumEdges: '', maximumEdges: '', maximumChanges: '' }); setLevelRequiredProperties(new Set()); setLevelForbiddenProperties(new Set()); setLevelRequiredEdges(''); setLevelForbiddenEdges(''); setLevelRequiredAtoms(''); setLevelForbiddenAtoms(''); setLevelBonusMaximumEdges(''); setLevelPredictionKind('none'); setLevelStartSnapshot(null); setLevelReferenceSolution(null); setMissionAuditFindings([]); setAuthorStep(1); setVisitedAuthorSteps(new Set([1])); setAuthorStudioOpen(true) }} onOpenCampaign={() => { setDataMessage(''); setAuthorStep(9); setVisitedAuthorSteps(new Set([1, 9])); setAuthorStudioOpen(true) }} onDuplicateTemplate={duplicateBuiltInMission} importSource={customImportSource} onImportSourceChange={(value) => { setCustomImportSource(value); setDataMessage('') }} onImportContent={importCustomContent} />
       )}
+
+      {appView === 'create' && authorStudioOpen && <MissionAuthoringView title={levelTitle || 'Custom mission'} status={dataMessage} onBack={() => setAuthorStudioOpen(false)}>
+        <MissionAuthorStepper currentStep={authorStep} visitedSteps={visitedAuthorSteps} errors={authorStepErrors} onSelectStep={goToAuthorStep} onBack={() => { setAuthorStep((step) => Math.max(1, step - 1)); setAuthorStepErrors([]) }} onNext={advanceAuthorStep}>
+          {authorStep === 1 && <div className="author-step-fields">
+            <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
+            <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
+            <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
+            <label><span>Concept tags</span><input aria-label="Custom mission concept tags" value={levelConcept} onChange={(event) => setLevelConcept(event.target.value)} placeholder="necessity, countermodel" /></label>
+            <div className="author-pairs"><label><span>Prerequisites</span><input aria-label="Custom mission prerequisites" value={levelPrerequisites} onChange={(event) => setLevelPrerequisites(event.target.value)} placeholder="possibility, propositional connectives" /></label><label><span>Estimated difficulty</span><select aria-label="Custom mission difficulty" value={levelDifficulty} onChange={(event) => setLevelDifficulty(event.target.value as typeof levelDifficulty)}><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>
+          </div>}
+          {authorStep === 2 && <div className="author-snapshots"><p>Edit the learner's starting state in the same workspace used by the game.</p><button type="button" className="primary-action" onClick={() => openAuthorWorkspace('starting-model')}>Edit starting model</button><span className={levelStartSnapshot ? 'pass' : ''}>{levelStartSnapshot ? `Start saved: ${levelStartSnapshot.worlds.length} world(s), ${levelStartSnapshot.edges.length} relation(s)` : 'No saved starting model'}</span></div>}
+          {authorStep === 3 && <div className="author-step-fields">
+            <label><span>Formula</span><input aria-label="Authored mission formula" value={levelStartSnapshot?.formulaSource ?? ''} onChange={(event) => { const value = event.target.value; setImportedAuthorFile(null); setLevelStartSnapshot((start) => start ? { ...start, formulaSource: value } : start) }} /></label>
+            <label><span>Comparison formula (optional)</span><input aria-label="Authored comparison formula" value={levelStartSnapshot?.comparisonFormulaSource ?? ''} onChange={(event) => { const value = event.target.value; setImportedAuthorFile(null); setLevelStartSnapshot((start) => start ? { ...start, comparisonFormulaSource: value } : start) }} /></label>
+            <div className="author-pairs"><label><span>Scope</span><select aria-label="Authored mission scope" value={levelStartSnapshot?.evaluationScope ?? 'pointed'} onChange={(event) => { const value = event.target.value as EvaluationScope; setImportedAuthorFile(null); setLevelStartSnapshot((start) => start ? { ...start, evaluationScope: value } : start) }}><option value="pointed">At one world</option><option value="model">Throughout this model</option><option value="frame">On this finite frame</option></select></label><label><span>Target</span><select aria-label="Authored mission target truth" value={(levelStartSnapshot?.targetTruth ?? true) ? 'true' : 'false'} onChange={(event) => { const value = event.target.value === 'true'; setImportedAuthorFile(null); setLevelStartSnapshot((start) => start ? { ...start, targetTruth: value } : start) }}><option value="true">True</option><option value="false">False</option></select></label></div>
+            <label><span>Evaluation world</span><select aria-label="Authored mission evaluation world" value={levelStartSnapshot?.evaluationWorld ?? ''} onChange={(event) => { const value = event.target.value; setImportedAuthorFile(null); setLevelStartSnapshot((start) => start ? { ...start, evaluationWorld: value } : start) }}>{(levelStartSnapshot?.worlds ?? []).map((world) => <option key={world.id} value={world.id}>{world.id}</option>)}</select></label>
+          </div>}
+          {authorStep === 4 && <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>}
+          {authorStep === 5 && <div className="author-step-fields">
+            <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+            <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms, one world per line</span><textarea aria-label="Required custom mission atoms" placeholder={'w0: p q\nw1: r'} value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms, one world per line</span><textarea aria-label="Forbidden custom mission atoms" placeholder={'w0: r\nw1: p'} value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
+            <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
+            <fieldset><legend>Forbidden frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelForbiddenProperties.has(property)} onChange={() => setLevelForbiddenProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
+            <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
+          </div>}
+          {authorStep === 6 && <div className="author-step-fields"><label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{levelStartSnapshot?.evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}<option value="frame-property">Identify relational property</option></select></label>{levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}<p>Predictions are optional and do not penalize the learner.</p></div>}
+          {authorStep === 7 && <div className="author-snapshots"><p>Build a passing state from the saved start and verify it before storing the reference.</p><button type="button" className="primary-action" onClick={() => openAuthorWorkspace('reference-solution')} disabled={!levelStartSnapshot}>Build reference solution</button><span className={levelReferenceSolution ? 'pass' : ''}>{levelReferenceSolution ? 'Solution verified' : 'No verified reference solution'}</span><button type="button" className="secondary-button" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button></div>}
+          {authorStep === 8 && <section className="mission-audit" aria-label="Mission audit"><div><button type="button" className="primary-action" onClick={runMissionAudit}>Run mission audit</button></div><div className="settings-choice" aria-label="Preview viewport"><button type="button" className={authorPreview === 'desktop' ? 'active' : ''} aria-pressed={authorPreview === 'desktop'} onClick={() => setAuthorPreview('desktop')}>Desktop preview</button><button type="button" className={authorPreview === 'mobile' ? 'active' : ''} aria-pressed={authorPreview === 'mobile'} onClick={() => setAuthorPreview('mobile')}>Mobile preview</button></div><AuthorValidationSummary findings={missionAuditFindings} onGoToStep={(step) => { setVisitedAuthorSteps((current) => new Set([...current, step])); setAuthorStep(step); setAuthorStepErrors([]) }} /></section>}
+          {authorStep === 9 && <div className="author-export-step"><p className={authorCanExport ? 'pass' : 'fail'}>{authorCanExport ? 'Audit passed: this draft can be exported or shared.' : 'Run validation and resolve every blocking error before export or sharing.'}</p><div className="author-final-actions"><button type="button" className="secondary-button" onClick={downloadCustomLevel} disabled={!authorCanExport}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink} disabled={!authorCanExport}>Generate mission link</button></div>
+            <div className="campaign-packager"><h4>Campaign package</h4><label><span>Campaign title</span><input aria-label="Custom campaign title" value={customCampaignTitle} onChange={(event) => setCustomCampaignTitle(event.target.value)} /></label><label><span>Description</span><input aria-label="Custom campaign description" value={customCampaignDescription} onChange={(event) => setCustomCampaignDescription(event.target.value)} /></label><button type="button" className="secondary-button" onClick={addMissionToCustomCampaign} disabled={!authorCanExport}>Add current mission to package</button>{authoredCampaignMissions.length > 0 && <ol>{authoredCampaignMissions.map(({ level }, index) => <li key={level.id}><span>{index + 1}. {level.title}</span><button type="button" aria-label={`Remove ${level.title} from package`} onClick={() => setAuthoredCampaignMissions((current) => current.filter(({ level: candidate }) => candidate.id !== level.id))}>Remove</button></li>)}</ol>}<div><button type="button" className="primary-action" disabled={authoredCampaignMissions.length === 0} onClick={downloadCustomCampaign}>Download campaign package</button><button type="button" className="secondary-button" disabled={authoredCampaignMissions.length === 0} onClick={generateCampaignShareLink}>Generate campaign link</button></div></div>
+            {shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}
+          </div>}
+        </MissionAuthorStepper>
+      </MissionAuthoringView>}
 
       {appView === 'reference' && <ReferenceView onOpenLearn={() => setAppView('learn')} onOpenLab={() => setAppView('lab')} />}
       {appView === 'help' && <HelpView hasCurrentMission={isGuidedMode} onReturnToMission={() => setAppView('workspace')} onReplayWelcome={() => setAppView('welcome')} onReplayControls={() => startGuidedLevel('tutorial', 0)} onReplayTour={openWorkspaceTour} />}
@@ -2403,6 +2552,8 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'profile' && (
         <ProfileView guestId={guestProfile.id} createdAt={guestProfile.createdAt} history={guestProfile.history} successfulAttempts={successfulAttempts} completedHistoryLevels={completedHistoryLevels} savedCompletedLevels={completedLevelIds.size} distinctSolutions={distinctSolutions} conceptSummary={conceptSummary} failureSummary={failureSummary} failureLabel={(category) => failureCategoryLabels[category as AttemptFailureCategory]} onDownloadProfile={() => downloadJson(serializedProfile(), 'logic-model-builder-profile.json')} onImportBackup={openDataManager} onDownloadResults={downloadEducatorResults} onClearHistory={clearLocalHistory} />
       )}
+
+      {appView === 'workspace' && authorWorkspaceSession && <section className="mission-header mission-header-custom author-workspace-header" aria-label="Authoring workspace"><div className="mission-header-context"><span>Creation studio</span><strong>{authorWorkspaceSession.purpose === 'starting-model' ? 'Editing custom mission starting model' : 'Building reference solution'}</strong></div><div className="mission-header-objective"><span>Authoring context</span><p>{authorWorkspaceSession.purpose === 'starting-model' ? 'Edit the state that learners will receive.' : 'Build a state that satisfies the configured objective and constraints.'}</p></div><div className="mission-header-actions"><button type="button" className="verify-button" onClick={() => leaveAuthorWorkspace(true)}>{authorWorkspaceSession.purpose === 'starting-model' ? 'Save starting model and return' : 'Verify solution and return'}</button><button type="button" onClick={() => leaveAuthorWorkspace(false)}>Cancel</button></div></section>}
 
       {appView === 'workspace' && activeLevel && (
         <MissionHeader
@@ -2419,6 +2570,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           previouslyCompleted={completedLevelIds.has(activeLevel.id)}
           taskSteps={isHowToPlay ? activeLevel.taskSteps : undefined}
           actions={<>
+            {authorPlaytest && <button type="button" onClick={returnToGuidedBrowser}>Return to authoring</button>}
             {focusedIntroWorkspace && currentLearningDestination ? completedGuidedTask ? <>
               {courseLesson && !learnTransferActive && courseLesson.transferTask && <button type="button" className="secondary-button" onClick={() => startLearnTransfer(courseLesson.id)}>Try optional transfer</button>}
               {learningNavigation.next && <button type="button" className="verify-button" onClick={() => openLearningDestination(learningNavigation.next!)}>Next lesson</button>}
@@ -2431,7 +2583,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
             </> : completedGuidedTask ? <>
               {campaignLevelIndex < activeLevels.length - 1
                 ? <button type="button" className="verify-button" onClick={() => loadLevel(campaignLevelIndex + 1)}>Next mission</button>
-                : <button type="button" className="verify-button" onClick={returnToGuidedBrowser}>{gameMode === 'custom' ? 'Return to Model Sandbox' : gameMode === 'guidedCampaign' ? 'Back to Campaigns' : 'Back to Practice'}</button>}
+                : authorPlaytest ? null : <button type="button" className="verify-button" onClick={returnToGuidedBrowser}>{gameMode === 'custom' ? 'Return to Model Sandbox' : gameMode === 'guidedCampaign' ? 'Back to Campaigns' : 'Back to Practice'}</button>}
               <button type="button" onClick={() => loadLevel(campaignLevelIndex)}>Replay mission</button>
               {campaignLevelIndex < activeLevels.length - 1 && <button type="button" onClick={returnToGuidedBrowser}>Back to overview</button>}
             </> : <>
@@ -2459,7 +2611,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         <MobileWorkspaceTabs activeTab={mobileWorkspaceTab} showFormula={showFormulaPanel} onChange={setMobileWorkspaceTab} />
         {leftPanelOpen && <WorkspaceResizeHandle side="left" value={workspaceLayout.left} onResize={(value) => resizeWorkspacePanel('left', value)} />}
         {rightPanelOpen && (showWorldPanel || showEdgePanel) && <WorkspaceResizeHandle side="right" value={workspaceLayout.right} onResize={(value) => resizeWorkspacePanel('right', value)} />}
-        {showFormulaPanel && <div className="panel formula-panel">
+        {showFormulaPanel && <div className="panel formula-panel" data-tour-target="formula-controls">
           <div className="panel-heading">
             <div><h2>Formula and goal</h2><p>Unicode and text notation</p></div>
           </div>
@@ -2481,10 +2633,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           <label className="field scope-picker">
             <span>Semantic target</span>
             <select disabled={isGuidedMode} aria-label="Semantic target" value={evaluationScope} onChange={(event) => { setEvaluationScope(event.target.value as EvaluationScope); setResult(null) }}>
-              <option value="pointed">Pointed model — selected world, current valuation</option>
-              <option value="model">Model — all worlds, current valuation</option>
-              <option value="frame">Frame — all worlds and all valuations</option>
-              <option value="correspondence" disabled={Boolean(comparisonFormulaSource.trim())}>Correspondence — formula validity vs. relation</option>
+              <option value="pointed">Pointed model: selected world, current valuation</option>
+              <option value="model">Model: all worlds, current valuation</option>
+              <option value="frame">Frame: all worlds and all valuations</option>
+              <option value="correspondence" disabled={Boolean(comparisonFormulaSource.trim())}>Correspondence: formula validity vs. relation</option>
             </select>
           </label>
           {evaluationScope !== 'correspondence' ? (
@@ -2501,16 +2653,16 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
               {correspondencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
             </select>
           </label>
-          {selectedCorrespondence && <p className="correspondence-note">Compare frame validity with the selected relational property. Finite examples provide evidence; they do not replace the general correspondence proof.</p>}
+          {selectedCorrespondence && <p className="correspondence-note">Compare frame validity with the selected relational property. Finite examples provide evidence. They do not replace the general correspondence proof.</p>}
           <p className="notation">Precedence: ¬ □ ◇ &gt; ∧ &gt; ∨ &gt; →. Alternatives: !, &amp;, |, -&gt;, box, diamond.</p>
         </div>}
 
         <div className="panel graph-panel">
           <div className="panel-heading">
-            <div><h2>Visual model</h2><p>Drag from the world where an arrow begins and release on its destination; handle position does not set direction</p></div>
+            <div><h2>Visual model</h2><p>Drag from the world where an arrow begins and release on its destination. Handle position does not set direction.</p></div>
             <div className="model-view-switch" role="group" aria-label="Model view"><button type="button" className={modelView === 'graph' ? 'active' : ''} aria-pressed={modelView === 'graph'} onClick={() => setModelView('graph')}>Graph</button><button type="button" className={modelView === 'table' ? 'active' : ''} aria-pressed={modelView === 'table'} onClick={() => setModelView('table')}>Table</button></div>
           </div>
-          <div className="graph-canvas" ref={graphCanvasRef}>
+          <div className="graph-canvas" ref={graphCanvasRef} data-tour-target="model-map">
             {modelView === 'graph' ? <ReactFlow
               nodes={flowNodes}
               edges={flowEdges}
@@ -2573,7 +2725,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
                 <WorkspaceToolbar sandbox={gameMode === 'sandbox'} editorMode={editorMode} rightPanelOpen={rightPanelOpen} showWorldPanel={showWorldPanel} showEdgePanel={showEdgePanel} leftPanelOpen={leftPanelOpen} canAddWorld={(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds')} canEditWorlds={canEditWorlds} canEditRelations={canEditEdges} canUseHistory={canUseHistory} canRepositionWorlds={canRepositionWorlds} selectedRelation={selectedEdgeKey !== null} undoAvailable={historyPast.current.length > 0} redoAvailable={historyFuture.current.length > 0} worldCount={worlds.length} focusedIntro={focusedIntroWorkspace} showDerivedRelations={showDerivedEdges} derivedRelationCount={derivedPairKeys.size} frameRuleCount={frameRuleResults.length} flowInstance={flowInstance} onApplyPreset={applySandboxPreset} onAddWorld={() => addWorld()} onDeleteRelation={() => selectedEdgeKey !== null && deleteEdge(selectedEdgeKey)} onToggleEvaluationPanel={() => setLeftPanelOpen((open) => !open)} onToggleModelPanel={() => setRightPanelOpen((open) => !open)} onUndo={undo} onRedo={redo} onTidy={tidyModel} onToggleDerived={() => setShowDerivedEdges((show) => !show)} onOpenFrameRules={() => setShowFrameRules(true)} onVerify={verify} />
               </Panel>
               <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><details><summary>Legend</summary><div><span><i className="selected" />SELECTED</span><span><i className="current" />EVALUATION WORLD</span>{traceWitnessWorld && <span><i className="witness" />WITNESS</span>}{traceCounterexampleWorld && <span><i className="counterexample" />COUNTEREXAMPLE</span>}<span><i className="explicit-edge" />EXPLICIT RELATION</span>{derivedPairKeys.size > 0 && <span><i className="derived" />DERIVED RELATION</span>}{relationPresentations.some(({ kind }) => kind === 'bidirectional') && <span><i className="two-way" />TWO-WAY</span>}<span><i className="reflexive" />EXPLICIT ↻</span>{[...reflexiveRelations.values()].some(({ derived }) => derived) && <span><i className="reflexive derived-reflexive" />DERIVED ↻</span>}{activeTrace && <><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></>}</div></details></Panel>
-              {!showDerivedEdges && derivedPairKeys.size > 0 && <Panel position="bottom-right" className="derived-hidden-note">{derivedPairKeys.size} derived relation{derivedPairKeys.size === 1 ? '' : 's'} hidden. <span>Display only — verification still uses enforced relations.</span></Panel>}
+              {!showDerivedEdges && derivedPairKeys.size > 0 && <Panel position="bottom-right" className="derived-hidden-note">{derivedPairKeys.size} derived relation{derivedPairKeys.size === 1 ? '' : 's'} hidden. <span>Display only. Verification still uses enforced relations.</span></Panel>}
               {traceForcedDerivedPairKeys.size > 0 && <Panel position="top-center" className="trace-derived-note">A hidden derived relation is temporarily shown because the current trace uses it.</Panel>}
               {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
               {worlds.length === 0 && (
@@ -2608,7 +2760,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           </div>
         </div>
 
-        {showWorldPanel && <div className="panel model-panel">
+        {showWorldPanel && <div className="panel model-panel" data-tour-target="editing-controls">
           <div className="panel-heading">
             <div><h2>Worlds and valuations</h2><p>Separate atoms with spaces or commas</p></div>
           </div>
@@ -2657,12 +2809,12 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
             </div>}
           </div>
           {derivedPairKeys.size > 0 && (
-            <p className="derived-summary">+ {derivedPairKeys.size} relation{derivedPairKeys.size === 1 ? '' : 's'} derived from frame properties. {showDerivedEdges ? 'Shown' : 'Hidden'} for display only — verification always uses enforced relations.</p>
+          <p className="derived-summary">+ {derivedPairKeys.size} relation{derivedPairKeys.size === 1 ? '' : 's'} derived from frame properties. {showDerivedEdges ? 'Shown' : 'Hidden'} for display only. Verification always uses enforced relations.</p>
           )}
           <button type="button" className="secondary-button" onClick={addEdge} disabled={worlds.length === 0 || !canEditEdges || edgeDraft !== null}>+ Add relation</button>
         </div>}
 
-        <div className="panel verify-panel">
+        <div className="panel verify-panel" data-tour-target="formula-controls">
           <div className="panel-heading">
             <div><h2>Verification</h2></div>
           </div>
@@ -2730,17 +2882,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         </div>
       )}
 
-      {appView === 'workspace' && showWorkspaceTour && (
-        <div className="dialog-backdrop workspace-tour-backdrop" role="presentation">
-          <section className="help-dialog workspace-tour" role="dialog" aria-modal="true" aria-labelledby="workspace-tour-title">
-            <div className="dialog-heading"><div><p className="eyebrow">Workspace tour · {workspaceTourStep + 1} of {workspaceTourSteps.length}</p><h2 id="workspace-tour-title">{workspaceTourSteps[workspaceTourStep].title}</h2></div><button type="button" className="dialog-close" onClick={dismissWorkspaceTour} aria-label="Skip workspace tour">×</button></div>
-            <div className={`workspace-tour-illustration step-${workspaceTourStep + 1}`} aria-hidden="true"><span>Model</span><span>Task</span><span>Result</span></div>
-            <p className="workspace-tour-desktop-copy">{workspaceTourSteps[workspaceTourStep].body}</p>
-            <p className="workspace-tour-mobile-copy">{'mobileBody' in workspaceTourSteps[workspaceTourStep] ? workspaceTourSteps[workspaceTourStep].mobileBody : workspaceTourSteps[workspaceTourStep].body}</p>
-            <div className="workspace-tour-actions"><button type="button" className="text-button" onClick={dismissWorkspaceTour}>Skip</button><button type="button" disabled={workspaceTourStep === 0} onClick={() => setWorkspaceTourStep((step) => Math.max(0, step - 1))}>Back</button><button type="button" className="primary-action" autoFocus onClick={() => workspaceTourStep === workspaceTourSteps.length - 1 ? dismissWorkspaceTour() : setWorkspaceTourStep((step) => step + 1)}>{workspaceTourStep === workspaceTourSteps.length - 1 ? 'Done' : 'Next'}</button></div>
-          </section>
-        </div>
-      )}
+      {appView === 'workspace' && showWorkspaceTour && <WorkspaceTour sandbox={gameMode === 'sandbox'} initialStep={workspaceTourStep} onStepChange={setWorkspaceTourStep} onClose={dismissWorkspaceTour} onDone={dismissWorkspaceTour} />}
 
       {showFrameRules && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowFrameRules(false)}>
@@ -2788,57 +2930,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         </div>
       )}
 
-      {showDataManager && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowDataManager(false)}>
-          <section className="help-dialog data-dialog" role="dialog" aria-modal="true" aria-labelledby="data-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="dialog-heading"><div><p className="eyebrow">Local data</p><h2 id="data-title">Data management</h2></div><button type="button" className="dialog-close" onClick={() => setShowDataManager(false)} aria-label="Close data manager">×</button></div>
-            <div className="data-actions">
-              <article><h3>JSON import and backup</h3><p>Paste a model, guest-profile backup, or custom mission. Imported missions open immediately in a locked objective workspace.</p><textarea aria-label="Model JSON" value={importSource} onChange={(event) => { setImportSource(event.target.value); setDataMessage('') }} spellCheck={false} /><div><button type="button" className="primary-action" onClick={importModel}>Import JSON</button><button type="button" className="secondary-button" onClick={downloadModel}>Download model</button></div></article>
-              <article className="level-author">
-                <h3>Custom mission</h3><p>Create a mission from two separate workspace snapshots. Capture the player&rsquo;s starting state, build a valid solution in the workspace, then capture and verify that solution.</p>
-                <MissionAuthorStepper currentStep={authorStep} visitedSteps={visitedAuthorSteps} errors={authorStepErrors} onSelectStep={goToAuthorStep} onBack={() => { setAuthorStep((step) => Math.max(1, step - 1)); setAuthorStepErrors([]) }} onNext={advanceAuthorStep}>
-                {authorStep === 1 && <div className="author-step-fields">
-                  <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
-                  <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
-                  <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
-                  <label><span>Concept tags</span><input aria-label="Custom mission concept tags" value={levelConcept} onChange={(event) => setLevelConcept(event.target.value)} placeholder="necessity, countermodel" /></label>
-                  <div className="author-pairs"><label><span>Prerequisites</span><input aria-label="Custom mission prerequisites" value={levelPrerequisites} onChange={(event) => setLevelPrerequisites(event.target.value)} placeholder="possibility, propositional connectives" /></label><label><span>Estimated difficulty</span><select aria-label="Custom mission difficulty" value={levelDifficulty} onChange={(event) => setLevelDifficulty(event.target.value as typeof levelDifficulty)}><option value="introductory">Introductory</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label></div>
-                </div>}
-                {authorStep === 2 && <div className="author-snapshots"><p>Arrange the player&rsquo;s starting model in the workspace, then capture it here.</p><button type="button" className="primary-action" onClick={captureMissionStart}>Capture mission start</button><span className={levelStartSnapshot ? 'pass' : ''}>{levelStartSnapshot ? `Start captured: ${levelStartSnapshot.worlds.length} world(s), ${levelStartSnapshot.edges.length} edge(s)` : 'No captured start'}</span></div>}
-                {authorStep === 3 && <div className="author-step-fields">
-                  <label><span>Formula</span><input aria-label="Authored mission formula" value={formulaSource} onChange={(event) => { const value = event.target.value; setFormulaSource(value); setLevelStartSnapshot((start) => start ? { ...start, formulaSource: value } : start) }} /></label>
-                  <label><span>Comparison formula (optional)</span><input aria-label="Authored comparison formula" value={comparisonFormulaSource} onChange={(event) => { const value = event.target.value; setComparisonFormulaSource(value); setLevelStartSnapshot((start) => start ? { ...start, comparisonFormulaSource: value } : start) }} /></label>
-                  <div className="author-pairs"><label><span>Scope</span><select aria-label="Authored mission scope" value={evaluationScope} onChange={(event) => { const value = event.target.value as EvaluationScope; setEvaluationScope(value); setLevelStartSnapshot((start) => start ? { ...start, evaluationScope: value } : start) }}><option value="pointed">At one world</option><option value="model">Throughout this model</option><option value="frame">On this finite frame</option></select></label><label><span>Target</span><select aria-label="Authored mission target truth" value={targetTruth ? 'true' : 'false'} onChange={(event) => { const value = event.target.value === 'true'; setTargetTruth(value); setLevelStartSnapshot((start) => start ? { ...start, targetTruth: value } : start) }}><option value="true">True</option><option value="false">False</option></select></label></div>
-                  <label><span>Evaluation world</span><select aria-label="Authored mission evaluation world" value={evaluationWorld} onChange={(event) => { const value = event.target.value; setEvaluationWorld(value); setLevelStartSnapshot((start) => start ? { ...start, evaluationWorld: value } : start) }}>{(levelStartSnapshot?.worlds ?? worlds).map((world) => <option key={world.id} value={world.id}>{world.id}</option>)}</select></label>
-                </div>}
-                {authorStep === 4 && <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>}
-                {authorStep === 5 && <div className="author-step-fields">
-                  <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
-                  <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms</span><input aria-label="Required custom mission atoms" placeholder="w0: p q; w1: r" value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms</span><input aria-label="Forbidden custom mission atoms" placeholder="w0: r; w1: p" value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
-                  <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
-                  <fieldset><legend>Forbidden frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelForbiddenProperties.has(property)} onChange={() => setLevelForbiddenProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else next.add(property); return next })} /> {property}</label>)}</fieldset>
-                  <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
-                </div>}
-                {authorStep === 6 && <div className="author-step-fields"><label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}<option value="frame-property">Identify relational property</option></select></label>{levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}<p>Predictions are optional and do not penalize the learner.</p></div>}
-                {authorStep === 7 && <div className="author-snapshots"><p>Build a passing state in the workspace, then capture it as the verified reference.</p><button type="button" className="primary-action" onClick={captureReferenceSolution} disabled={!levelStartSnapshot}>Capture valid solution</button><span className={levelReferenceSolution ? 'pass' : ''}>{levelReferenceSolution ? 'Solution verified' : 'No reference solution'}</span><button type="button" className="secondary-button" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button></div>}
-                {authorStep === 8 && <section className="mission-audit" aria-label="Mission audit"><div><button type="button" className="primary-action" onClick={runMissionAudit}>Run mission audit</button></div><div className="settings-choice" aria-label="Preview viewport"><button type="button" className={authorPreview === 'desktop' ? 'active' : ''} aria-pressed={authorPreview === 'desktop'} onClick={() => setAuthorPreview('desktop')}>Desktop preview</button><button type="button" className={authorPreview === 'mobile' ? 'active' : ''} aria-pressed={authorPreview === 'mobile'} onClick={() => setAuthorPreview('mobile')}>Mobile preview</button></div><AuthorValidationSummary findings={missionAuditFindings} onGoToStep={(step) => { setVisitedAuthorSteps((current) => new Set([...current, step])); setAuthorStep(step); setAuthorStepErrors([]) }} /></section>}
-                {authorStep === 9 && <div className="author-export-step"><p className={authorCanExport ? 'pass' : 'fail'}>{authorCanExport ? 'Audit passed: this draft can be exported or shared.' : 'Run validation and resolve every blocking error before export/share.'}</p><div className="author-final-actions"><button type="button" className="secondary-button" onClick={downloadCustomLevel} disabled={!authorCanExport}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink} disabled={!authorCanExport}>Generate mission link</button></div>
-                <div className="campaign-packager">
-                  <h4>Campaign package</h4>
-                  <label><span>Campaign title</span><input aria-label="Custom campaign title" value={customCampaignTitle} onChange={(event) => setCustomCampaignTitle(event.target.value)} /></label>
-                  <label><span>Description</span><input aria-label="Custom campaign description" value={customCampaignDescription} onChange={(event) => setCustomCampaignDescription(event.target.value)} /></label>
-                  <button type="button" className="secondary-button" onClick={addMissionToCustomCampaign} disabled={!authorCanExport}>Add current mission to package</button>
-                  {authoredCampaignMissions.length > 0 && <ol>{authoredCampaignMissions.map(({ level }, index) => <li key={level.id}><span>{index + 1}. {level.title}</span><button type="button" aria-label={`Remove ${level.title} from package`} onClick={() => setAuthoredCampaignMissions((current) => current.filter(({ level: candidate }) => candidate.id !== level.id))}>Remove</button></li>)}</ol>}
-                  <div><button type="button" className="primary-action" disabled={authoredCampaignMissions.length === 0} onClick={downloadCustomCampaign}>Download campaign package</button><button type="button" className="secondary-button" disabled={authoredCampaignMissions.length === 0} onClick={generateCampaignShareLink}>Generate campaign link</button></div>
-                </div>{shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}</div>}
-                </MissionAuthorStepper>
-              </article>
-              <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser. Models, formulas, settings, and history are not automatically transmitted; this build has no analytics SDK or tracking cookies.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved Model Sandbox</button></article>
-            </div>
-            {dataMessage && <p className="data-message" role="status">{dataMessage}</p>}
-          </section>
-        </div>
-      )}
+      {showDataManager && <DataManagerDialog backupSource={backupImportSource} modelSource={importSource} message={dataMessage} onBackupSourceChange={(value) => { setBackupImportSource(value); setDataMessage('') }} onModelSourceChange={(value) => { setImportSource(value); setDataMessage('') }} onDownloadBackup={() => downloadJson(serializedProgressBackup(), 'logic-model-builder-progress-backup.json')} onImportBackup={importProgress} onDownloadModel={downloadModel} onImportModel={importModel} onResetProgress={resetSavedProgress} onResetSandbox={resetSavedSandbox} onClose={() => setShowDataManager(false)} />}
 
       {showHelp && <WorkspaceQuickHelp onClose={() => setShowHelp(false)} onOpenHelp={() => { setShowHelp(false); setAppView('help') }} onReplayTour={() => { setShowHelp(false); openWorkspaceTour() }} />}
       </main>

@@ -10,9 +10,9 @@ afterEach(cleanup)
 describe('ModalLogicWelcome', () => {
   it('introduces both modal operators in a concise introduction', () => {
     const { container } = render(<ModalLogicWelcome onBegin={vi.fn()} onSkip={vi.fn()} onBack={vi.fn()} />)
-    expect(screen.getByRole('heading', { name: 'Necessity — □φ' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Necessity: □φ' })).toBeVisible()
     expect(screen.getByText(/every world accessible from it/)).toBeVisible()
-    expect(screen.getByRole('heading', { name: 'Possibility — ◇φ' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Possibility: ◇φ' })).toBeVisible()
     expect(screen.getByText(/at least one world accessible from it/)).toBeVisible()
     expect(screen.getByText('Learn Modal Logic · Introduction')).toBeVisible()
     expect(screen.getByText(/useful foundation for reasoning about systems, information, and time/)).toBeVisible()

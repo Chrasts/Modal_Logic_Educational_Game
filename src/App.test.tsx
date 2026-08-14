@@ -18,10 +18,11 @@ describe('sandbox user interface', () => {
     expect(learnButton).toHaveTextContent(/^LEARN$/)
     expect((learnButton.textContent ?? '').trim().split(/\s+/u)).toHaveLength(1)
     expect(learnButton).not.toContainElement(screen.getByText(/0\/\d+ complete/))
-    expect(screen.getByRole('button', { name: /Campaigns: longer challenges/ })).toHaveTextContent(/^CAMPAIGNS$/)
-    expect(screen.getByRole('button', { name: /Lab: experiment with models and formulas/ })).toHaveTextContent(/^LAB$/)
+    expect(screen.getByRole('button', { name: /Campaigns: longer challenges/ })).toHaveTextContent(/^Open Campaigns$/)
+    expect(screen.getByRole('button', { name: /Lab: experiment with models and formulas/ })).toHaveTextContent(/^Open Lab$/)
     expect(screen.queryByLabelText('Kripke model editor')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Open settings from home' }))
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Settings' }))
     expect(screen.getByRole('checkbox', { name: 'Sound effects' })).not.toBeChecked()
     await user.click(screen.getByRole('checkbox', { name: 'Sound effects' }))
     await user.click(screen.getByRole('checkbox', { name: 'Show minimap' }))
@@ -344,17 +345,18 @@ describe('sandbox user interface', () => {
     expect(screen.getByLabelText('Kripke model editor')).toHaveClass('mobile-tab-model')
   })
 
-  it('runs the four-step workspace tour once, supports keyboard skip, and can reopen it', async () => {
+  it('runs the live workspace tour once, supports keyboard skip, and can reopen it', async () => {
     localStorage.removeItem('logic-game:workspace-tour:v1')
     const user = userEvent.setup()
     const first = render(<App initialView="workspace" />)
     expect(screen.getByRole('dialog', { name: 'Model map' })).toBeVisible()
+    expect(screen.getByTestId('workspace-tour-highlight')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getByRole('dialog', { name: 'Task and editing panel' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Edit model' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getByRole('dialog', { name: 'Evaluation and results' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Formula and evaluation' })).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getByRole('dialog', { name: 'Navigating the map' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Map tools' })).toBeVisible()
     await user.keyboard('{Escape}')
     expect(localStorage.getItem('logic-game:workspace-tour:v1')).toBe('seen')
     first.unmount()
@@ -363,11 +365,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Workspace tour' }))
     expect(screen.getByRole('dialog', { name: 'Model map' })).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(document.querySelector('.workspace-tour-mobile-copy')).toHaveTextContent(/Model, Formula, and Result tabs/)
-    expect(document.querySelector('.workspace-tour-mobile-copy')).not.toHaveTextContent(/side panels/i)
+    expect(document.querySelector('.workspace-tour-illustration')).not.toBeInTheDocument()
   })
 
   it('provides a synchronized keyboard-accessible model table', async () => {
@@ -939,11 +937,35 @@ describe('sandbox user interface', () => {
     exported.edges = [{ from: 'root', to: 'root' }]
     exported.evaluationWorld = 'root'
     fireEvent.change(editor, { target: { value: JSON.stringify(exported) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    await user.click(screen.getByRole('button', { name: 'Import model JSON' }))
 
     expect(screen.getByLabelText('Modal formula')).toHaveValue('box q')
     expect(screen.getByLabelText('World')).toHaveValue('root')
     expect(screen.getByLabelText('Evaluation world')).toHaveValue('root')
+  })
+
+  it('keeps Data focused on local persistence and reset actions', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    expect(screen.getByRole('dialog', { name: 'Data management' })).toBeVisible()
+    expect(screen.queryByRole('navigation', { name: 'Mission authoring steps' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Custom mission title')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reset learning progress' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Reset saved Model Sandbox' })).toBeVisible()
+  })
+
+  it('rejects a failed progress import before mutating local data', async () => {
+    localStorage.setItem('logic-game:guest-profile:v1', JSON.stringify({ id: 'preserved', createdAt: '2026-01-01', history: [] }))
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    fireEvent.change(screen.getByLabelText('Progress backup JSON'), { target: { value: '{ invalid' } })
+    await user.click(screen.getByRole('button', { name: 'Import progress backup' }))
+    expect(screen.getByRole('status')).toHaveTextContent(/JSON|position|property name/i)
+    expect(JSON.parse(localStorage.getItem('logic-game:guest-profile:v1') ?? '{}')).toMatchObject({ id: 'preserved' })
   })
 
   it('resets learning progress independently of the sandbox', async () => {
@@ -1031,8 +1053,8 @@ describe('sandbox user interface', () => {
       }] },
       completedLevelIds: ['local-necessary-not-actual'],
     }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(backup) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    fireEvent.change(screen.getByLabelText('Progress backup JSON'), { target: { value: JSON.stringify(backup) } })
+    await user.click(screen.getByRole('button', { name: 'Import progress backup' }))
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Profile' }))
     expect(screen.getByText('Necessary, not actual')).toBeVisible()
@@ -1043,7 +1065,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
     const customMission = {
       format: 'logic-model-builder-level', version: 1,
       level: {
@@ -1053,8 +1075,9 @@ describe('sandbox user interface', () => {
         edges: [], constraints: { requiredEdges: [{ from: 'w0', to: 'w1' }], forbiddenAtoms: { w0: ['p'] } }, editable: ['edges'],
       },
     }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(customMission) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    fireEvent.change(screen.getByLabelText('Custom content JSON'), { target: { value: JSON.stringify(customMission) } })
+    await user.click(screen.getByRole('button', { name: 'Import into Create' }))
+    await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
 
     expect(screen.getByText('Shared possibility')).toBeVisible()
     expect(screen.getByText('Make ◇p true at w0.')).toBeVisible()
@@ -1069,7 +1092,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Add relation' }))
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByRole('region', { name: 'Current mission' })).toHaveTextContent('Task complete')
-    expect(screen.getByText(/Distinct solutions recorded for this mission:/)).toHaveTextContent('1')
+    expect(screen.getByText(/Distinct solutions recorded for this mission:/)).toHaveTextContent('0')
     const metrics = screen.getByLabelText('Construction metrics')
     expect(metrics).toHaveTextContent('2 worlds')
     expect(metrics).toHaveTextContent('1 explicit relations')
@@ -1081,7 +1104,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
     const mission = {
       format: 'logic-model-builder-level', version: 1,
       level: {
@@ -1092,8 +1115,9 @@ describe('sandbox user interface', () => {
         prediction: { kind: 'frame-property', prompt: 'Which property fails?', expectedProperty: 'symmetric', propertyChoices: ['symmetric', 'transitive', 'serial'], mustBeCorrect: true },
       },
     }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    fireEvent.change(screen.getByLabelText('Custom content JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import into Create' }))
+    await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
     await user.selectOptions(screen.getByLabelText('Relational property answer'), 'transitive')
     await user.click(screen.getByRole('button', { name: 'Check task' }))
     expect(screen.getByText(/transitive is not the required relational property/)).toBeInTheDocument()
@@ -1106,7 +1130,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
     const mission = {
       format: 'logic-model-builder-level', version: 1,
       level: {
@@ -1116,8 +1140,9 @@ describe('sandbox user interface', () => {
         prediction: { kind: 'countervaluation', prompt: 'Which valuation refutes T?', expectedChoice: 'A', mustBeCorrect: true, countervaluationChoices: [{ id: 'A', valuation: { w0: [] } }, { id: 'B', valuation: { w0: ['p'] } }] },
       },
     }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    fireEvent.change(screen.getByLabelText('Custom content JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import into Create' }))
+    await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
     const answers = screen.getByRole('radiogroup', { name: 'Countervaluation answer' })
     expect(answers).toHaveTextContent('w0: ∅')
     await user.click(within(answers).getByRole('radio', { name: /B/ }))
@@ -1132,7 +1157,7 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
     const mission = {
       format: 'logic-model-builder-level', version: 1,
       level: {
@@ -1145,8 +1170,9 @@ describe('sandbox user interface', () => {
         ] },
       },
     }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    fireEvent.change(screen.getByLabelText('Custom content JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import into Create' }))
+    await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
     const answers = screen.getByRole('radiogroup', { name: 'Candidate model answer' })
     expect(answers).toHaveTextContent('R = w0 to w1')
     await user.click(within(answers).getByRole('radio', { name: /Model B/ }))
@@ -1161,13 +1187,16 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'New custom mission' }))
 
     expect(screen.getByRole('navigation', { name: 'Mission authoring steps' })).toBeVisible()
     expect(screen.getAllByRole('listitem', { hidden: true }).filter((item) => item.closest('.author-step-navigation'))).toHaveLength(9)
     expect(screen.queryByLabelText('Min worlds')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Edit starting model' }))
+    expect(screen.getByText('Editing custom mission starting model')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Save starting model and return' }))
     for (let step = 2; step < 5; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(screen.getByRole('heading', { name: 'Constraints' })).toBeVisible()
     expect(screen.getByLabelText('Min worlds')).toBeVisible()
@@ -1182,6 +1211,21 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('button', { name: /9Export\/share/ })).toBeDisabled()
   })
 
+  it('duplicates a built-in mission into the studio without replacing the sandbox', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.clear(screen.getByLabelText('Modal formula'))
+    await user.type(screen.getByLabelText('Modal formula'), 'box q')
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'Duplicate into studio' }))
+    expect(screen.getByRole('navigation', { name: 'Mission authoring steps' })).toBeVisible()
+    expect((screen.getByLabelText('Custom mission title') as HTMLInputElement).value).toMatch(/copy$/)
+    await user.click(screen.getByRole('button', { name: 'Lab' }))
+    await user.click(screen.getByRole('button', { name: 'Open Model Sandbox' }))
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('box q')
+  })
+
   it('opens a shared mission directly from the URL fragment', () => {
     const mission = {
       format: 'logic-model-builder-level', version: 1,
@@ -1194,77 +1238,91 @@ describe('sandbox user interface', () => {
     expect(screen.queryByLabelText('Modal formula')).not.toBeInTheDocument()
   })
 
-  it('imports and progresses through a custom campaign package', async () => {
+  it('imports a custom campaign package into Create', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
     const level = (id: string, title: string) => ({
       format: 'logic-model-builder-level', version: 1,
       level: { id, chapter: 'Course', title, concept: 'Package test', instruction: 'Verify p.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: 'p', position: { x: 90, y: 130 } }], edges: [], editable: [] },
     })
     const campaign = { format: 'logic-model-builder-campaign', version: 1, title: 'Imported course', description: 'Two steps', missions: [level('package-one', 'First packaged mission'), level('package-two', 'Second packaged mission')] }
-    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(campaign) } })
-    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
-    expect(screen.getByText('First packaged mission')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'Check task' }))
-    const completedHeader = screen.getByRole('region', { name: 'Current mission' })
-    expect(completedHeader).toHaveTextContent('Task complete')
-    await user.click(within(completedHeader).getByRole('button', { name: 'Next mission' }))
-    expect(screen.getByText('Second packaged mission')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('Custom content JSON'), { target: { value: JSON.stringify(campaign) } })
+    await user.click(screen.getByRole('button', { name: 'Import into Create' }))
+    expect(screen.getByRole('heading', { name: 'Campaign package' })).toBeVisible()
+    expect(screen.getByText('1. First packaged mission')).toBeVisible()
+    expect(screen.getByText('2. Second packaged mission')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Download campaign package' })).toBeEnabled()
   })
-
-  it('captures and verifies separate custom-mission start and solution snapshots', async () => {
+  it('captures a start and verifies a reference through the actual workspace', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'New custom mission' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
-    expect(screen.getByText(/Start captured/)).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Edit starting model' }))
+    await user.click(screen.getByRole('button', { name: 'Save starting model and return' }))
+    expect(screen.getByText(/Start saved/)).toBeVisible()
     for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Capture valid solution' }))
+    await user.click(screen.getByRole('button', { name: 'Build reference solution' }))
+    expect(screen.getByText('Building reference solution')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Verify solution and return' }))
     expect(screen.getByText('Solution verified')).toBeVisible()
-    expect(screen.getByText(/Valid reference solution captured/)).toBeVisible()
+    expect(screen.getByText(/Reference solution verified/)).toBeVisible()
   })
-
-  it('playtests the captured custom-mission start and returns to the author workspace', async () => {
+  it('keeps an invalid reference solution in the workspace until it is fixed or cancelled', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'New custom mission' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Edit starting model' }))
+    await user.click(screen.getByRole('button', { name: 'Save starting model and return' }))
+    for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Build reference solution' }))
+    await user.click(screen.getAllByRole('button', { name: 'Delete relation' })[0])
+    await user.click(screen.getByRole('button', { name: 'Verify solution and return' }))
+    expect(screen.getByText('Building reference solution')).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent(/reference|objective|satisf/i)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByText('No verified reference solution')).toBeVisible()
+  })
+  it('playtests without polluting history and returns to authoring', async () => {
+    const user = userEvent.setup()
+    render(<App initialView="workspace" />)
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'New custom mission' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Edit starting model' }))
+    await user.click(screen.getByRole('button', { name: 'Save starting model and return' }))
     for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
-
     expect(screen.getByText('My custom mission')).toBeVisible()
-    expect(screen.queryByLabelText('Modal formula')).not.toBeInTheDocument()
-    expect(screen.getByText('Satisfy the configured objective.')).toBeVisible()
-
-    await user.click(screen.getByRole('button', { name: 'Home' }))
-    await user.click(screen.getByRole('button', { name: 'Lab' }))
-    await user.click(screen.getByRole('button', { name: 'Open Model Sandbox' }))
-    expect(screen.getByLabelText('Modal formula')).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Check task' }))
+    await user.click(screen.getByRole('button', { name: 'Return to authoring' }))
+    expect(screen.getByRole('navigation', { name: 'Mission authoring steps' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'More' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Profile' }))
+    expect(screen.getByText('No attempts recorded yet')).toBeVisible()
   })
-
-  it('restores a captured mission start after the workspace changes', async () => {
+  it('cancels author workspace edits and returns to the same draft step', async () => {
     const user = userEvent.setup()
     render(<App initialView="workspace" />)
     await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Create' }))
+    await user.click(screen.getByRole('button', { name: 'New custom mission' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Capture mission start' }))
-    for (let step = 2; step < 7; step += 1) await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Close data manager' }))
+    await user.click(screen.getByRole('button', { name: 'Edit starting model' }))
     await user.clear(screen.getByLabelText('Modal formula'))
     await user.type(screen.getByLabelText('Modal formula'), 'p')
-    await user.click(screen.getByRole('button', { name: 'More' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Data' }))
-    await user.click(screen.getByRole('button', { name: 'Restore captured start' }))
-    expect(screen.getByLabelText('Modal formula')).toHaveValue('\u25c7p')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByRole('heading', { name: 'Initial model' })).toBeVisible()
+    expect(screen.getByText('No saved starting model')).toBeVisible()
   })
-
   it('keeps How to Play separate from semantic campaign content', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -1318,7 +1376,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'More' }))
     await user.click(screen.getByRole('menuitem', { name: 'Help & Controls' }))
     await user.click(screen.getByRole('button', { name: 'Replay workspace tour' }))
-    expect(screen.getByText('Workspace tour · 1 of 4')).toBeVisible()
+    expect(await screen.findByText(/Workspace tour/)).toHaveTextContent(/1 of [1-6]/)
     expect(screen.getByText('Choose the evaluation world')).toBeVisible()
   })
 

@@ -178,7 +178,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   {
     id: 'tutorial-v2-draw-edge', chapter: 'How to Play', title: 'Draw an accessibility relation', concept: 'Directed arrows',
     learningObjective: 'Create a directed accessibility relation.',
-    briefing: 'Start dragging a relation from the world where the arrow should begin and release it on the destination world. The connection point around a world is only a convenient handle; it does not determine direction.',
+    briefing: 'Start dragging a relation from the world where the arrow should begin and release it on the destination world. The connection point around a world is only a convenient handle. it does not determine direction.',
     successDebrief: 'Accessibility is directional: w0 → w1 is different from w1 → w0.',
     instruction: 'Draw an arrow from w0 to w1.', objectiveKind: 'construction', evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
