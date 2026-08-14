@@ -12,7 +12,7 @@ const lessons = [
     hints('Make ◇p true without making □p true.', 'Only one successor should receive p.', 'Add p to exactly one of w1 or w2.'), 'One p-successor makes ◇p true, while the other successor without p makes □p false.'),
 
   lesson('models-countermodels', 'countermodels-relation', 'Complete the relation', 'Create a countermodel through one accessibility edge.',
-    { heading: 'Add a counterexample branch', intuitive: 'The existing p-successor witnesses ◇p; add a non-p successor to defeat □p.', formula: '◇p → □p', keyPoints: ['Keep w0 → w1.', 'Make w2 accessible too.'] },
+    { heading: 'Add a counterexample branch', intuitive: 'The existing p-successor witnesses ◇p. add a non-p successor to defeat □p.', formula: '◇p → □p', keyPoints: ['Keep w0 → w1.', 'Make w2 accessible too.'] },
     { instruction: 'Make ◇p → □p false at w0 by adding one edge.', formula: '◇p → □p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 60), w('w1', 'p', 360, 60), w('w2', '', 360, 210)], edges: [edge('w0', 'w1')], constraints: { minimumEdges: 2, maximumEdges: 2, requiredEdges: [edge('w0', 'w1'), edge('w0', 'w2')] }, editable: ['edges'] },
     hints('◇p already has its witness.', '□p needs a reachable counterexample.', 'Add w0 → w2.'), 'w1 keeps ◇p true while the newly accessible w2 makes □p false.'),
 
@@ -38,7 +38,7 @@ const lessons = [
   lesson('models-countermodels', 'countermodels-smaller', 'Remove irrelevant structure', 'Simplify a countermodel without claiming absolute minimality.',
     { heading: 'Disconnected structure can be irrelevant', intuitive: 'Remove a component that contributes nothing to the failure at w0.', formula: '◇p → □p', keyPoints: ['The failure uses w0, w1, and w2.', 'w3 is disconnected from them.'], warning: 'A smaller finite example is not automatically a proof of absolute minimality.' },
     { instruction: 'Remove irrelevant structure while keeping the formula false at w0.', formula: '◇p → □p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 40), w('w1', 'p', 270, 60), w('w2', '', 270, 210), w('w3', 'q', 500)], edges: [edge('w0', 'w1'), edge('w0', 'w2'), edge('w3', 'w3')], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['worlds'] },
-    hints('The failure at w0 uses its two successors.', 'Find the disconnected q-world.', 'Delete w3; its self-loop disappears too.'), 'The disconnected q-world was irrelevant to the failure at w0. The smaller remaining model is still a countermodel.'),
+    hints('The failure at w0 uses its two successors.', 'Find the disconnected q-world.', 'Delete w3. its self-loop disappears too.'), 'The disconnected q-world was irrelevant to the failure at w0. The smaller remaining model is still a countermodel.'),
 ]
 
 export const countermodelsChapter = chapter('models-countermodels', 'Models and Countermodels', 'Locate, complete, construct, and simplify countermodels.', ['semantic-scopes'], lessons, ['A countermodel refutes a claim at a specified semantic scope.', 'Failure can come from the evaluation world, a valuation, an accessibility edge, or the selected scope.', 'A smaller countermodel is useful, but a finite search does not by itself prove absolute minimality.'], 'Continue to Frame Properties to study the relation independently of valuation.')

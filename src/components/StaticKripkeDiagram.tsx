@@ -27,7 +27,7 @@ export function StaticKripkeDiagram({ worlds, edges, evaluationWorld, highlighte
 }) {
   const markerId = useId().replace(/:/gu, '')
   const positions = layoutWorlds(worlds)
-  const summary = `Worlds: ${worlds.map(({ id, atoms }) => `${id} with ${atoms.trim() || 'no atoms'}`).join('; ')}. Relations: ${edges.length ? edges.map(({ from, to }) => `${from} to ${to}`).join('; ') : 'none'}.`
+  const summary = `Worlds: ${worlds.map(({ id, atoms }) => `${id} with ${atoms.trim() || 'no atoms'}`).join('. ')}. Relations: ${edges.length ? edges.map(({ from, to }) => `${from} to ${to}`).join('. ') : 'none'}.`
   return <span className={`static-kripke-diagram${compact ? ' compact' : ''}`}>
     <svg viewBox="0 0 320 180" role="img" aria-label={ariaLabel}>
       <defs><marker id={markerId} markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" /></marker></defs>

@@ -9,7 +9,7 @@ const quickHelpSections = [
   ['Navigate the map', 'Drag empty space to pan. Use the mouse wheel to zoom, a two-finger touchpad gesture to pan, and pinch to zoom. Fit model changes only the viewport.'],
   ['Answer questions', 'For world questions, choose a world directly on the graph or with Choose world in the Table view. Other questions provide one answer control above the model.'],
   ['Verify', 'Select Check task after completing the requested edit or answer. The result explains the relevant semantic scope and any failing condition.'],
-  ['Keyboard', 'Tab reaches every control. Enter or Space chooses a focused world in a question. Delete removes a selected editable item; Ctrl+Z and Ctrl+Y undo and redo.'],
+  ['Keyboard', 'Tab reaches every control. Enter or Space chooses a focused world in a question. Delete removes a selected editable item. Ctrl+Z and Ctrl+Y undo and redo.'],
 ] as const
 
 export function WorkspaceQuickHelp({ onClose, onOpenHelp, onReplayTour }: WorkspaceQuickHelpProps) {

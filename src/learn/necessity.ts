@@ -7,9 +7,9 @@ const lessons = [
     hints('Inspect the only arrow leaving w0.', 'Its target w1 does not yet satisfy p.', 'Add p to w1.'), 'The only accessible successor now satisfies p.'),
 
   lesson('necessity', 'necessity-every-successor', 'Every successor', 'See that every accessible branch must satisfy the boxed formula.',
-    { heading: 'One counterexample defeats a box', intuitive: 'A single accessible successor without p makes □p false.', formal: 'All outgoing targets—not merely one—must satisfy p.', formula: '□p', keyPoints: ['w1 already has p.', 'w2 is also accessible.'] },
+    { heading: 'One counterexample defeats a box', intuitive: 'A single accessible successor without p makes □p false.', formal: 'All outgoing targets, not merely one, must satisfy p.', formula: '□p', keyPoints: ['w1 already has p.', 'w2 is also accessible.'] },
     { instruction: 'Make □p true at w0 without changing the relation.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 60), w('w1', 'p', 360, 60), w('w2', '', 360, 210)], edges: [edge('w0', 'w1'), edge('w0', 'w2')], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2, requiredAtoms: { w1: ['p'] } }, editable: ['valuations'] },
-    hints('Check both successors of w0.', 'w1 passes, but w2 is a counterexample.', 'Add p to w2.'), 'Both accessible successors satisfy p.', { diagnosticFeedback: { 'box-counterexample': 'At least one accessible successor still falsifies p; every successor must pass.' } }),
+    hints('Check both successors of w0.', 'w1 passes, but w2 is a counterexample.', 'Add p to w2.'), 'Both accessible successors satisfy p.', { diagnosticFeedback: { 'box-counterexample': 'At least one accessible successor still falsifies p. every successor must pass.' } }),
 
   lesson('necessity', 'necessity-counterexample', 'Find the counterexample', 'Identify the successor that falsifies a necessity claim.',
     { heading: 'A failing successor is a box counterexample', intuitive: 'To explain why □p is false, point to an accessible world where p fails.', formula: '□p', keyPoints: ['Only successors of w0 matter.', 'Look for the one without p.'] },
@@ -19,7 +19,7 @@ const lessons = [
   lesson('necessity', 'necessity-inaccessible', 'Inaccessible worlds do not matter', 'Separate accessible counterexamples from irrelevant worlds.',
     { heading: 'Box ranges only over accessible worlds', intuitive: 'A world without p is irrelevant if no edge from w0 reaches it.', formula: '□p', keyPoints: ['w1 is accessible.', 'w2 is not accessible.'] },
     { instruction: 'Make □p false at w0 with one valuation change.', formula: '□p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 60), w('w1', 'p', 350, 70), w('w2', '', 350, 210)], edges: [edge('w0', 'w1')], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 1, maximumEdges: 1, maximumChanges: 1 }, editable: ['valuations'] },
-    hints('Changing the inaccessible w2 cannot affect □p at w0.', 'The only checked world is w1.', 'Remove p from w1.'), 'The accessible world w1 now refutes □p; the inaccessible w2 never mattered.', { diagnosticFeedback: { 'formula-false': 'An inaccessible world cannot determine □p at w0; change the valuation of an accessible successor.' } }),
+    hints('Changing the inaccessible w2 cannot affect □p at w0.', 'The only checked world is w1.', 'Remove p from w1.'), 'The accessible world w1 now refutes □p. the inaccessible w2 never mattered.', { diagnosticFeedback: { 'formula-false': 'An inaccessible world cannot determine □p at w0. change the valuation of an accessible successor.' } }),
 
   lesson('necessity', 'necessity-vacuous', 'Vacuous necessity', 'Recognize why necessity is true at a dead end.',
     { heading: 'No successors means no counterexample', intuitive: 'At a world with no outgoing edges, every successor satisfies p because there are none.', formal: 'A universal condition over an empty successor set is true.', formula: '□p', keyPoints: ['w0 has no successors.', 'No p-world is required.'], warning: 'Vacuous truth does not assert p at w0.' },

@@ -35,7 +35,7 @@ export function MissionHeader({
     if (state === 'completed') headerRef.current?.focus()
   }, [state])
   return (
-    <section ref={headerRef} tabIndex={state === 'completed' ? -1 : undefined} className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
+    <section ref={headerRef} data-tour-target="mission-header" tabIndex={state === 'completed' ? -1 : undefined} className={`mission-header mission-header-${mode} ${content ? 'mission-header-rich' : ''} mission-header-${state}`} aria-label={`Current ${unit}`}>
       <div className="mission-header-context">
         <span>{sectionTitle} · {progressLabel}</span>
         <strong>{itemTitle}</strong>
@@ -47,7 +47,7 @@ export function MissionHeader({
         {taskSteps && taskSteps.length > 0 && <ol aria-label="Action checklist">{taskSteps.map((step) => <li key={step}>{step}</li>)}</ol>}
       </div>
       <div className="mission-header-controls">
-        <div className="mission-header-actions">{actions}</div>
+        <div className="mission-header-actions" data-tour-target="check-task">{actions}</div>
         {details && <details className="mission-header-details"><summary>Details &amp; hints</summary><div>{details}</div></details>}
       </div>
     </section>

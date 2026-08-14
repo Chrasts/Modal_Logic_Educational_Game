@@ -2,14 +2,14 @@ import { chapter, edge, hints, lesson, w } from './shared'
 
 const lessons = [
   lesson('box-diamond', 'box-diamond-possible-not-necessary', 'Possible but not necessary', 'Construct a model where ◇p is true and □p is false.',
-    { heading: 'Diamond needs one; box checks all', intuitive: 'Keep one p-successor as a witness and create one successor without p as a counterexample.', formula: '◇p / □p', keyPoints: ['◇ is existential.', '□ is universal.'] },
+    { heading: 'Diamond needs one. box checks all', intuitive: 'Keep one p-successor as a witness and create one successor without p as a counterexample.', formula: '◇p / □p', keyPoints: ['◇ is existential.', '□ is universal.'] },
     { instruction: 'Make ◇p true and □p false at w0.', formula: '◇p', comparisonFormula: '□p', comparisonTarget: { formulaATruth: true, formulaBTruth: false }, scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [w('w0', '', 60), w('w1', 'p', 360, 60), w('w2', 'p', 360, 210)], edges: [edge('w0', 'w1'), edge('w0', 'w2')], constraints: { maximumChanges: 1 }, editable: ['valuations'] },
     hints('◇p needs at least one p-successor.', '□p fails if another successor lacks p.', 'Remove p from exactly one of w1 and w2.'), 'One branch witnesses possibility while the other refutes necessity.'),
 
   lesson('box-diamond', 'box-diamond-neither', 'Neither possible nor necessary', 'Make both ◇p and □p false.',
     { heading: 'No p-successor defeats both claims', intuitive: 'Diamond loses its witness and box still has a counterexample.', formula: '◇p / □p', keyPoints: ['Remove the only p.', 'Keep both successors.'] },
     { instruction: 'Make ◇p false and □p false at w0.', formula: '◇p', comparisonFormula: '□p', comparisonTarget: { formulaATruth: false, formulaBTruth: false }, scope: 'pointed', targetTruth: false, evaluationWorld: 'w0', worlds: [w('w0', '', 60), w('w1', 'p', 360, 60), w('w2', '', 360, 210)], edges: [edge('w0', 'w1'), edge('w0', 'w2')], constraints: { maximumChanges: 1 }, editable: ['valuations'] },
-    hints('◇p currently has one witness.', 'Remove that witness without adding any new one.', 'Remove p from w1.'), 'No successor has p, so possibility fails; the successors also refute necessity.'),
+    hints('◇p currently has one witness.', 'Remove that witness without adding any new one.', 'Remove p from w1.'), 'No successor has p, so possibility fails. the successors also refute necessity.'),
 
   lesson('box-diamond', 'box-diamond-both', 'Possible and necessary', 'Use accessibility to make ◇p and □p true together.',
     { heading: 'All accessible worlds can be witnesses', intuitive: 'Keep only the p-successor accessible.', formula: '◇p / □p', keyPoints: ['A nonempty all-p successor set satisfies both.', 'Remove the bad branch.'] },

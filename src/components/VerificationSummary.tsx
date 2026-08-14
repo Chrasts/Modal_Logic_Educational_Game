@@ -19,6 +19,7 @@ export const VerificationSummary = forwardRef<HTMLDivElement, VerificationSummar
   const active = state !== 'idle'
   return <div
     ref={ref}
+    data-tour-target="result-area"
     tabIndex={-1}
     className={`result ${active ? state : ''}`}
     role={active ? state === 'error' ? 'alert' : 'status' : undefined}

@@ -45,7 +45,7 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps) {
     onOpenFrameRules, onVerify,
   } = props
 
-  return <>
+  return <div className="workspace-toolbar-content" data-tour-target="map-toolbar">
     {sandbox && <div className="workspace-presets" aria-label="Workspace presets"><button type="button" className={editorMode === 'edit' && rightPanelOpen ? 'active' : ''} onClick={() => onApplyPreset('build')}>◇ Model · Build</button><button type="button" className={editorMode === 'evaluate' ? 'active' : ''} onClick={() => onApplyPreset('evaluate')}>φ Formula · Evaluate</button><button type="button" onClick={() => onApplyPreset('frame')}>R Frame rules</button></div>}
     <div className="map-toolbar-group" aria-label="Model actions">
       {canAddWorld && <button type="button" onClick={onAddWorld} disabled={!canEditWorlds}>+ World</button>}
@@ -67,5 +67,5 @@ export function WorkspaceToolbar(props: WorkspaceToolbarProps) {
       {!focusedIntro && <button type="button" className="frame-rules-button" onClick={onOpenFrameRules}>Frame rules{frameRuleCount ? ` (${frameRuleCount})` : ''}</button>}
       {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={onVerify}>Verify</button>}
     </div>
-  </>
+  </div>
 }
