@@ -469,6 +469,36 @@ the coordinator. Persistence, draft, selection, verification, guided mission,
 and dialog state must remain conceptually separate even when orchestrated by the
 same component.
 
+`HomeView` renders only the compact activity hierarchy and optional current
+session card. `CreateView` owns the authoring landing and custom-content import,
+while `MissionAuthoringView` and the stepper render the dedicated nine-step
+studio. `DataManagerDialog` contains only progress backup, sandbox-model transfer,
+and reset operations. `ReferenceView` consumes the data in
+`reference/reference-content.ts` and owns the six visual lookup sections.
+
+An authoring workspace session records its purpose, return step, previous game
+mode, and a complete copy of the prior workspace. Saving captures the real live
+workspace into the draft. Cancelling restores the prior workspace. Reference
+solutions are validated before they can be stored, and authoring or playtest
+verification is excluded from learner progress and attempt history.
+
+Progress backup version 2 is parsed and fully validated before the confirmation
+and state mutation boundary. It contains the guest profile, completed IDs,
+migrated Learn progress, viewed-reference state, and an optional validated
+sandbox snapshot. The version 1 profile format remains a partial import that
+preserves newer Learn and sandbox data.
+
+The live workspace tour resolves elements through `data-tour-target` attributes.
+It measures the actual target after layout and on resize or scroll, skips absent
+targets, and places a modal tooltip beside the highlighted UI. New workspace
+presentation variants should attach a stable target to the real control rather
+than add a simulated tour illustration.
+
+Application-owned visible copy must not contain semicolon characters or em dash
+characters. Prefer full stops, commas, colons, parentheses, or natural sentence
+splits. Parser compatibility may still accept semicolon-delimited legacy input,
+and TypeScript or CSS punctuation is outside this visible-copy rule.
+
 ## Learn content architecture
 
 The first three chapters remain in `src/learn.ts`; the remaining lesson data is

@@ -22,3 +22,22 @@ Recommended use is a short instructor introduction followed by individual questi
 Use editor-free pre/post questions and, if possible, a delayed retention check; see [PILOT_PROTOCOL.md](PILOT_PROTOCOL.md). The local result export contains attempts and interaction-derived categories. It cannot by itself measure understanding, identify why a learner clicked, or establish instructional effectiveness.
 
 The tool has no solver for infinite frames and does not prove general correspondence or absolute model minimality. Frame validity exhaustively checks the finite frame currently shown, subject to the displayed valuation-cost limit.
+
+## Authoring a mission
+
+Open **Create** from More and use the guided studio in order:
+
+1. State the learning objective, learner instruction, concept tags, prerequisites, and difficulty.
+2. Build the learner's initial model in the same workspace used during play, then save and return.
+3. Choose the formula, semantic scope, target truth value, and evaluation world.
+4. Select exactly which model controls learners may edit.
+5. Add visible size, relation, atom, frame-property, change-budget, and optional bonus constraints.
+6. Add an optional prediction interaction when it supports the objective.
+7. Build a reference solution from the saved start. The studio stores it only after semantic and constraint verification.
+8. Playtest as a learner, return to authoring, and run the mission audit in both desktop and mobile preview modes.
+9. Export a versioned mission, create a fragment share link, or add audited missions to an ordered campaign package.
+
+Authoring workspace visits and playtests are intentionally separate from learner
+progress and attempt history. Import existing custom content from the Create
+landing. Use **Data** only for local progress backup, sandbox-model transfer, and
+resets.

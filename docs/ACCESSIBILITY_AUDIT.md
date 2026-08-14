@@ -12,6 +12,17 @@
 - Workspace Quick help is a short five-part dialog with keyboard guidance, a full-Help link, and a workspace-tour replay action; it does not duplicate the mathematical Reference.
 - Desktop split-pane separators are focusable, expose vertical separator/value semantics, support ArrowLeft/ArrowRight (and larger Shift steps), and disappear with their collapsed pane.
 - Reduced motion follows both the OS preference and a saved in-app preference.
+- The workspace tour is a modal spotlight over real controls. It measures the
+  live target, skips controls absent from the current mission, traps keyboard
+  focus, supports Back and Next, closes on Escape, and restores access to the
+  unchanged workspace. Reduced motion suppresses spotlight movement.
+- The Create studio exposes an ordered keyboard-operable stepper, explicit
+  field and textarea labels, alert semantics for blocking errors, and visible
+  Save, Verify, Cancel, and Return controls when authoring uses the workspace.
+- The Home dashboard keeps one visible `h1`, descriptive names for all three
+  activity actions, and a clearly named Resume action when a session is active.
+  Automated desktop checks cover 1280 x 720, 1366 x 768, 1440 x 900, and
+  1920 x 1080 without title clipping or horizontal page overflow.
 - Phone-class public use (small viewport plus coarse primary pointer) receives a clear **Desktop required** notice. Responsive workspace and author-preview code remains for future development but is not currently a supported mobile product.
 
 The Vitest UI suite checks landmark/focus behavior, formula-error focus, table synchronization, result announcements/disclosure, resize separators and allocation, mobile guarding, trace stepping, draft validation, selection deletion, and essential keyboard-operable controls. Playwright additionally exercises focused desktop and phone-class Chromium journeys, including map drag, loose-handle relation creation, Undo, Learn dialogs, progressive hints, persisted resizing, support navigation, and the unsupported notice.
