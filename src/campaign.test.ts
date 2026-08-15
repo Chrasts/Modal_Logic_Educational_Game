@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyConstructionObjective, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
 import { campaignTracks, isConstructionLevel, tutorialLevels, validateLevelObjective } from './campaign'
+import { assertValidReferenceSolution } from './level-format'
 
 const level = (id: string) => [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].find((item) => item.id === id)!
 const correspondenceProperties: Record<string, FramePropertyName> = { t: 'reflexive', d: 'serial', b: 'symmetric', '4': 'transitive', '5': 'euclidean' }
@@ -70,12 +71,30 @@ describe('campaign level solvability', () => {
     }
   })
 
-  it('defines six tracks and unique level identifiers', () => {
+  it('defines eight tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
-    expect(campaignTracks).toHaveLength(6)
-    expect(ids).toHaveLength(33)
+    expect(campaignTracks).toHaveLength(8)
+    expect(ids).toHaveLength(37)
     expect(new Set(ids).size).toBe(ids.length)
     expect(campaignTracks.flatMap((track) => track.levels).filter((item) => item.bonusConstraints).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('validates Axiom Breaker and Model Budget reference and alternative solutions', () => {
+    const ids = ['axiom-breaker-four-reflexive', 'axiom-breaker-five-serial', 'model-budget-split-possibility', 'model-budget-two-steps']
+    for (const id of ids) {
+      const item = level(id)
+      expect(item.referenceSolution, id).toBeDefined()
+      expect(() => assertValidReferenceSolution(item, item.referenceSolution!), id).not.toThrow()
+      expect(item.workspacePresentation?.visibleConstraints?.length, `${id}: visible constraints`).toBeGreaterThan(0)
+      expect(`${item.title} ${item.instruction} ${item.successDebrief}`.toLowerCase(), `${id}: no minimality claim`).not.toContain('minimal')
+    }
+
+    const split = level('model-budget-split-possibility')
+    expect(() => assertValidReferenceSolution(split, {
+      evaluationWorld: 'origin',
+      worlds: [{ id: 'origin', atoms: '', position: { x: 0, y: 0 } }, { id: 'yes', atoms: 'p', position: { x: 1, y: 0 } }, { id: 'no', atoms: '', position: { x: 2, y: 0 } }],
+      edges: [{ from: 'origin', to: 'no' }, { from: 'origin', to: 'yes' }],
+    })).not.toThrow()
   })
 
   it('solves the constrained local satisfiability level', () => {

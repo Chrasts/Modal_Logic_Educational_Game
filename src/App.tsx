@@ -27,6 +27,7 @@ import { WorkspaceQuickHelp } from './components/WorkspaceQuickHelp'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
 import { VerificationSummary } from './components/VerificationSummary'
 import { WorkspaceTour } from './components/WorkspaceTour'
+import { EvaluationExplorer } from './components/EvaluationExplorer'
 import { MobileUnsupportedGuard } from './components/MobileUnsupportedGuard'
 import { EvaluationDiagnostics, EvaluationTree, flattenEvaluationTraces } from './workspace/EvaluationTrace'
 import { MobileWorkspaceTabs } from './workspace/MobileWorkspaceTabs'
@@ -43,7 +44,7 @@ import { WorldIdInput } from './workspace/WorldIdInput'
 import { worldNodeTypes } from './workspace/WorldNode'
 import { WorkspaceResizeHandle } from './workspace/WorkspaceResizeHandle'
 import { defaultWorkspaceLayout, normalizeWorkspaceLayout, resizeWorkspaceSide, type WorkspaceLayout } from './workspace/workspace-layout'
-import { insertAtSelection } from './formula-input'
+import { insertAtSelection, validateFormulaInput } from './formula-input'
 import { findFrameRuleConflicts } from './logic/frame-rule-conflicts'
 import { ProgressiveHints } from './components/ProgressiveHints'
 import { WorkedExampleCard } from './learn/WorkedExampleCard'
@@ -52,6 +53,7 @@ import { playSound } from './audio/sound-effects'
 import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
 import { createShareUrl, readSharedJson } from './share-url'
+import { createSandboxSharePayload, isSandboxSharePayload, parseSandboxSharePayload } from './sandbox-share'
 import { createEducatorCsv } from './educator-export'
 import { auditMission, type MissionAuditFinding } from './mission-audit'
 import { MissionAuthorStepper } from './authoring/MissionAuthorStepper'
@@ -78,6 +80,10 @@ import {
   checkFrameProperty,
   canonicalModelSignature,
   collectAtoms,
+  buildSemanticHighlight,
+  createModel,
+  formulaAtPath,
+  listFormulaOccurrences,
   countConstructionChanges,
   DEFAULT_MAXIMUM_VALUATIONS,
   FormulaSyntaxError,
@@ -406,6 +412,9 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
   const [authoredCampaignMissions, setAuthoredCampaignMissions] = useState<readonly ParsedCustomLevelFile[]>([])
   const [appView, setAppView] = useState<AppView>(initialView)
+  const appViewHistory = useRef<AppView[]>([])
+  const lastAppView = useRef<AppView>(initialView)
+  const suppressViewHistory = useRef(false)
   const [campaignSection, setCampaignSection] = useState<CampaignSection>('challenges')
   const [campaignLevelIndex, setCampaignLevelIndex] = useState(0)
   const [campaignTrackIndex, setCampaignTrackIndex] = useState(0)
@@ -489,6 +498,9 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const [customImportSource, setCustomImportSource] = useState('')
   const [dataMessage, setDataMessage] = useState('')
   const [shareLink, setShareLink] = useState('')
+  const [sandboxShareMessage, setSandboxShareMessage] = useState('')
+  const [showEvaluationExplorer, setShowEvaluationExplorer] = useState(false)
+  const [selectedFormulaPath, setSelectedFormulaPath] = useState('root')
   const [showFrameRules, setShowFrameRules] = useState(false)
   const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
   const [editorMode, setEditorMode] = useState<EditorMode>('edit')
@@ -526,8 +538,16 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const historyPast = useRef<ModelHistoryEntry[]>([])
   const historyFuture = useRef<ModelHistoryEntry[]>([])
   const sandboxBeforeCampaign = useRef<SandboxDraft | null>(null)
+  const sharedSandboxSession = useRef(false)
   const authorPlaytestReturnMode = useRef<GameMode>('sandbox')
   const [historyVersion, setHistoryVersion] = useState(0)
+
+  useEffect(() => {
+    if (lastAppView.current === appView) return
+    if (suppressViewHistory.current) suppressViewHistory.current = false
+    else appViewHistory.current.push(lastAppView.current)
+    lastAppView.current = appView
+  }, [appView])
 
   const currentSnapshot = (): ModelSnapshot => ({
     worlds: structuredClone(worlds),
@@ -596,7 +616,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   }
 
   useEffect(() => {
-    if (gameMode !== 'sandbox' || authorWorkspaceSession) return
+    if (gameMode !== 'sandbox' || authorWorkspaceSession || sharedSandboxSession.current) return
     const draft: SandboxDraft = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     try { localStorage.setItem(storageKey, JSON.stringify(draft)) } catch { /* Persistence is optional in restricted browsers. */ }
   }, [formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode, authorWorkspaceSession])
@@ -701,6 +721,27 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   )
   const frameRuleConflicts = useMemo(() => findFrameRuleConflicts(frameRules, usableWorldIds.length), [frameRules, usableWorldIds.length])
 
+  const formulaValidation = useMemo(() => validateFormulaInput(formulaSource), [formulaSource])
+  const comparisonFormulaValidation = useMemo(() => validateFormulaInput(comparisonFormulaSource), [comparisonFormulaSource])
+  useEffect(() => { setSelectedFormulaPath('root') }, [formulaSource])
+  const explorerModel = useMemo(() => {
+    try {
+      const ids = worlds.map(({ id }) => id.trim())
+      if (ids.some((id) => !id) || new Set(ids).size !== ids.length) return null
+      return createModel(Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)])), effectiveEdges)
+    } catch { return null }
+  }, [worlds, effectiveEdges])
+  const explorerFormula = formulaValidation.kind === 'valid' ? formulaValidation.formula : undefined
+  const selectedExplorerFormula = useMemo(() => {
+    if (!explorerFormula) return undefined
+    const occurrence = listFormulaOccurrences(explorerFormula).find(({ key }) => key === selectedFormulaPath)
+    return occurrence?.formula ?? formulaAtPath(explorerFormula, []) ?? undefined
+  }, [explorerFormula, selectedFormulaPath])
+  const explorerHighlight = useMemo(() => gameMode === 'sandbox' && showEvaluationExplorer && explorerModel && selectedExplorerFormula
+    ? buildSemanticHighlight(explorerModel, selectedExplorerFormula, evaluationWorld)
+    : undefined, [gameMode, showEvaluationExplorer, explorerModel, selectedExplorerFormula, evaluationWorld])
+  const explorerRelevantEdges = useMemo(() => explorerHighlight?.relevantEdges ?? new Set<string>(), [explorerHighlight])
+
   useEffect(() => { setActiveFrameWitness(null) }, [worlds, edges, evaluationWorld, frameRules])
 
   const explicitEdgeKeyByPair = useMemo(
@@ -739,9 +780,9 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       ? effectiveEdges
       : effectiveEdges.filter((edge) => {
         const pair = `${edge.from}\u0000${edge.to}`
-        return explicitEdgeKeyByPair.has(pair) || traceCheckedEdges.has(pair)
+        return explicitEdgeKeyByPair.has(pair) || traceCheckedEdges.has(pair) || explorerRelevantEdges.has(pair)
       }),
-    [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges, traceCheckedEdges],
+    [effectiveEdges, explicitEdgeKeyByPair, showDerivedEdges, traceCheckedEdges, explorerRelevantEdges],
   )
   const traceForcedDerivedPairKeys = useMemo(() => new Set([...traceCheckedEdges].filter((pair) => !showDerivedEdges && derivedPairKeys.has(pair))), [derivedPairKeys, showDerivedEdges, traceCheckedEdges])
   const reflexiveRelations = useMemo(
@@ -797,6 +838,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           {activeTrace?.rule === 'atom' && activeTrace.worldId === world.id.trim() && <span className="trace-atom-badge">ATOM {activeTrace.formula} {activeTrace.value ? '✓' : '✕'}</span>}
           {world.id.trim() === traceWitnessWorld && <span className="trace-role-badge witness">WITNESS</span>}
           {world.id.trim() === traceCounterexampleWorld && <span className="trace-role-badge counterexample">COUNTEREXAMPLE</span>}
+          {explorerHighlight?.trueWorlds.has(world.id.trim()) && <span className="explorer-truth-badge true">✓ TRUE</span>}
+          {explorerHighlight?.falseWorlds.has(world.id.trim()) && <span className="explorer-truth-badge false">✕ FALSE</span>}
+          {explorerHighlight?.witnessWorlds.has(world.id.trim()) && <span className="explorer-role-badge witness">WITNESS</span>}
+          {explorerHighlight?.counterexampleWorlds.has(world.id.trim()) && <span className="explorer-role-badge counterexample">COUNTEREXAMPLE</span>}
         </div>
       ),
     },
@@ -807,12 +852,17 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       world.id.trim() === activeTrace?.worldId ? 'trace-current-node' : '',
       world.id.trim() === traceWitnessWorld ? 'trace-witness-node' : '',
       world.id.trim() === traceCounterexampleWorld ? 'trace-counterexample-node' : '',
-      activeTrace && !traceRelatedWorlds.has(world.id.trim()) ? 'trace-irrelevant-node' : '',
+      activeTrace && !explorerHighlight && !traceRelatedWorlds.has(world.id.trim()) ? 'trace-irrelevant-node' : '',
       frameWitnessPresentation.worldIds.has(world.id.trim()) ? 'frame-witness-node' : '',
+      explorerHighlight?.sourceWorld === world.id.trim() ? 'explorer-source-node' : '',
+      explorerHighlight?.trueWorlds.has(world.id.trim()) ? 'explorer-true-node' : '',
+      explorerHighlight?.falseWorlds.has(world.id.trim()) ? 'explorer-false-node' : '',
+      explorerHighlight?.witnessWorlds.has(world.id.trim()) ? 'explorer-witness-node' : '',
+      explorerHighlight?.counterexampleWorlds.has(world.id.trim()) ? 'explorer-counterexample-node' : '',
     ].filter(Boolean).join(' '),
-    ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${reflexiveRelations.has(world.id.trim()) ? `, ${reflexiveRelations.get(world.id.trim())?.derived ? 'derived' : 'explicit'} reflexive accessibility` : ''}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}`,
+    ariaLabel: `${mapQuestionMode ? 'Answer option, ' : ''}World ${world.id || 'without a name'}, atoms ${world.atoms || 'none'}${reflexiveRelations.has(world.id.trim()) ? `, ${reflexiveRelations.get(world.id.trim())?.derived ? 'derived' : 'explicit'} reflexive accessibility` : ''}${mapQuestionMode && predictionAnswer === world.id.trim() ? ', selected' : ''}${explorerHighlight?.trueWorlds.has(world.id.trim()) ? ', selected subformula true' : explorerHighlight?.falseWorlds.has(world.id.trim()) ? ', selected subformula false' : ''}`,
     domAttributes: mapQuestionMode ? { 'aria-pressed': predictionAnswer === world.id.trim() } : undefined,
-  })), [worlds, evaluationWorld, selectedWorldKey, selectedEdgeKey, reflexiveRelations, graphEdgesEditable, traceCheckedEdges, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer, activeFrameWitness, frameWitnessPresentation.worldIds])
+  })), [worlds, evaluationWorld, selectedWorldKey, selectedEdgeKey, reflexiveRelations, graphEdgesEditable, traceCheckedEdges, activeTrace, traceWitnessWorld, traceCounterexampleWorld, traceRelatedWorlds, mapQuestionMode, predictionAnswer, activeFrameWitness, frameWitnessPresentation.worldIds, explorerHighlight])
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState(nodeBlueprints)
 
@@ -903,7 +953,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           frameWitnessPresentation.premiseEdges.has(directionPair) ? 'frame-witness-premise-edge' : '',
           direction.to === traceWitnessWorld && activeTrace?.worldId === direction.from ? 'trace-witness-edge' : '',
           direction.to === traceCounterexampleWorld && activeTrace?.worldId === direction.from ? 'trace-counterexample-edge' : '',
-          activeTrace && !traceCheckedEdges.has(directionPair) ? 'trace-irrelevant-edge' : '',
+          activeTrace && !explorerHighlight && !traceCheckedEdges.has(directionPair) ? 'trace-irrelevant-edge' : '',
+          explorerRelevantEdges.has(directionPair) ? 'explorer-relevant-edge' : '',
+          explorerHighlight?.witnessWorlds.has(direction.to) && explorerHighlight.sourceWorld === direction.from ? 'explorer-witness-edge' : '',
+          explorerHighlight?.counterexampleWorlds.has(direction.to) && explorerHighlight.sourceWorld === direction.from ? 'explorer-counterexample-edge' : '',
         ].filter(Boolean).join(' '),
       }
     }
@@ -916,6 +969,8 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         const bothDerived = presentation.forward.derived && presentation.reverse.derived
         const checked = traceCheckedEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`)
           || traceCheckedEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)
+        const explorerChecked = explorerRelevantEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`)
+          || explorerRelevantEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)
         const id = `pair:${presentation.source}:${presentation.target}`
         const lane = routeLanes.get(id)
         return [{
@@ -933,7 +988,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
           className: [
             'model-edge', 'bidirectional-edge', bothDerived ? 'derived-edge' : '',
             presentation.forward.derived !== presentation.reverse.derived ? 'mixed-relation' : '',
-            ...focusClasses(presentation, selected), checked ? 'trace-checked-edge' : '', activeTrace && !checked ? 'trace-irrelevant-edge' : '',
+            ...focusClasses(presentation, selected), checked ? 'trace-checked-edge' : '', activeTrace && !explorerHighlight && !checked ? 'trace-irrelevant-edge' : '', explorerChecked ? 'explorer-relevant-edge' : '',
             (frameWitnessPresentation.premiseEdges.has(`${presentation.forward.from}\u0000${presentation.forward.to}`) || frameWitnessPresentation.premiseEdges.has(`${presentation.reverse.from}\u0000${presentation.reverse.to}`)) ? 'frame-witness-premise-edge' : '',
           ].filter(Boolean).join(' '),
         }]
@@ -959,7 +1014,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       focusable: false,
       className: 'model-edge frame-witness-missing-edge',
     }]
-  }, [relationPresentations, expandedRelationPairKey, worldKeyById, worlds, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceForcedDerivedPairKeys, traceWitnessWorld, traceCounterexampleWorld, activeTrace, graphEdgesEditable, frameWitnessPresentation])
+  }, [relationPresentations, expandedRelationPairKey, worldKeyById, worlds, selectedEdgeKey, focusedWorldId, traceCheckedEdges, traceForcedDerivedPairKeys, traceWitnessWorld, traceCounterexampleWorld, activeTrace, graphEdgesEditable, frameWitnessPresentation, explorerRelevantEdges, explorerHighlight])
 
   const MiniMapWithRelations = useMemo(() => {
     const worldByKey = new Map(worlds.map((world) => [String(world.key), world]))
@@ -1022,10 +1077,6 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
   const distinctSolutions = Object.values(guestProfile.solutionSignatures).reduce((total, signatures) => total + signatures.length, 0)
   const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
   const currentValuation = Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)]))
-  const formulaParseStatus = useMemo(() => {
-    if (!formulaSource.trim()) return null
-    try { parseFormula(formulaSource); return 'valid' as const } catch { return 'invalid' as const }
-  }, [formulaSource])
   const insertFormulaSymbol = (symbol: string) => {
     const input = formulaInputRef.current
     const insertion = insertAtSelection(formulaSource, symbol, input?.selectionStart ?? formulaSource.length, input?.selectionEnd ?? formulaSource.length)
@@ -1441,6 +1492,25 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       const shared = readSharedJson()
       if (!shared) return
       const imported = JSON.parse(shared) as Record<string, unknown>
+      if (isSandboxSharePayload(imported)) {
+        const sandbox = parseSandboxSharePayload(imported)
+        sharedSandboxSession.current = true
+        setGameMode('sandbox')
+        setAppView('workspace')
+        setFormulaSource(sandbox.formula)
+        setComparisonFormulaSource(sandbox.comparisonFormula)
+        setWorlds(sandbox.worlds.map((world, key) => ({ key, id: world.id, atoms: world.atoms.join(' '), position: { x: 90 + (key % 3) * 240, y: 90 + Math.floor(key / 3) * 160 } })))
+        setEdges(sandbox.edges.map((edge, key) => ({ key, ...edge })))
+        setEvaluationWorld(sandbox.evaluationWorld)
+        setTargetTruth(sandbox.targetTruth)
+        setEvaluationScope(sandbox.scope)
+        setFrameRules(sandbox.frameRules)
+        setNextWorldKey(sandbox.worlds.length)
+        setNextEdgeKey(sandbox.edges.length)
+        setResult(null)
+        setSandboxShareMessage('Shared Sandbox loaded. This link did not replace your saved local Sandbox.')
+        return
+      }
       const levels = imported.format === 'logic-model-builder-campaign'
         ? parseCustomCampaign(imported).missions.map(({ level }) => level)
         : [parseCustomLevelFile(imported)]
@@ -2290,6 +2360,34 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
 
   const authorCanExport = missionAuditFindings.length > 0 && !missionAuditFindings.some(({ severity }) => severity === 'error')
 
+  const shareSandbox = async () => {
+    try {
+      if (formulaValidation.kind !== 'valid') throw new Error('Enter a valid primary formula before sharing the Sandbox.')
+      if (comparisonFormulaValidation.kind === 'invalid') throw new Error('Fix the comparison formula before sharing the Sandbox.')
+      const payload = createSandboxSharePayload({
+        worlds: worlds.map(({ id, atoms }) => ({ id: id.trim(), atoms: atoms.split(/[\s,]+/u).filter(Boolean) })),
+        edges: edges.map(({ from, to }) => ({ from, to })),
+        evaluationWorld,
+        formula: formulaSource,
+        comparisonFormula: comparisonFormulaSource,
+        scope: evaluationScope,
+        targetTruth,
+        frameRules,
+      })
+      parseSandboxSharePayload(payload)
+      const link = createShareUrl(JSON.stringify(payload))
+      setShareLink(link)
+      try {
+        await navigator.clipboard.writeText(link)
+        setSandboxShareMessage('Sandbox link copied to the clipboard.')
+      } catch {
+        setSandboxShareMessage('Clipboard access was unavailable. Copy the visible link manually.')
+      }
+    } catch (error) {
+      setSandboxShareMessage(error instanceof Error ? error.message : 'Could not share the Sandbox.')
+    }
+  }
+
   const downloadCustomLevel = () => {
     try {
       if (!runMissionAudit()) return
@@ -2405,10 +2503,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
       else setAppView('lab')
       return
     }
-    if (appView === 'welcome') setAppView('learn')
-    else if (appView === 'create' && authorStudioOpen) setAuthorStudioOpen(false)
-    else if (appView === 'campaigns' || appView === 'create') setAppView('home')
-    else setAppView('home')
+    if (appView === 'create' && authorStudioOpen) { setAuthorStudioOpen(false); return }
+    const previousView = appViewHistory.current.pop() ?? 'home'
+    suppressViewHistory.current = true
+    setAppView(previousView)
   }
 
   const nextIncompleteLearnLesson = learnLessons.find((lesson) => !learnProgress.completedLessonIds.includes(lesson.id))
@@ -2614,16 +2712,19 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
         {showFormulaPanel && <div className="panel formula-panel" data-tour-target="formula-controls">
           <div className="panel-heading">
             <div><h2>Formula and goal</h2><p>Unicode and text notation</p></div>
+            {gameMode === 'sandbox' && <button type="button" className="secondary-button share-sandbox-button" onClick={() => void shareSandbox()}>Share Sandbox</button>}
           </div>
           <label className="field">
             <span>Modal formula</span>
-            <input ref={formulaInputRef} aria-label="Modal formula" disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
-            {formulaParseStatus && <small className={`parse-status ${formulaParseStatus}`}>Formula {formulaParseStatus}</small>}
+            <input ref={formulaInputRef} aria-label="Modal formula" aria-invalid={formulaValidation.kind === 'invalid'} disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
+            {formulaValidation.kind === 'valid' && <small className="parse-status valid">✓ Formula valid</small>}
+            {formulaValidation.kind === 'invalid' && <small className="parse-status invalid" role="alert">{formulaValidation.message}</small>}
           </label>
           {!isGuidedMode && !formulaSource.trim() && <div className="empty-card"><strong>No formula yet</strong><span>Enter an atom such as p, or start with □p / ◇p, then Verify.</span><button type="button" onClick={() => { setFormulaSource('p'); setTimeout(() => formulaInputRef.current?.focus(), 0) }}>Use p</button></div>}
           <label className="field comparison-formula">
             <span>Comparison formula <small>optional</small></span>
-            <input aria-label="Comparison formula" disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="e.g. box p" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
+            <input aria-label="Comparison formula" aria-invalid={comparisonFormulaValidation.kind === 'invalid'} disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="e.g. box p" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
+            {comparisonFormulaValidation.kind === 'invalid' && <small className="parse-status invalid" role="alert">{comparisonFormulaValidation.message}</small>}
           </label>
           <div className="symbol-row" aria-label="Insert symbol">
             {['¬', '∧', '∨', '→', '□', '◇'].map((symbol) => (
@@ -2654,7 +2755,10 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
             </select>
           </label>
           {selectedCorrespondence && <p className="correspondence-note">Compare frame validity with the selected relational property. Finite examples provide evidence. They do not replace the general correspondence proof.</p>}
-          <p className="notation">Precedence: ¬ □ ◇ &gt; ∧ &gt; ∨ &gt; →. Alternatives: !, &amp;, |, -&gt;, box, diamond.</p>
+          <p className="notation">Precedence: ¬ □ ◇ &gt; ∧ &gt; ∨ &gt; →. Aliases: ! or ~ or \neg, [] or \Box, &lt;&gt; or \Diamond, &amp; or \land, | or \lor, -&gt; or \to or \implies.</p>
+          {gameMode === 'sandbox' && <EvaluationExplorer open={showEvaluationExplorer} formula={explorerFormula} selectedPath={selectedFormulaPath} highlight={explorerHighlight} onToggle={() => setShowEvaluationExplorer((open) => !open)} onSelect={setSelectedFormulaPath} />}
+          {gameMode === 'sandbox' && sandboxShareMessage && <p className="sandbox-share-status" role="status">{sandboxShareMessage}</p>}
+          {gameMode === 'sandbox' && shareLink && <div className="share-link-output sandbox-share-output"><label><span>Shareable Sandbox URL</span><input aria-label="Shareable Sandbox URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={() => void copyShareLink()}>Copy link</button><small>The mathematical experiment is encoded after # and is not sent to a server.</small></div>}
         </div>}
 
         <div className="panel graph-panel">
@@ -2724,7 +2828,7 @@ function AppContent({ initialView = 'home' }: { readonly initialView?: AppView }
               <Panel position="top-left" className="map-toolbar">
                 <WorkspaceToolbar sandbox={gameMode === 'sandbox'} editorMode={editorMode} rightPanelOpen={rightPanelOpen} showWorldPanel={showWorldPanel} showEdgePanel={showEdgePanel} leftPanelOpen={leftPanelOpen} canAddWorld={(!focusedIntroWorkspace || Boolean(presentation?.worlds)) && tutorialAllows('worlds')} canEditWorlds={canEditWorlds} canEditRelations={canEditEdges} canUseHistory={canUseHistory} canRepositionWorlds={canRepositionWorlds} selectedRelation={selectedEdgeKey !== null} undoAvailable={historyPast.current.length > 0} redoAvailable={historyFuture.current.length > 0} worldCount={worlds.length} focusedIntro={focusedIntroWorkspace} showDerivedRelations={showDerivedEdges} derivedRelationCount={derivedPairKeys.size} frameRuleCount={frameRuleResults.length} flowInstance={flowInstance} onApplyPreset={applySandboxPreset} onAddWorld={() => addWorld()} onDeleteRelation={() => selectedEdgeKey !== null && deleteEdge(selectedEdgeKey)} onToggleEvaluationPanel={() => setLeftPanelOpen((open) => !open)} onToggleModelPanel={() => setRightPanelOpen((open) => !open)} onUndo={undo} onRedo={redo} onTidy={tidyModel} onToggleDerived={() => setShowDerivedEdges((show) => !show)} onOpenFrameRules={() => setShowFrameRules(true)} onVerify={verify} />
               </Panel>
-              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><details><summary>Legend</summary><div><span><i className="selected" />SELECTED</span><span><i className="current" />EVALUATION WORLD</span>{traceWitnessWorld && <span><i className="witness" />WITNESS</span>}{traceCounterexampleWorld && <span><i className="counterexample" />COUNTEREXAMPLE</span>}<span><i className="explicit-edge" />EXPLICIT RELATION</span>{derivedPairKeys.size > 0 && <span><i className="derived" />DERIVED RELATION</span>}{relationPresentations.some(({ kind }) => kind === 'bidirectional') && <span><i className="two-way" />TWO-WAY</span>}<span><i className="reflexive" />EXPLICIT ↻</span>{[...reflexiveRelations.values()].some(({ derived }) => derived) && <span><i className="reflexive derived-reflexive" />DERIVED ↻</span>}{activeTrace && <><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></>}</div></details></Panel>
+              <Panel position="bottom-center" className="trace-legend" aria-label="Model state legend"><details><summary>Legend</summary><div><span><i className="selected" />SELECTED</span><span><i className="current" />EVALUATION WORLD</span>{explorerHighlight && <><span><i className="explorer-true" />✓ SUBFORMULA TRUE</span><span><i className="explorer-false" />✕ SUBFORMULA FALSE</span></>}{traceWitnessWorld && <span><i className="witness" />WITNESS</span>}{traceCounterexampleWorld && <span><i className="counterexample" />COUNTEREXAMPLE</span>}<span><i className="explicit-edge" />EXPLICIT RELATION</span>{derivedPairKeys.size > 0 && <span><i className="derived" />DERIVED RELATION</span>}{relationPresentations.some(({ kind }) => kind === 'bidirectional') && <span><i className="two-way" />TWO-WAY</span>}<span><i className="reflexive" />EXPLICIT ↻</span>{[...reflexiveRelations.values()].some(({ derived }) => derived) && <span><i className="reflexive derived-reflexive" />DERIVED ↻</span>}{activeTrace && <><span><i className="checked" />CHECKED</span><span><i className="irrelevant" />IRRELEVANT</span></>}</div></details></Panel>
               {!showDerivedEdges && derivedPairKeys.size > 0 && <Panel position="bottom-right" className="derived-hidden-note">{derivedPairKeys.size} derived relation{derivedPairKeys.size === 1 ? '' : 's'} hidden. <span>Display only. Verification still uses enforced relations.</span></Panel>}
               {traceForcedDerivedPairKeys.size > 0 && <Panel position="top-center" className="trace-derived-note">A hidden derived relation is temporarily shown because the current trace uses it.</Panel>}
               {activeTrace?.rule === 'necessity' && activeTrace.children.length === 0 && <Panel position="top-center" className="vacuous-trace-note"><b>0 successors</b><span>□ is vacuously true: there is no counterexample branch.</span></Panel>}
