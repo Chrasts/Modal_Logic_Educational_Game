@@ -31,6 +31,7 @@ export class FormulaSyntaxError extends Error {
 const singleCharacterTokens: Readonly<Record<string, TokenKind>> = {
   '¬': 'not',
   '!': 'not',
+  '~': 'not',
   '∧': 'and',
   '&': 'and',
   '∨': 'or',
@@ -41,6 +42,19 @@ const singleCharacterTokens: Readonly<Record<string, TokenKind>> = {
   '(': 'leftParen',
   ')': 'rightParen',
 }
+
+const multiCharacterTokens: readonly (readonly [string, TokenKind])[] = [
+  ['\\implies', 'implies'],
+  ['\\Diamond', 'diamond'],
+  ['\\land', 'and'],
+  ['\\Box', 'box'],
+  ['\\neg', 'not'],
+  ['\\lor', 'or'],
+  ['\\to', 'implies'],
+  ['->', 'implies'],
+  ['[]', 'box'],
+  ['<>', 'diamond'],
+]
 
 export function tokenize(source: string): readonly Token[] {
   const tokens: Token[] = []
@@ -53,10 +67,16 @@ export function tokenize(source: string): readonly Token[] {
       continue
     }
 
-    if (source.startsWith('->', position)) {
-      tokens.push({ kind: 'implies', lexeme: '->', position })
-      position += 2
+    const alias = multiCharacterTokens.find(([lexeme]) => source.startsWith(lexeme, position))
+    if (alias) {
+      tokens.push({ kind: alias[1], lexeme: alias[0], position })
+      position += alias[0].length
       continue
+    }
+
+    if (character === '\\') {
+      const command = source.slice(position).match(/^\\[A-Za-z]+/u)?.[0] ?? '\\'
+      throw new FormulaSyntaxError(`Unknown command “${command}”`, position)
     }
 
     const singleKind = singleCharacterTokens[character]

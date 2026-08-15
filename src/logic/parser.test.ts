@@ -17,6 +17,18 @@ describe('tokenizer', () => {
 })
 
 describe('formula parser', () => {
+  it.each([
+    ['[]p', '□p'], ['<>p', '◇p'], ['~p', '¬p'], ['\\Box p', '□p'], ['\\Diamond p', '◇p'],
+    ['\\neg p', '¬p'], ['p \\land q', 'p ∧ q'], ['p \\lor q', 'p ∨ q'],
+    ['p \\to q', 'p → q'], ['p \\implies q', 'p → q'],
+  ])('parses %s as the same AST as %s', (alias, canonical) => {
+    expect(parseFormula(alias)).toEqual(parseFormula(canonical))
+  })
+
+  it('reports malformed commands at their original source position', () => {
+    expect(() => parseFormula('p ∧ \\unknown q')).toThrow(/position 5/i)
+  })
+
   it('keeps programmatic atom construction within the parser language', () => {
     expect(() => atom('not-an-atom')).toThrow(/invalid atom/i)
     expect(() => atom(' p')).toThrow(/invalid atom/i)

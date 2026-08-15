@@ -7,15 +7,15 @@ export interface WorkspaceTourStep {
 }
 
 const guidedSteps: readonly WorkspaceTourStep[] = [
-  { target: 'mission-header', title: 'Task', body: 'The mission header keeps the current objective, progress, and guided actions in view.' },
+  { target: 'mission-header', title: 'Task', body: 'The mission header shows the current objective, progress, and available actions.' },
   { target: 'model-map', title: 'Model map', body: 'Inspect worlds, true atoms, and directed accessibility in the live model.' },
   { target: 'editing-controls', title: 'Edit model', body: 'The available controls reflect what this task allows you to change.' },
   { target: 'formula-controls', title: 'Formula and evaluation', body: 'Read the formula and choose the evaluation world when the objective uses pointed truth.' },
-  { target: 'check-task', title: 'Check task', body: 'Verify your current answer without leaving the workspace.' },
-  { target: 'result-area', title: 'Result and map tools', body: 'Results explain the verdict. Fit model and Tidy model remain available in the map toolbar.' },
+  { target: 'check-task', title: 'Check task', body: 'Check your current answer here.' },
+  { target: 'result-area', title: 'Results', body: 'After checking, this area explains whether the objective is met and what to inspect next.' },
 ]
 
-const sandboxSteps: readonly WorkspaceTourStep[] = [guidedSteps[1], guidedSteps[2], guidedSteps[3], { target: 'map-toolbar', title: 'Map tools', body: 'Use Fit model, Tidy model, history, panel, and frame controls without changing the semantic objective.' }, guidedSteps[5]]
+const sandboxSteps: readonly WorkspaceTourStep[] = [guidedSteps[1], guidedSteps[2], guidedSteps[3], { target: 'map-toolbar', title: 'Map tools', body: 'Use the map toolbar to adjust the view, arrange worlds, use history, and open frame controls.' }, guidedSteps[5]]
 
 const targetElement = (name: string) => document.querySelector<HTMLElement>(`[data-tour-target="${name}"]`)
 
