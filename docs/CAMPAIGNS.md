@@ -77,6 +77,23 @@ and their agreement on the current finite frame.
 Agreement on a finite frame is an instance verification, not a proof of the
 general characteristic-class theorem.
 
+## Axiom Breaker
+
+These missions ask for a countermodel while retaining a visible frame
+property and world bound.
+
+1. **Break axiom 4** refutes `□p → □□p` on a reflexive frame.
+2. **Break axiom 5** refutes `◇p → □◇p` on a serial frame.
+
+## Model Budget
+
+These missions combine a semantic target with explicit resource bounds. The
+bounds describe accepted constructions and do not claim mathematical
+minimality.
+
+1. **Split possibility** makes `◇p ∧ ◇¬p` true within world and relation budgets.
+2. **Two steps away** makes `◇◇p` true on an acyclic frame within both budgets.
+
 ## Constraint vocabulary
 
 Levels may restrict the number of worlds or explicit relations, require or forbid

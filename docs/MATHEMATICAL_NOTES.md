@@ -9,6 +9,10 @@ The current language is basic unimodal propositional logic generated from
 propositional atoms using `¬`, `∧`, `∨`, `→`, `□`, and `◇`. Constants such as
 `⊤` and `⊥` are not yet part of the parser.
 
+Formula input also recognizes `~`, `[]`, `<>`, and the explicit lexical
+aliases `\neg`, `\land`, `\lor`, `\to`, `\implies`, `\Box`, and `\Diamond`.
+These are input spellings for the same AST nodes, not a general LaTeX grammar.
+
 A finite Kripke frame is `F = ⟨W,R⟩`, where `W` is a non-empty finite set and
 `R ⊆ W × W`. A model based on `F` is `M = ⟨W,R,ν⟩`, with valuation
 `ν: Prop → ℘(W)`. Many textbooks call the valuation `V`; using `ν` here is a

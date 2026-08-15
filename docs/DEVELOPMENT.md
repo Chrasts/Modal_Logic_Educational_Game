@@ -25,6 +25,7 @@ src/
 │   ├── parser.ts        # tokenizer and precedence parser
 │   ├── model.ts         # finite Kripke models
 │   ├── evaluate.ts      # local semantics and recursive evaluation traces
+│   ├── evaluation-explorer.ts # occurrence paths and derived map highlights
 │   ├── validity.ts      # model-global and finite-frame validity
 │   ├── frame.ts         # frame closure and property validation
 │   ├── objective.ts     # semantic game objectives and verdicts
@@ -34,6 +35,7 @@ src/
 │   └── MissionHeader.tsx # shared guided lesson/mission header
 ├── level-fingerprint.ts # normalized duplicate-content audit helper
 ├── level-format.ts      # versioned validation for shared custom missions
+├── sandbox-share.ts     # validated Sandbox share payload v1
 ├── test/                # shared UI test setup
 ├── App.tsx              # application shell and model editor
 └── main.tsx             # React entry point
@@ -264,6 +266,13 @@ the app decodes and runs the same versioned parser used by pasted JSON before
 launching the shared sequence. Payloads above 60,000 encoded characters are
 rejected with a recommendation to use the downloadable file, since practical
 URL limits vary across browsers and messaging services.
+
+The same transport accepts a discriminated Sandbox payload with
+`kind: "sandbox-state"` and `version: 1`. Its strict decoder checks unique
+world names, atom syntax, explicit relation endpoints and uniqueness,
+evaluation-world membership, formulas, semantic scope, and frame-rule modes.
+It restores mathematical state only. A shared session does not overwrite the
+previous browser-local Sandbox draft.
 
 `maximumChanges` is a baseline-relative construction constraint. It counts the
 symmetric differences in world identifiers, distinct explicit relation pairs,

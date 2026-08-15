@@ -54,5 +54,20 @@ states otherwise.
    `w0 → w2`.
 10. **Break Euclideanness:** retain only `w0 → w1` and `w0 → w2`.
 
+## Axiom Breaker
+
+1. **Break axiom 4:** use three p-valued worlds except that p is false at
+   `w2`. Add all three reflexive loops plus `w0 → w1` and `w1 → w2`, but
+   omit `w0 → w2`.
+2. **Break axiom 5:** set `ν(p) = {w1}`. Use `w0 → w1`, `w0 → w2`,
+   `w1 → w1`, and `w2 → w2`.
+
+## Model Budget
+
+1. **Split possibility:** set `ν(p) = {w1}` and use `w0 → w1` plus
+   `w0 → w2`.
+2. **Two steps away:** set `ν(p) = {w2}` and use the acyclic chain
+   `w0 → w1 → w2`.
+
 Alternative solutions may exist whenever the level constraints do not enforce
 minimality or a unique construction.

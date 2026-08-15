@@ -108,6 +108,39 @@ test('verification gives an immediate result and keeps semantic evidence on dema
   await expect(page.locator('.result.success')).toContainText('Objective met')
 })
 
+test('Evaluation Explorer follows live aliases, truth sets, and modal counterexamples', async ({ page }) => {
+  await page.getByLabel('Modal formula').fill('[]q')
+  await expect(page.getByText('✓ Formula valid')).toBeVisible()
+  await page.getByRole('button', { name: /Evaluation Explorer/ }).click()
+  await page.getByRole('treeitem', { name: 'q', exact: true }).click()
+  await expect(page.locator('.explorer-false-node')).toHaveCount(2)
+  await expect(page.locator('.explorer-truth-badge.false')).toHaveCount(2)
+
+  await page.getByRole('treeitem', { name: '□q', exact: true }).click()
+  await expect(page.locator('.explorer-counterexample-edge')).toHaveCount(1)
+  await expect(page.getByText(/Counterexample:/)).toBeVisible()
+
+  await page.getByLabel('True atoms').nth(1).fill('p q')
+  await expect(page.locator('.explorer-counterexample-edge')).toHaveCount(0)
+  await expect(page.getByText(/is true at all 1 worlds accessible/)).toBeVisible()
+})
+
+test('Share Sandbox restores mathematical state from a versioned link', async ({ page, context }) => {
+  await page.getByLabel('Modal formula').fill('<>p')
+  await page.getByLabel('Semantic target').selectOption('model')
+  await page.getByRole('button', { name: 'Share Sandbox' }).click()
+  const link = await page.getByLabel('Shareable Sandbox URL').inputValue()
+  expect(link).toContain('#share=')
+
+  const shared = await context.newPage()
+  await shared.addInitScript(() => localStorage.setItem('logic-game:workspace-tour:v1', 'seen'))
+  await shared.goto(link)
+  await expect(shared.getByLabel('Modal formula')).toHaveValue('<>p')
+  await expect(shared.getByLabel('Semantic target')).toHaveValue('model')
+  await expect(shared.locator('.react-flow__node-world')).toHaveCount(2)
+  await expect(shared.getByText(/Shared Sandbox loaded/)).toBeVisible()
+})
+
 test('desktop separators resize, persist, and restore their widths after collapse', async ({ page }) => {
   const left = page.getByRole('separator', { name: 'Resize left workspace panel' })
   const right = page.getByRole('separator', { name: 'Resize right workspace panel' })
@@ -136,6 +169,8 @@ test('primary navigation stays activity-focused while More opens Reference and H
   await page.getByRole('button', { name: 'More' }).click()
   await page.getByRole('menuitem', { name: 'Help & Controls' }).click()
   await expect(page.getByRole('heading', { name: 'Help & Controls' })).toBeVisible()
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await expect(page.getByRole('heading', { name: 'Modal Logic Reference' })).toBeVisible()
 })
 
 test('the live tour highlights workspace targets without changing the mission', async ({ page }) => {
