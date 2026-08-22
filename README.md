@@ -2,7 +2,7 @@
 
 **Modal Logic Lab** is an interactive educational game and laboratory for learning and experimenting with modal logic through finite Kripke models.
 
-## [Play online](https://chrasts.github.io/Modal_Logic_Educational_Game/)
+## [Play online](https://chrasts.github.io/Modal_Logic_Lab/)
 
 The project treats formal logic as an interactive system rather than only as symbolic exercises. Players construct and modify Kripke models, evaluate modal formulas, explore accessibility relations and frame properties, and solve tasks whose correctness is checked by a deterministic semantic engine.
 
